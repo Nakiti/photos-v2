@@ -1,0 +1,177 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Define MySQL as the provider
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL") // Connection string from .env
+}
+
+// --- Model Definitions ---
+
+model User {
+  id        String    @id @default(uuid())
+  email     String    @unique
+  name      String?
+  password  String
+  handle    String    @unique
+  avatarUrl String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  ownedGalleries Gallery[]     @relation("OwnedGalleries")
+  memberships    Membership[]
+  photos         Photo[]
+  devices        Device[]
+  sentFriendRequests Friendship[] @relation("SentFriendRequests")
+  receivedFriendRequests Friendship[] @relation("ReceivedFriendRequests")
+}
+
+model Gallery {
+  id        String   @id @default(uuid())
+  name      String
+  ownerId   String
+  iconUrl   String?
+  type      GalleryType // GROUP or EVENT
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  startDate     DateTime?
+  endDate       DateTime?
+  location      String?
+  shareableLink String?   @unique
+
+  // Settings
+  joinRequiresApproval Boolean @default(false)
+  addPermission        GalleryAddPermission      @default(ADMIN)
+  deletePermission     GalleryDeletePermission   @default(ADMINS_AUTHORS)
+
+  owner       User         @relation("OwnedGalleries", fields: [ownerId], references: [id], onDelete: Cascade) // Cascade delete if owner is deleted (adjust if needed)
+  memberships Membership[]
+  photos      Photo[]
+  tags        Tag[]
+
+  @@index([ownerId])
+}
+
+enum GalleryType {
+  GROUP
+  EVENT
+}
+
+enum GalleryAddPermission {
+  ANYONE
+  ADMIN
+}
+
+enum GalleryDeletePermission {
+  ADMINS_AUTHORS
+  ADMIN
+}
+
+enum MembershipStatus {
+  PENDING  
+  ACCEPTED 
+  INVITED    
+  BLOCKED    
+}
+
+enum MembershipRole {
+  ADMIN   
+  MEMBER  
+}
+
+model Membership {
+  id        String   @id @default(uuid())
+  userId    String
+  galleryId String
+  joinedAt  DateTime @default(now())
+  status    MembershipStatus @default(ACCEPTED)
+  role      MembershipRole   @default(MEMBER)
+  isMuted   Boolean @default(FALSE)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade) // Cascade delete if user is deleted
+  gallery Gallery @relation(fields: [galleryId], references: [id], onDelete: Cascade) // Cascade delete if gallery is deleted
+
+  @@unique([userId, galleryId])
+  @@index([userId])
+  @@index([galleryId])
+}
+
+model Photo {
+  id          String   @id @default(uuid())
+  galleryId   String
+  uploaderId  String
+  s3Key       String   @unique
+  s3Url       String
+  createdAt   DateTime @default(now())
+
+  gallery  Gallery    @relation(fields: [galleryId], references: [id], onDelete: Cascade) // Cascade delete if gallery is deleted
+  uploader User       @relation(fields: [uploaderId], references: [id], onDelete: Cascade) // Cascade delete if uploader is deleted (adjust if needed)
+  photoTags PhotoTag[]
+
+  @@index([galleryId])
+  @@index([uploaderId])
+}
+
+model Tag {
+  id        String   @id @default(uuid())
+  name      String
+  galleryId String
+  color     String?
+
+  gallery  Gallery    @relation(fields: [galleryId], references: [id], onDelete: Cascade) // Cascade delete if gallery is deleted
+  photoTags PhotoTag[]
+
+  @@unique([galleryId, name])
+  @@index([galleryId])
+}
+
+model PhotoTag {
+  id      String @id @default(uuid())
+  photoId String
+  tagId   String
+
+  photo Photo @relation(fields: [photoId], references: [id], onDelete: Cascade) // Cascade delete if photo is deleted
+  tag   Tag   @relation(fields: [tagId], references: [id], onDelete: Cascade) // Cascade delete if tag is deleted
+
+  @@unique([photoId, tagId])
+  @@index([photoId])
+  @@index([tagId])
+}
+
+model Device {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  platform  String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade) // Cascade delete if user is deleted
+
+  @@index([userId])
+}
+
+model Friendship {
+  id          String           @id @default(uuid())
+  requesterId String
+  receiverId  String
+  status      FriendshipStatus // PENDING, ACCEPTED, BLOCKED
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  requester User @relation("SentFriendRequests", fields: [requesterId], references: [id], onDelete: Cascade) // Cascade delete if user is deleted
+  receiver  User @relation("ReceivedFriendRequests", fields: [receiverId], references: [id], onDelete: Cascade) // Cascade delete if user is deleted
+
+  @@unique([requesterId, receiverId])
+  @@index([requesterId])
+  @@index([receiverId])
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  BLOCKED
+}
+

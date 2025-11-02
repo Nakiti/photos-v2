@@ -1,0 +1,25 @@
+// src/types/index.d.ts
+
+export interface Gallery {
+    id: string;
+    name: string;
+    ownerId: string;
+    iconUrl?: string;
+    type: 'GROUP' | 'EVENT';
+    createdAt: string; // Comes as an ISO date string from the API
+    updatedAt: string;
+  
+    // Event-specific fields (optional)
+    startDate?: string;
+    endDate?: string;
+    location?: string;
+    shareableLink?: string;
+}
+
+export interface User {
+    id: string;
+    email: string;
+    name: string;
+    createdAt: string;
+    updatedAt: string;
+}

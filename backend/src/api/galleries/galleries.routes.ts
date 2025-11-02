@@ -1,0 +1,103 @@
+import { Router } from 'express';
+import { isAuthenticated } from '../../middleware/auth.middleware.js';
+import {
+  createGallery,
+  getMyGalleries,
+  getGalleryDetails,
+  updateGallery,
+  deleteGallery,
+  joinGalleryByLink,
+  reconcileGalleryPhotos,
+} from './galleries.controller.js';
+import photoRoutes from './photos/photos.routes.js';
+import membersRoutes from './members/members.routes.js';
+import {
+  joinGallery as joinGalleryAsUser,
+  acceptInvite,
+  leaveGallery,
+  inviteMember as inviteMemberAsAdmin,
+} from './members/members.controller.js';
+
+const router = Router();
+
+// --- Protected Routes ---
+// All gallery routes require authentication
+
+/**
+ * @route POST /api/v1/galleries
+ * @summary Create a new gallery with the authenticated user as owner
+ * @access Private
+ */
+router.post('/', isAuthenticated, createGallery);
+
+/**
+ * @route GET /api/v1/galleries
+ * @summary List galleries owned by or shared with the user
+ * @access Private
+ */
+router.get('/', isAuthenticated, getMyGalleries);
+
+/**
+ * @route GET /api/v1/galleries/:galleryId
+ * @summary Get details for a gallery if the user has access
+ * @access Private
+ */
+router.get('/:galleryId', isAuthenticated, getGalleryDetails);
+
+/**
+ * @route PUT /api/v1/galleries/:galleryId
+ * @summary Update gallery fields (owner only)
+ * @access Private
+ */
+router.put('/:galleryId', isAuthenticated, updateGallery);
+
+/**
+ * @route DELETE /api/v1/galleries/:galleryId
+ * @summary Delete a gallery (owner only)
+ * @access Private
+ */
+router.delete('/:galleryId', isAuthenticated, deleteGallery);
+
+/**
+ * @route GET /api/v1/galleries/:galleryId/photos/sync
+ * @summary Return an array of photo ids for reconciliation
+ * @access Private
+ */
+router.get('/:galleryId/photos/sync', isAuthenticated, reconcileGalleryPhotos)
+
+
+// --- Semi-Public Join Route ---
+/**
+ * @route POST /api/v1/galleries/join/:shareableLink
+ * @summary Join a gallery via shareable link
+ * @access Private (must be authenticated)
+ */
+router.post('/join/:shareableLink', isAuthenticated, joinGalleryByLink);
+
+// --- Membership (per current user) ---
+// POST /api/v1/galleries/:galleryId/join
+router.post('/:galleryId/join', isAuthenticated, joinGalleryAsUser);
+
+// PUT /api/v1/galleries/:galleryId/invites/accept
+router.put('/:galleryId/invites/accept', isAuthenticated, acceptInvite);
+
+// DELETE /api/v1/galleries/:galleryId/leave
+router.delete('/:galleryId/leave', isAuthenticated, leaveGallery);
+
+// --- Admin invite route ---
+// POST /api/v1/galleries/:galleryId/invites
+router.post('/:galleryId/invites', isAuthenticated, inviteMemberAsAdmin);
+
+
+
+// --- Nested Photo Routes ---
+// Mounts all routes from photos.routes.ts under /:galleryId/photos
+// e.g., /api/v1/galleries/123/photos/presign
+router.use('/:galleryId/photos', photoRoutes);
+
+// --- Nested Members Routes ---
+// Mounts all routes from members.routes.ts under /:galleryId/members
+router.use('/:galleryId/members', membersRoutes);
+
+
+export default router;
