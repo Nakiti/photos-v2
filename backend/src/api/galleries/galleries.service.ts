@@ -1,8 +1,21 @@
 // src/api/galleries/galleries.service.ts
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import config from '../../../config/config.js';
+import {v4 as uuidv4} from "uuid"
 
 const prisma = new PrismaClient();
+
+const s3 = new S3Client({
+  credentials: {
+    accessKeyId: config.aws.accessKeyId,
+    secretAccessKey: config.aws.secretAccessKey,
+  },
+  region: config.aws.region,
+}); 
+
 
 /**
  * Create a new gallery owned by the given user.
@@ -18,6 +31,9 @@ export async function createGallery(
     startDate?: string | null;
     endDate?: string | null;
     location?: string | null;
+    addPermission?: string;
+    deletePermission?: string;
+    joinRequiresAproval?: boolean;
   }
 ) {
   const { name, type, iconUrl, startDate, endDate, location } = data;
@@ -49,6 +65,9 @@ export async function createGallery(
         location: true,
         shareableLink: true,
         ownerId: true,
+        addPermission: true,
+        deletePermission: true,
+        joinRequiresApproval: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -94,6 +113,9 @@ export async function getMyGalleries(userId: string) {
       location: true,
       shareableLink: true,
       ownerId: true,
+      addPermission: true,
+      deletePermission: true,
+      joinRequiresApproval: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -107,16 +129,18 @@ export async function getMyGalleries(userId: string) {
  * @param galleryId - Gallery id
  */
 export async function getGalleryDetails(userId: string, galleryId: string) {
-  // Ensure the user has access
-  const gallery = await prisma.gallery.findFirst({
+  const galleryData = await prisma.gallery.findFirst({
     where: {
       id: galleryId,
+      // This OR clause is still good, as it quickly finds
+      // the gallery by owner or any member.
       OR: [
         { ownerId: userId },
-        { memberships: { some: { userId } } },
+        { memberships: { some: { userId: userId } } },
       ],
     },
     select: {
+      // 1. Gallery fields
       id: true,
       name: true,
       type: true,
@@ -126,14 +150,49 @@ export async function getGalleryDetails(userId: string, galleryId: string) {
       location: true,
       shareableLink: true,
       ownerId: true,
+      addPermission: true,
+      deletePermission: true,
+      joinRequiresApproval: true,
       createdAt: true,
       updatedAt: true,
+      
+      // 2. User's specific membership (will always find one)
       memberships: {
-        select: { id: true, userId: true, joinedAt: true },
+        where: { userId: userId },
+        select: {
+          id: true,
+          status: true,
+          role: true,
+          isMuted: true,
+        },
+      },
+      
+      // 3. Total member count (now always accurate)
+      _count: {
+        select: {
+          memberships: true,
+        },
       },
     },
   });
-  return gallery;
+
+  if (!galleryData) {
+    return null; // Or throw an error
+  }
+
+  // Deconstruct the results
+  const { memberships, _count, ...galleryDetails } = galleryData;
+  
+  // No conditional logic needed
+  const myMembership = memberships[0]; 
+  const memberCount = _count.memberships;
+
+  // Return the clean, combined object
+  return {
+    ...galleryDetails,
+    myMembership: myMembership,
+    memberCount: memberCount,
+  };
 }
 
 /**
@@ -169,6 +228,9 @@ export async function updateGallery(
       startDate: data.startDate ? new Date(data.startDate) : undefined,
       endDate: data.endDate ? new Date(data.endDate) : undefined,
       location: data.location ?? undefined,
+      addPermission: data.addPermission,
+      deletePermission: data.deletePermission,
+      joinRequiresApproval: data.joinRequiresApproval,
     },
     select: {
       id: true,
@@ -180,6 +242,9 @@ export async function updateGallery(
       location: true,
       shareableLink: true,
       ownerId: true,
+      addPermission: true,
+      deletePermission: true,
+      joinRequiresApproval: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -249,6 +314,9 @@ export async function joinGalleryByLink(userId: string, shareableLink: string) {
       endDate: true,
       location: true,
       shareableLink: true,
+      addPermission: true,
+      deletePermission: true,
+      joinRequiresApproval: true,
       ownerId: true,
       createdAt: true,
       updatedAt: true,
@@ -267,7 +335,44 @@ export async function getPhotoIdsForGallery(galleryId: string) {
   return photos.map((p) => p.id);
 }
 
+
 /**
- * Return all member userIds currently in the gallery.
+ * @param userId - The ID of the user requesting the upload.
+ * @param galleryId - The ID of the gallery to upload the icon for.
+ * @returns An object with the presigned URL and the final URL.
  */
-// moved to members.service
+export const generateIconPresignedUrl = async (userId: string, galleryId: string) => {
+  // 1. Check Permissions: Verify the user is an admin or owner of this gallery
+  const membership = await prisma.membership.findFirst({
+    where: {
+      galleryId: galleryId,
+      userId: userId,
+      role: 'ADMIN', // Check if the user's role is ADMIN
+    },
+  });
+
+  // If no membership is found, or they aren't an admin, throw an error
+  if (!membership) {
+    throw new Error('Forbidden');
+  }
+
+  // 2. Generate Key and Command (similar to the avatar function)
+  const fileExtension = '.jpg'; // Or get from request
+  const s3Key = `icons/${galleryId}-${uuidv4()}${fileExtension}`; // Use 'icons/' prefix
+  const expiresIn = 60 * 5; // URL is valid for 5 minutes
+
+  const command = new PutObjectCommand({
+    Bucket: config.aws.s3Bucket,
+    Key: s3Key,
+    ContentType: 'image/jpeg',
+    // We remove the 'ACL' property to work with modern S3 buckets
+    // The file will be public based on the Bucket Policy for the 'icons/' prefix
+  });
+
+  const presignedUrl = await getSignedUrl(s3, command, { expiresIn });
+
+  // 3. Generate Final URL (This is the permanent, cacheable URL)
+  const finalUrl = `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${s3Key}`;
+
+  return { presignedUrl, finalUrl };
+};

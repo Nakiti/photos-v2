@@ -89,7 +89,7 @@ model Membership {
   joinedAt  DateTime @default(now())
   status    MembershipStatus @default(ACCEPTED)
   role      MembershipRole   @default(MEMBER)
-  isMuted   Boolean @default(FALSE)
+  isMuted   Boolean @default(false)
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade) // Cascade delete if user is deleted
   gallery Gallery @relation(fields: [galleryId], references: [id], onDelete: Cascade) // Cascade delete if gallery is deleted

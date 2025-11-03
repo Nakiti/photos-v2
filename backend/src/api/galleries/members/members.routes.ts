@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { isAuthenticated } from '../../../middleware/auth.middleware.js';
-import { addMember, removeMember, reconcileGalleryMembers, getMembers, promoteMember, approveMember, updateMyMembership } from './members.controller.js';
+import { addMember, removeMember, reconcileGalleryMembers, getMembers, promoteMember, approveMember, updateMyMembership, getMyMembership } from './members.controller.js';
 
 /**
  * Members router, merged under `/api/v1/galleries/:galleryId/members`.
@@ -52,6 +52,12 @@ router.get('/', isAuthenticated, getMembers);
  * @access Private
  */
 router.put('/me', isAuthenticated, updateMyMembership);
+
+/**
+ * Get current user's membership in this gallery.
+ * @route GET /api/v1/galleries/:galleryId/members/me
+ */
+router.get('/me', isAuthenticated, getMyMembership);
 
 export default router;
 

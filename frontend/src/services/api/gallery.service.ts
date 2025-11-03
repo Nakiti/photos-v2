@@ -54,6 +54,7 @@ export const createGallery = async (galleryData: CreateGalleryRequest): Promise<
  */
 export const getGalleryDetails = async (galleryId: string): Promise<GalleryApiResponse> => {
   const response = await apiClient.get(`/api/v1/galleries/${galleryId}`);
+  console.log("gallery details", response.data)
   return response.data;
 };
 
@@ -142,3 +143,65 @@ export const joinGalleryByLink = async (shareableLink: string): Promise<GalleryA
   const response = await apiClient.post(`/api/v1/galleries/join/${shareableLink}`);
   return response.data;
 };
+
+export const uploadNewGalleryIcon = async (
+  galleryId: string,
+  imageUri: string
+): Promise<GalleryApiResponse> => {
+  console.log('1. Starting gallery icon upload...', galleryId);
+
+  // Step 1: Read image from device into a Blob
+  console.log('2. Fetching image blob from device...');
+  const imageFetchResponse = await fetch(imageUri);
+  const blob = await imageFetchResponse.blob();
+
+  const imageType = blob.type || 'image/jpeg';
+  const fileExtension = imageType === 'image/png' ? '.png' : '.jpg';
+
+  // Step 2: Request a presigned URL from backend
+  console.log('3. Requesting presigned URL for', imageType);
+  const presignResponse = await apiClient.post(
+    `/api/v1/galleries/${galleryId}/icon/presign`,
+    {
+      contentType: imageType,
+      fileExtension,
+    }
+  );
+
+  const { presignedUrl, finalUrl } = presignResponse.data as {
+    presignedUrl?: string;
+    finalUrl?: string;
+  };
+
+  if (!presignedUrl || !finalUrl) {
+    throw new Error('Failed to get presigned URL from server.');
+  }
+
+  // Step 3: Upload file directly to object storage
+  console.log('4. Uploading image to S3...');
+  const s3UploadResponse = await fetch(presignedUrl, {
+    method: 'PUT',
+    body: blob,
+    headers: {
+      'Content-Type': imageType,
+    },
+  });
+
+  if (!s3UploadResponse.ok) {
+    console.error(
+      'S3 Upload Failed:',
+      s3UploadResponse.status,
+      await s3UploadResponse.text()
+    );
+    throw new Error('Failed to upload image to S3.');
+  }
+
+  // Step 4: Update gallery with the new icon URL
+  console.log('5. Confirming upload with backend...', finalUrl);
+  const updatedGallery = await updateGallery(galleryId, {
+    iconUrl: finalUrl,
+  } as UpdateGalleryRequest);
+
+  console.log('6. Gallery icon upload complete.');
+  return updatedGallery;
+}

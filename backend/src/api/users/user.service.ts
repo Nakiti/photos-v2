@@ -81,9 +81,8 @@ export async function registerDevice(userId: string, token: string, platform: 'i
  * @param userId - The ID of the user uploading the avatar.
  * @returns An object with the presigned URL and the final URL.
  */
-export const generateAvatarPresignedUrl = async (userId: string) => {
+export const generateAvatarPresignedUrl = async (userId: string, contentType: string, fileExtension: string) => {
   // Generate a unique key (filename) for the file
-  const fileExtension = '.jpg'; // Or get from request
   const s3Key = `avatars/${userId}-${uuidv4()}${fileExtension}`;
   const expiresIn = 60 * 5; // URL is valid for 5 minutes
 
@@ -91,7 +90,7 @@ export const generateAvatarPresignedUrl = async (userId: string) => {
   const command = new PutObjectCommand({
     Bucket: config.aws.s3Bucket,
     Key: s3Key,
-    ContentType: 'image/jpeg', // Or the type specified by the frontend
+    ContentType: contentType,
   });
 
   const presignedUrl = await getSignedUrl(s3, command, { expiresIn });

@@ -64,3 +64,19 @@ export const updateMyMembership = async (
   const response = await apiClient.put(`/api/v1/galleries/${galleryId}/members/me`, data);
   return response.data;
 };
+
+// Current user's membership for a gallery
+export type MyMembership = {
+  id: string;
+  userId: string;
+  galleryId: string;
+  joinedAt: string;
+  status: MembershipStatus;
+  role: 'ADMIN' | 'MEMBER';
+  isMuted: boolean;
+};
+
+export const getMyMembership = async (galleryId: string): Promise<MyMembership> => {
+  const response = await apiClient.get(`/api/v1/galleries/${galleryId}/members/me`);
+  return response.data;
+};

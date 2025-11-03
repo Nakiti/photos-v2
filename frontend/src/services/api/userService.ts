@@ -56,36 +56,52 @@ export const addDeviceToken = async (
  */
 export const uploadNewAvatar = async (imageUri: string): Promise<UserProfile> => {
   console.log('1. Starting avatar upload...');
+
+  // --- Step 1: Get the image file as a blob ---
+  console.log('2. Fetching image blob from device...');
+  const response = await fetch(imageUri);
+  const blob = await response.blob();
   
-  // --- Step 1: Get a presigned URL from our backend ---
-  console.log('2. Requesting presigned URL...');
-  const presignResponse = await apiClient.post('/api/v1/users/me/avatar/presign');
+  // Determine file type and extension
+  const imageType = blob.type || 'image/jpeg';
+  // A simple way to get extension. For more types, use a mime-type library.
+  const fileExtension = imageType === 'image/png' ? '.png' : '.jpg'; 
+
+  // --- Step 2: Get a presigned URL from our backend ---
+  console.log('3. Requesting presigned URL for', imageType);
+  const presignResponse = await apiClient.post(
+    '/api/v1/users/me/avatar/presign',
+    {
+      contentType: imageType,
+      fileExtension: fileExtension,
+    }
+  );
   const { presignedUrl, finalUrl } = presignResponse.data;
 
   if (!presignedUrl || !finalUrl) {
     throw new Error('Failed to get presigned URL from server.');
   }
 
-  // --- Step 2: Get the image file as a blob ---
-  console.log('3. Fetching image blob from device...');
-  const response = await fetch(imageUri);
-  const blob = await response.blob();
-  const imageType = blob.type || 'image/jpeg'; // Default to jpeg if type is unknown
-
-  // --- Step 3: Upload the image directly to S3 ---
+  // --- Step 3: Upload the image directly to S3 (WITH ERROR CHECKING) ---
   console.log('4. Uploading image to S3...');
-  await fetch(presignedUrl, {
+  const s3UploadResponse = await fetch(presignedUrl, {
     method: 'PUT',
     body: blob,
     headers: {
-      'Content-Type': imageType, 
+      'Content-Type': imageType,
     },
   });
 
+  // !! THIS IS THE CRITICAL CHECK !!
+  if (!s3UploadResponse.ok) {
+    console.error('S3 Upload Failed:', s3UploadResponse.status, await s3UploadResponse.text());
+    throw new Error('Failed to upload image to S3.');
+  }
+
   // --- Step 4: Confirm the upload with our backend ---
-  console.log('5. Confirming upload with backend...');
+  console.log('5. Confirming upload with backend...', finalUrl);
   const updatedUser = await updateMyProfile({ avatarUrl: finalUrl });
-  
+
   console.log('6. Avatar upload complete.');
   return updatedUser;
 };

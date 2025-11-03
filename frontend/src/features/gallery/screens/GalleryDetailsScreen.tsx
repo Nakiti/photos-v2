@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useGallery } from '../../../hooks/useGalleryData';
 import { useUpdateMyMembership } from '../../../hooks/useMembershipData';
-
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 type DummyGroup = { name?: string; image?: string; is_muted?: boolean; is_event?: number } | null;
 
@@ -91,13 +91,16 @@ const GalleryDetailsScreen = () => {
                <View style={styles.actionsRow}>
                   <View style={styles.actionButtonContainer}>
                         <TouchableOpacity style={styles.actionButton} onPress={handleSharePress}>
-                           <Text style={{ fontSize: 16, color: "#333" }}>↗</Text>
+                           <Ionicons name="share-outline" size={20} color="black"/>
                         </TouchableOpacity>
                         <Text style={styles.actionLabel}>Share</Text>
                   </View>
                   <View style={styles.actionButtonContainer}>
                         <TouchableOpacity style={styles.actionButton} onPress={handleMutePress} disabled={isPending}>
-                           <Text style={{ fontSize: 16, color: "#333" }}>{isMuted ? "🔕" : "🔔"}</Text>
+                           {isMuted ? 
+                              <Ionicons name="notifications-outline" size={20} color="black"/> :
+                              <Ionicons name="notifications-off-outline" size={20} color="black"/>
+                           }
                         </TouchableOpacity>
                         <Text style={styles.actionLabel}>{isMuted ? 'Unmute' : 'Mute'}</Text>
                   </View>
@@ -106,15 +109,23 @@ const GalleryDetailsScreen = () => {
                {/* --- List Section --- */}
                <View style={styles.listContainer}>
                   <TouchableOpacity style={styles.listItem} onPress={handleMembersPress}>
-                        <Text style={{ fontSize: 18, color: '#8A8A8E' }}>👥</Text>
+                        <Text style={{ fontSize: 18, color: '#8A8A8E' }}>
+                           <Ionicons name="people-outline" size={24} color="black"/>
+                        </Text>
                         <Text style={styles.listText}>Members</Text>
-                        <Text style={{ fontSize: 18, color: '#C7C7CC' }}>›</Text>
+                        <Text style={{ fontSize: 18, color: '#C7C7CC' }}>
+                           <Ionicons name="chevron-forward-outline" size={16} color="gray"/>
+                        </Text>
                   </TouchableOpacity>
                   <View style={styles.separator} />
                   <TouchableOpacity style={styles.listItem} onPress={handleSettingsPress}>
-                        <Text style={{ fontSize: 18, color: '#8A8A8E' }}>⚙︎</Text>
+                        <Text style={{ fontSize: 18, color: '#8A8A8E' }}>
+                           <Ionicons name="settings-outline" size={24} color="black"/>
+                        </Text>
                         <Text style={styles.listText}>Settings</Text>
-                        <Text style={{ fontSize: 18, color: '#C7C7CC' }}>›</Text>
+                        <Text style={{ fontSize: 18, color: '#C7C7CC' }}>
+                           <Ionicons name="chevron-forward-outline" size={16} color="gray"/>
+                        </Text>
                   </TouchableOpacity>
                </View>
             </>

@@ -222,3 +222,29 @@ export async function updateMyMembership(req: Request, res: Response) {
   return res.status(200).json(updated);
 }
 
+/**
+ * GET /api/v1/galleries/:galleryId/members/me
+ * Return the current user's membership for the specified gallery.
+ */
+export async function getMyMembership(req: Request, res: Response) {
+  const userId = (req as any).user?.id as string | undefined;
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+  const parsed = z
+    .object({ params: z.object({ galleryId: z.string().uuid('Invalid gallery id') }) })
+    .safeParse({ params: req.params });
+  if (!parsed.success) {
+    return res.status(400).json({ message: 'Validation failed', errors: parsed.error.flatten().fieldErrors });
+  }
+
+  const { galleryId } = parsed.data.params as { galleryId: string };
+
+  // Ensure requester has access to the gallery (owner or any membership state)
+  const access = await galleriesService.getGalleryDetails(userId, galleryId);
+  if (!access) return res.status(403).json({ message: 'Forbidden' });
+
+  const membership = await membersService.getMembership(userId, galleryId);
+  if (!membership) return res.status(404).json({ message: 'Membership not found' });
+  return res.status(200).json(membership);
+}
+

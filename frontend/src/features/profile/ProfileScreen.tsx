@@ -4,6 +4,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { useUser } from '../../hooks/useUser';
 import { ActivityIndicator } from 'react-native-paper';
+import FastImage from 'react-native-fast-image';
 
 const ProfileScreen = () => {
    const navigation = useNavigation();
@@ -30,12 +31,12 @@ const ProfileScreen = () => {
          {user && (
             <View style={styles.profileContainer}>
                <View style={styles.avatar}>
-                  {!user.profile_picture ? (
+                  {!user.avatarUrl ? (
                      <Text style={styles.avatarText}>
                         {user.name[0]}
                      </Text>
                   ) : (
-                     <Image source={{ uri: user.profile_picture }} style={styles.avatarImage} />
+                     <FastImage source={{ uri: user.avatarUrl }} style={styles.avatarImage} />
                   )}
                </View>
                <Text style={styles.name}>{user.name}</Text>

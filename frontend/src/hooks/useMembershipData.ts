@@ -15,7 +15,8 @@ import {
   inviteMember,
   promoteMember,
   approveMember,
-  updateMyMembership
+  updateMyMembership,
+  getMyMembership
 
 } from "../services/api/memberships.service"; // Assuming a dedicated memberService
 import { syncMembers, removeMembershipLocally } from "../services/sync/memberships.sync";
@@ -297,6 +298,19 @@ export const useUpdateMyMembership = () => {
     onSuccess: (data, { galleryId }) => {
       queryClient.invalidateQueries({ queryKey: ['memberships', galleryId] });
     },
+  });
+};
+
+
+/**
+ * Hook to get the current user's membership for a specific gallery.
+ */
+export const useMyMembership = (galleryId: string | null) => {
+  return useQuery({
+    queryKey: ['myMembership', galleryId],
+    enabled: !!galleryId,
+    queryFn: () => getMyMembership(galleryId as string),
+    staleTime: 5 * 60 * 1000,
   });
 };
 

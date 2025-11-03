@@ -1,5 +1,5 @@
 // src/api/galleries/galleries.controller.ts
-import type { Request, Response } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as galleriesService from './galleries.service.js';
 import {
@@ -9,6 +9,7 @@ import {
   type CreateGalleryDto,
   type UpdateGalleryDto,
 } from './galleries.validation.js';
+import { generateIconPresignedUrl } from './galleries.service.js';
 
 /**
  * POST /api/v1/galleries
@@ -138,3 +139,24 @@ export async function reconcileGalleryPhotos(req: Request, res: Response) {
 }
 
 
+/**
+ * POST /api/v1/galleries/:galleryId/icon/presign
+ * Generates a presigned URL for a gallery icon upload.
+ */
+export const requestIconUpload = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { galleryId } = req.params;
+    const userId = (req as any).user.id; // From isAuthenticated middleware
+
+    // The service will handle permission checks
+    const { presignedUrl, finalUrl } = await generateIconPresignedUrl(userId, galleryId);
+
+    res.status(200).json({ presignedUrl, finalUrl });
+  } catch (error) {
+    // Handle errors (e.g., if user is not an admin)
+    if (error.message === 'Forbidden') {
+      return res.status(403).json({ message: 'You do not have permission to change this icon.' });
+    }
+    next(error);
+  }
+};

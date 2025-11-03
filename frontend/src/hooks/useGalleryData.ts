@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Q } from '@nozbe/watermelondb';
 import Gallery from '../db/models/Gallery';
 import { deleteGallery, fetchMyGalleries, updateGallery } from '../services/api/gallery.service';
+import { uploadNewGalleryIcon } from '../services/api/gallery.service';
 import { syncGalleries, syncGalleryDetails } from '../services/sync/gallery.sync';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createGallery, getGalleryDetails } from '../services/api/gallery.service';
@@ -162,6 +163,29 @@ export const useDeleteGallery = () => {
     mutationFn: (galleryId: string) => deleteGallery(galleryId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['galleries'] });
+    },
+  });
+};
+
+/**
+ * Hook to provide a mutation for updating the gallery's icon.
+ */
+export const useUpdateGalleryIcon = (galleryId: string | null) => {
+  const queryClient = useQueryClient();
+  const database = useDatabase();
+
+  return useMutation({
+    mutationFn: async (imageUri: string) => {
+      if (!galleryId) throw new Error('galleryId is required');
+      return uploadNewGalleryIcon(galleryId, imageUri);
+    },
+    onSuccess: async (updatedGallery) => {
+      await syncGalleryDetails(database, updatedGallery);
+      queryClient.invalidateQueries({ queryKey: ['gallery', galleryId || ''] });
+      queryClient.invalidateQueries({ queryKey: ['galleries'] });
+    },
+    onError: (error) => {
+      console.error('Failed to update gallery icon:', error);
     },
   });
 };

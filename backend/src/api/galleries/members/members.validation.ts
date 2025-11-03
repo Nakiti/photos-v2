@@ -40,3 +40,12 @@ export const updateMyMembershipSchema = z.object({
 
 export type UpdateMyMembershipDto = z.infer<typeof updateMyMembershipSchema>['body'];
 
+/**
+ * Schema for validating params of GET my membership.
+ */
+export const getMyMembershipParamsSchema = z.object({
+  params: z.object({
+    galleryId: z.string().uuid('Invalid gallery id'),
+  }),
+});
+

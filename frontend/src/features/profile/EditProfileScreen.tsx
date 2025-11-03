@@ -7,9 +7,11 @@ import FastImage from 'react-native-fast-image';
 import { useUser, useUpdateAvatar, useUpdateMyProfile } from '../../hooks/useUser';
 import { launchImageLibrary, ImagePickerResponse } from 'react-native-image-picker';
 import { useNavigation } from '@react-navigation/native';
+import { useQueryClient } from '@tanstack/react-query';
 
 const EditProfileScreen: React.FC = () => {
   const navigation = useNavigation();
+  const queryClient = useQueryClient()
 
   // --- Data Fetching ---
   const { user, isLoading: isLoadingProfile } = useUser();
@@ -27,8 +29,8 @@ const EditProfileScreen: React.FC = () => {
   useEffect(() => {
     if (user) {
       setName(user.name || '');
-      setBio(user.bio || ''); // Assuming your UserProfile type has a 'bio' field
-      setLocalAvatarUri(null); // Clear local preview on data reload
+      setBio(user.bio || '');
+      setLocalAvatarUri(null); 
     }
   }, [user]);
 
@@ -51,7 +53,11 @@ const EditProfileScreen: React.FC = () => {
          const uri = response.assets[0].uri;
          setLocalAvatarUri(uri); // Show a local preview
          updateAvatar(uri, {
-            onSuccess: () => setLocalAvatarUri(null), // Clear preview on success
+            onSuccess: () => {
+               setLocalAvatarUri(null)
+               queryClient.invalidateQueries({queryKey: ['me']})
+               
+            }, // Clear preview on success
             onError: () => setLocalAvatarUri(null), // Clear preview on error
          });
          }
@@ -64,6 +70,7 @@ const EditProfileScreen: React.FC = () => {
       updateProfile({ name, bio }, {
          onSuccess: () => {
          Alert.alert('Success', 'Profile updated!');
+         queryClient.invalidateQueries({ queryKey: ['me'] })
          navigation.goBack();
          },
          onError: () => {

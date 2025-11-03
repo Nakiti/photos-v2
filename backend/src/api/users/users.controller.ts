@@ -79,7 +79,10 @@ export async function addDeviceToken(req: Request, res: Response) {
 export const requestAvatarUpload = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).user.id;
-    const { presignedUrl, finalUrl } = await usersService.generateAvatarPresignedUrl(userId);
+    const contentType = req.body.contentType
+    const fileExtension = req.body.fileExtension
+    
+    const { presignedUrl, finalUrl } = await usersService.generateAvatarPresignedUrl(userId, contentType, fileExtension);
 
     res.status(200).json({ presignedUrl, finalUrl });
   } catch (error) {

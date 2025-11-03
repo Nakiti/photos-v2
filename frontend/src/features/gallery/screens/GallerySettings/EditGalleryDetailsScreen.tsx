@@ -1,66 +1,104 @@
 import { useRoute } from "@react-navigation/native";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { 
-    View, Text, Image, TouchableOpacity, StyleSheet, TextInput, 
+    View, Text, TouchableOpacity, StyleSheet, TextInput, 
     TouchableWithoutFeedback, Keyboard, 
     Alert
 } from "react-native";
-import { useGallery } from "../../../../hooks/useGalleryData";
+import FastImage from "react-native-fast-image";
+import { launchImageLibrary, ImagePickerResponse } from "react-native-image-picker";
+import { useGallery, useUpdateGallery, useUpdateGalleryIcon } from "../../../../hooks/useGalleryData";
 import { ActivityIndicator } from "react-native-paper";
-// Presentational: no external image picker
+import { useQueryClient } from "@tanstack/react-query";
+// Image upload handled via `useUpdateGalleryIcon`
 
 interface EditGalleryDetailsProps { galleryId: string | number }
 
 const EditGalleryDetailsScreen = () => {
-   const [inputs, setInputs] = useState<any>({});
-   const [initialInputs, setInitialInputs] = useState<any>({});
-   const [isDisabled, setIsDisabled] = useState(true);
-   const [image, setImage] = useState<string | null>(null);
-   const [userInfo, setUserInfo] = useState<{ role: string } | null>(null)
-   const route = useRoute()
-   const { galleryId } = route.params as { galleryId: string }
+   const route = useRoute();
+   const queryClient = useQueryClient();
+   const { galleryId } = route.params as { galleryId: string };
 
-   const handleInputsChange = (key: string, value: any) => {
-      setInputs((prev: any) => ({ ...prev, [key]: value }));
-   };
+   // --- Data Fetching ---
+   const { gallery, isError, isLoading, error } = useGallery(galleryId);
 
-   const {gallery, isError, isLoading, error} = useGallery(galleryId)
+   // --- Mutations ---
+   const { mutate: updateGallery, isPending: isUpdating } = useUpdateGallery();
+   const { mutate: updateGalleryIcon, isPending: isUploadingIcon } = useUpdateGalleryIcon(galleryId);
 
+   // --- Local State for Editing ---
+   const [name, setName] = useState<string>('');
+   const [description, setDescription] = useState<string>('');
+   const [localImageUri, setLocalImageUri] = useState<string | null>(null);
+   const [initial, setInitial] = useState<{ name: string; description: string; iconUrl: string | null }>({ name: '', description: '', iconUrl: null });
+
+   // Populate local state once gallery data is loaded
    useEffect(() => {
-      const parsed = {
-         name: gallery?.name,
-         description: gallery?.description,
-         image: gallery?.iconUrl,
-         editPermission: 'all',
-         addPermission: 'admin',
-         ownerId: 1
-      };
-      setInputs(parsed);
-      setInitialInputs({ name: parsed.name, description: parsed.description, image: parsed.image });
-      setUserInfo({ role: 'owner' });
+      if (gallery) {
+         setName(gallery.name || '');
+         // Description is not part of the Gallery model yet; keep local-only for now
+         setDescription('');
+         setLocalImageUri(null);
+         setInitial({ name: gallery.name || '', description: '', iconUrl: gallery.iconUrl || null });
+      }
    }, [galleryId, gallery]);
 
-
-   useEffect(() => {
-      const hasChanged = Object.keys(initialInputs).some(
-         (key) => inputs[key] !== initialInputs[key]
+   // Dirty tracking (similar to profile screen)
+   const isDirty = useMemo(() => {
+      return (
+         name !== initial.name ||
+         description !== initial.description ||
+         localImageUri !== null
       );
-      setIsDisabled(!hasChanged);
-   }, [inputs]);
+   }, [name, description, localImageUri, initial]);
 
-   const fetchData = async () => {};
-
-   const handleSave = async () => {
-      if (isDisabled) return;
-      setIsDisabled(true);
-      Alert.alert('Success', `Saved changes for Gallery ${galleryId}`);
+   // --- Handlers ---
+   const handleChangeImage = () => {
+      launchImageLibrary({ mediaType: 'photo', quality: 0.7 }, (response: ImagePickerResponse) => {
+         if (response.didCancel) {
+           return;
+         }
+         if (response.errorMessage) {
+           Alert.alert('Error', response.errorMessage);
+           return;
+         }
+         if (response.assets && response.assets[0]?.uri) {
+           const uri = response.assets[0].uri;
+           setLocalImageUri(uri); // Local preview
+           // Upload immediately and sync
+           updateGalleryIcon(uri, {
+             onSuccess: () => {
+               setLocalImageUri(null);
+               Alert.alert('Success', 'Gallery image updated!');
+             },
+             onError: (err) => {
+               Alert.alert('Upload Failed', (err as Error)?.message || 'Unable to update image');
+             },
+           });
+         }
+      });
    };
 
-   const pickImage = () => {
-      const placeholder = "https://placehold.co/150x150/f2f2f2/333?text=Group";
-      const next = image ? null : placeholder;
-      setImage(next);
-      handleInputsChange("image", next);
+   const handleSave = () => {
+      if (!isDirty || isUpdating) return;
+
+      // Only update fields supported today (name). Image upload will be added later via TODO hook.
+      updateGallery(
+         { galleryId, data: { name: name.trim() || initial.name } },
+         {
+            onSuccess: () => {
+               Alert.alert('Success', 'Gallery updated!');
+               queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });
+               queryClient.invalidateQueries({ queryKey: ['galleries'] });
+               // Reset local state to reflect saved data (description kept local-only for now)
+               setInitial((prev) => ({ ...prev, name: name.trim() || prev.name, description }));
+               setLocalImageUri(null);
+            },
+            onError: () => {
+               Alert.alert('Error', 'Failed to update gallery.');
+            },
+         }
+      );
    };
 
    if (isLoading) {
@@ -71,10 +109,10 @@ const EditGalleryDetailsScreen = () => {
       );
     }
   
-    if (isError) {
+   if (isError) {
       return (
         <View style={[styles.container, styles.center]}>
-          <Text style={styles.errorText}>Failed to load groups: {error.message}</Text>
+          <Text style={styles.errorText}>Failed to load groups: {error?.message || 'Unknown error'}</Text>
         </View>
       );
     }
@@ -83,44 +121,61 @@ const EditGalleryDetailsScreen = () => {
       <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
          <View style={styles.container}>
             <View style={styles.avatarContainer}>
-               <TouchableOpacity onPress={pickImage}>
-                  <Image
-                        source={{ uri: inputs.iconUrl || "https://placehold.co/150x150/f2f2f2/333?text=Group" }}
-                        style={styles.avatar}
-                  />
+               {(() => {
+                  const coverUri = localImageUri || initial.iconUrl || undefined;
+                  return (
+                     <TouchableOpacity onPress={handleChangeImage} disabled={isUpdating || isUploadingIcon}>
+                        {coverUri ? (
+                           <FastImage
+                              style={styles.avatar}
+                              source={{ uri: coverUri, priority: FastImage.priority.high }}
+                              resizeMode={FastImage.resizeMode.cover}
+                           />
+                        ) : (
+                           <View style={styles.avatarPlaceholder} />
+                        )}
+                     </TouchableOpacity>
+                  );
+               })()}
+               <TouchableOpacity 
+                  style={styles.changeImageButton}
+                  onPress={handleChangeImage}
+                  disabled={isUpdating || isUploadingIcon}
+               >
+                  <Text style={styles.changeImageText}>Change Image</Text>
                </TouchableOpacity>
             </View>
 
-            {/* Alias Input */}
+            {/* Name Input */}
             <View style={styles.infoContainer}>
                <Text style={styles.label}>Group Name</Text>
                <TextInput
                   style={styles.input}
-                  value={inputs.name}
-                  onChangeText={(text) => handleInputsChange("name", text)}
+                  value={name}
+                  onChangeText={setName}
                   placeholder="Enter Name"
                   placeholderTextColor="gray"
-                  editable={true}
+                  editable={!isUpdating}
                />
             </View>
 
             {/* Description Input */}
             <TextInput
                style={styles.description}
-               value={inputs.description}
-               onChangeText={(text) => handleInputsChange("description", text)}
+               value={description}
+               onChangeText={setDescription}
                placeholder="Add Description"
                placeholderTextColor="gray"
                numberOfLines={12}
                multiline
-               editable={true}
+               editable={!isUpdating}
             />
 
             {/* Save Button */}
             <TouchableOpacity 
-               style={[styles.saveButton, isDisabled && styles.disabledButton]} 
+               style={[styles.saveButton, (!isDirty || isUpdating || isUploadingIcon) && styles.disabledButton]} 
                onPress={handleSave}
-               disabled={isDisabled}
+               disabled={!isDirty || isUpdating || isUploadingIcon}
             >
                <Text style={styles.saveButtonText}>Save</Text>
             </TouchableOpacity>
@@ -137,6 +192,10 @@ const styles = StyleSheet.create({
       backgroundColor: "#fff",
       paddingHorizontal: 20,
    },
+   center: {
+      justifyContent: 'center',
+      alignItems: 'center',
+   },
    avatarContainer: {
       alignItems: "center",
       marginTop: 20,
@@ -147,6 +206,27 @@ const styles = StyleSheet.create({
       height: 150,
       borderRadius: 75, // Made into a perfect circle
       backgroundColor: "#f2f2f2",
+   },
+   avatarPlaceholder: {
+      width: 150,
+      height: 150,
+      borderRadius: 75,
+      backgroundColor: '#f2f2f2',
+   },
+   changeImageButton: {
+      marginTop: 10,
+      backgroundColor: "#007bff",
+      paddingVertical: 8,
+      paddingHorizontal: 15,
+      borderRadius: 8,
+      marginBottom: 20,
+      minWidth: 140,
+      alignItems: 'center',
+   },
+   changeImageText: {
+      color: "#fff",
+      fontSize: 14,
+      fontWeight: "bold",
    },
    // Style for the camera icon overlay
    editOverlay: {
@@ -197,6 +277,9 @@ const styles = StyleSheet.create({
       color: "#fff",
       fontSize: 16,
       fontWeight: "bold",
+   },
+   errorText: {
+      color: 'red',
    },
 });
 

@@ -8,6 +8,7 @@ import {
   deleteGallery,
   joinGalleryByLink,
   reconcileGalleryPhotos,
+  requestIconUpload
 } from './galleries.controller.js';
 import photoRoutes from './photos/photos.routes.js';
 import membersRoutes from './members/members.routes.js';
@@ -50,6 +51,13 @@ router.get('/:galleryId', isAuthenticated, getGalleryDetails);
  * @access Private
  */
 router.put('/:galleryId', isAuthenticated, updateGallery);
+
+/**
+ * @route POST /api/v1/galleries/:galleryId/icon/presign
+ * @description Get a presigned URL to upload a new gallery icon.
+ * @access Private (Admin/Owner)
+ */
+router.post('/:galleryId/icon/presign', isAuthenticated, requestIconUpload);
 
 /**
  * @route DELETE /api/v1/galleries/:galleryId
