@@ -3,7 +3,7 @@ import { useDatabase } from '@nozbe/watermelondb/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import UserModel from '../db/models/User';
 import { useAuthStore } from '../stores/auth.store';
-import { addDeviceToken, getMyProfile, updateMyProfile, UpdateMyProfileRequest, RegisterDeviceRequest, UserProfile } from '../services/api/userService';
+import { addDeviceToken, getMyProfile, updateMyProfile, UpdateMyProfileRequest, RegisterDeviceRequest, UserProfile, uploadNewAvatar } from '../services/api/userService';
 import { syncCurrentUser } from '../services/sync/user.sync';
 
 export const useUser = () => {
@@ -93,5 +93,30 @@ export const useUpdateMyProfile = () => {
 export const useRegisterDeviceToken = () => {
   return useMutation({
     mutationFn: (req: RegisterDeviceRequest) => addDeviceToken(req),
+  });
+};
+
+/**
+ * Hook to provide a mutation for updating the user's avatar.
+ */
+export const useUpdateAvatar = () => {
+  const queryClient = useQueryClient();
+  const database = useDatabase();
+  const { setUser } = useAuthStore();
+
+  return useMutation({
+    mutationFn: uploadNewAvatar,
+    
+    onSuccess: (updatedUser: UserProfile) => {
+      // 1. Update Zustand
+      setUser(updatedUser);
+      // 2. Update WatermelonDB
+      syncCurrentUser(database, updatedUser);
+      // 3. Invalidate the profile query to ensure freshness
+      queryClient.invalidateQueries({ queryKey: ['userProfile', updatedUser.id] });
+    },
+    onError: (error) => {
+      console.error('Failed to update avatar:', error);
+    },
   });
 };

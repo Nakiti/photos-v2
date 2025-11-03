@@ -2,7 +2,7 @@ import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const mySchema = appSchema({
   // Ensure version matches the latest changes (added tags/friendships)
-  version: 4,
+  version: 5,
   tables: [
     tableSchema({
       name: 'users',

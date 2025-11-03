@@ -7,6 +7,7 @@ import Gallery from './models/Gallery';
 import Photo from './models/Photo';
 import User from './models/User';
 import Membership from './models/Membership';
+import Friendship from './models/Friendship';
 
 // First, create the adapter to the underlying database driver (SQLite in this case)
 const adapter = new SQLiteAdapter({
@@ -22,5 +23,6 @@ export const database = new Database({
     Photo,
     User,
     Membership,
+    Friendship,
   ],
 });

@@ -38,7 +38,7 @@ export const useFriendships = () => {
 
     // Observe local data and categorize friendships
     useEffect(() => {
-        if (!currentUser?.id) return; // Need current user ID
+        if (!database || !currentUser?.id) return; // Need DB and current user ID
 
         const friendshipsCollection = database.collections.get<Friendship>('friendships');
         // Query for all friendships involving the current user
@@ -111,6 +111,7 @@ export const useFriendships = () => {
         return remoteFriendships;
         },
         staleTime: 5 * 60 * 1000, // Data fresh for 5 minutes
+        enabled: Boolean(database && currentUser?.id),
     });
 
     return {

@@ -1,109 +1,190 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Image } from 'react-native';
-
-type DummyUser = {
-   firstName: string;
-   lastName: string;
-   bio: string;
-   profilePicture: string | null;
-   email: string;
-   phoneNumber: string;
-};
-
-const dummyUser: DummyUser = {
-   firstName: 'Alex',
-   lastName: 'Johnson',
-   bio: 'Photographer. Coffee enthusiast. Traveler. Lover of golden hour shots and candid moments.',
-   profilePicture: null,
-   email: 'alex.johnson@example.com',
-   phoneNumber: '+1 (555) 123-4567',
-};
+import React, { useState, useEffect } from 'react';
+import { 
+  View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, ActivityIndicator, Alert 
+} from 'react-native';
+// 1. Import FastImage
+import FastImage from 'react-native-fast-image';
+import { useUser, useUpdateAvatar, useUpdateMyProfile } from '../../hooks/useUser';
+import { launchImageLibrary, ImagePickerResponse } from 'react-native-image-picker';
+import { useNavigation } from '@react-navigation/native';
 
 const EditProfileScreen: React.FC = () => {
-   const initials = `${dummyUser.firstName.slice(0, 1)}${dummyUser.lastName.slice(0, 1)}`;
+  const navigation = useNavigation();
+
+  // --- Data Fetching ---
+  const { user, isLoading: isLoadingProfile } = useUser();
+
+  // --- Mutations ---
+  const { mutate: updateAvatar, isPending: isUpdatingAvatar } = useUpdateAvatar();
+  const { mutate: updateProfile, isPending: isUpdatingProfile } = useUpdateMyProfile();
+
+  // --- Local State for Editing ---
+  const [name, setName] = useState('');
+  const [bio, setBio] = useState('');
+  const [localAvatarUri, setLocalAvatarUri] = useState<string | null>(null);
+
+  // Populate local state once user data is loaded
+  useEffect(() => {
+    if (user) {
+      setName(user.name || '');
+      setBio(user.bio || ''); // Assuming your UserProfile type has a 'bio' field
+      setLocalAvatarUri(null); // Clear local preview on data reload
+    }
+  }, [user]);
+
+  // Check if any changes have been made
+  const isDirty = (
+    (user && (name !== user.name || bio !== (user.bio || ''))) || 
+    localAvatarUri !== null
+  );
+
+  // --- Handlers ---
+   const handleChangeAvatar = () => {
+      console.log("clcik image picker")
+
+      launchImageLibrary({ mediaType: 'photo', quality: 0.7 }, (response: ImagePickerResponse) => {
+         if (response.didCancel) {
+         console.log('User cancelled image picker');
+         } else if (response.errorMessage) {
+         Alert.alert('Error', response.errorMessage);
+         } else if (response.assets && response.assets[0].uri) {
+         const uri = response.assets[0].uri;
+         setLocalAvatarUri(uri); // Show a local preview
+         updateAvatar(uri, {
+            onSuccess: () => setLocalAvatarUri(null), // Clear preview on success
+            onError: () => setLocalAvatarUri(null), // Clear preview on error
+         });
+         }
+      });
+   };
+
+   const handleSave = () => {
+      if (!isDirty || isUpdatingProfile) return;
+      
+      updateProfile({ name, bio }, {
+         onSuccess: () => {
+         Alert.alert('Success', 'Profile updated!');
+         navigation.goBack();
+         },
+         onError: () => {
+         Alert.alert('Error', 'Failed to update profile.');
+         }
+      });
+   };
+
+   const getInitials = () => {
+      return name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+   };
+
+   // --- Render ---
+   if (isLoadingProfile) {
+      return <ActivityIndicator size="large" style={styles.loadingContainer} />;
+   }
+
+  // 2. Determine the URI for FastImage
+   const avatarUri = localAvatarUri || user?.avatarUrl;
 
    return (
-      <ScrollView style={styles.scrollContainer}>
+      <ScrollView style={styles.scrollContainer} keyboardShouldPersistTaps="handled">
          <View style={styles.container}>
-            <View style={styles.avatarContainer}>
-               {dummyUser.profilePicture ? (
-                  <Image
-                     source={{ uri: dummyUser.profilePicture }}
-                     style={styles.avatar}
-                  />
-               ) : (
-                  <Text style={styles.avatarText}>{initials}</Text>
-               )}
-               <TouchableOpacity style={styles.changeAvatarButton}>
-                  <Text style={styles.changeAvatarText}>Change Avatar</Text>
-               </TouchableOpacity>
-            </View>
-
-            <View style={styles.bioContainer}>
-               <Text style={styles.bioHeader}>First Name</Text>
-               <TextInput
-                  style={styles.bioInput}
-                  value={dummyUser.firstName}
-                  editable={false}
+         <View style={styles.avatarContainer}>
+            {avatarUri ? (
+               // 3. Use FastImage instead of Image
+               <FastImage
+               style={styles.avatar}
+               source={{
+                  uri: avatarUri,
+                  // 4. Set priority to 'high' for avatars
+                  priority: FastImage.priority.high,
+               }}
+               resizeMode={FastImage.resizeMode.cover}
                />
-            </View>
-
-            <View style={styles.bioContainer}>
-               <Text style={styles.bioHeader}>Last Name</Text>
-               <TextInput
-                  style={styles.bioInput}
-                  value={dummyUser.lastName}
-                  editable={false}
-               />
-            </View>
-
-            <View style={styles.bioContainer}>
-               <Text style={styles.bioHeader}>Bio</Text>
-               <TextInput
-                  style={styles.bioInput}
-                  placeholder='Tell a little about yourself'
-                  numberOfLines={8}
-                  value={dummyUser.bio}
-                  multiline
-                  editable={false}
-               />
-            </View>
-
-            <TouchableOpacity
-               style={[styles.saveButton, styles.disabledButton]}
-               disabled
+            ) : (
+               <View style={styles.avatarTextContainer}>
+               <Text style={styles.avatarText}>{getInitials()}</Text>
+               </View>
+            )}
+            <TouchableOpacity 
+               style={styles.changeAvatarButton}
+               onPress={handleChangeAvatar}
+               disabled={isUpdatingAvatar}
             >
-               <Text style={styles.saveButtonText}>Save</Text>
+               {isUpdatingAvatar ? (
+               <ActivityIndicator color="#fff" />
+               ) : (
+               <Text style={styles.changeAvatarText}>Change Avatar</Text>
+               )}
             </TouchableOpacity>
+         </View>
 
-            <View style={styles.accountInfoContainer}>
-               <Text style={styles.accountTitle}>Account Info</Text>
-               <Text style={styles.accountDescription}>Only visible to you</Text>
-            </View>
+         <View style={styles.bioContainer}>
+            <Text style={styles.bioHeader}>Name</Text>
+            <TextInput
+               style={styles.bioInput}
+               value={name}
+               onChangeText={setName}
+               editable={!isUpdatingProfile}
+            />
+         </View>
 
-            <View style={styles.bioContainer}>
-               <Text style={styles.bioHeader}>Email</Text>
-               <TextInput
-                  style={styles.bioInput}
-                  value={dummyUser.email}
-                  editable={false}
-               />
-            </View>
+         <View style={styles.bioContainer}>
+            <Text style={styles.bioHeader}>Bio</Text>
+            <TextInput
+               style={[styles.bioInput, styles.multilineInput]}
+               placeholder='Tell a little about yourself'
+               numberOfLines={4}
+               value={bio}
+               onChangeText={setBio}
+               multiline
+               editable={!isUpdatingProfile}
+            />
+         </View>
 
-            <View style={styles.bioContainer}>
-               <Text style={styles.bioHeader}>Phone Number</Text>
-               <TextInput
-                  style={styles.bioInput}
-                  value={dummyUser.phoneNumber}
-                  editable={false}
-               />
-            </View>
+         <TouchableOpacity
+            style={[styles.saveButton, (!isDirty || isUpdatingProfile) && styles.disabledButton]}
+            disabled={!isDirty || isUpdatingProfile}
+            onPress={handleSave}
+         >
+            {isUpdatingProfile ? (
+               <ActivityIndicator color="#fff" />
+            ) : (
+               <Text style={styles.saveButtonText}>Save</Text>
+            )}
+         </TouchableOpacity>
+
+         <View style={styles.accountInfoContainer}>
+            <Text style={styles.accountTitle}>Account Info</Text>
+            <Text style={styles.accountDescription}>Only visible to you</Text>
+         </View>
+
+         <View style={styles.bioContainer}>
+            <Text style={styles.bioHeader}>Handle</Text>
+            <TextInput
+               style={styles.bioInput}
+               value={user?.handle || ''}
+               editable={false} // Handles are unique and not editable
+            />
+         </View>
+
+         <View style={styles.bioContainer}>
+            <Text style={styles.bioHeader}>Email</Text>
+            <TextInput
+               style={styles.bioInput}
+               value={user?.email || ''}
+               editable={false}
+            />
+         </View>
          </View>
       </ScrollView>
    );
 };
 
 const styles = StyleSheet.create({
+   loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+   },
    container: {
       flex: 1,
       backgroundColor: '#fff',
@@ -121,16 +202,18 @@ const styles = StyleSheet.create({
    avatar: {
       width: 140,
       height: 140,
-      borderRadius: 100,
+      borderRadius: 70,
       backgroundColor: "#f2f2f2",
    },
-   avatarText: {
+   avatarTextContainer: {
       width: 140,
       height: 140,
-      borderRadius: 100,
+      borderRadius: 70,
       backgroundColor: "#f2f2f2",
-      textAlign: 'center',
-      lineHeight: 140,
+      justifyContent: 'center',
+      alignItems: 'center',
+   },
+   avatarText: {
       fontSize: 48,
       fontWeight: '700',
       color: '#555',
@@ -141,7 +224,9 @@ const styles = StyleSheet.create({
       paddingVertical: 8,
       paddingHorizontal: 15,
       borderRadius: 8,
-      marginBottom: 20
+      marginBottom: 20,
+      minWidth: 120,
+      alignItems: 'center',
    },
    changeAvatarText: {
       color: "#fff",
@@ -157,14 +242,16 @@ const styles = StyleSheet.create({
    bioHeader: {
       fontSize: 14,
       color: "#A1A1A1",
-      marginBottom: 8, // Spacing between label and input
+      marginBottom: 8,
    },
    bioInput: {
       fontSize: 14,
       color: "#000",
-      textAlignVertical: "top", // Aligns text properly for multiline inputs
-      // height: 30, // Height to accommodate multiline text
-      padding: 4, // Internal padding
+      padding: 4,
+   },
+   multilineInput: {
+      textAlignVertical: "top",
+      height: 80,
    },
    accountInfoContainer: {
       marginTop: 36,
@@ -198,3 +285,4 @@ const styles = StyleSheet.create({
 });
 
 export default EditProfileScreen;
+

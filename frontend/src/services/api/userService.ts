@@ -50,3 +50,42 @@ export const addDeviceToken = async (
   return response.data;
 };
 
+/**
+ * @param imageUri The 'file://...' URI of the image on the device (from image picker).
+ * @returns The updated UserProfile object.
+ */
+export const uploadNewAvatar = async (imageUri: string): Promise<UserProfile> => {
+  console.log('1. Starting avatar upload...');
+  
+  // --- Step 1: Get a presigned URL from our backend ---
+  console.log('2. Requesting presigned URL...');
+  const presignResponse = await apiClient.post('/api/v1/users/me/avatar/presign');
+  const { presignedUrl, finalUrl } = presignResponse.data;
+
+  if (!presignedUrl || !finalUrl) {
+    throw new Error('Failed to get presigned URL from server.');
+  }
+
+  // --- Step 2: Get the image file as a blob ---
+  console.log('3. Fetching image blob from device...');
+  const response = await fetch(imageUri);
+  const blob = await response.blob();
+  const imageType = blob.type || 'image/jpeg'; // Default to jpeg if type is unknown
+
+  // --- Step 3: Upload the image directly to S3 ---
+  console.log('4. Uploading image to S3...');
+  await fetch(presignedUrl, {
+    method: 'PUT',
+    body: blob,
+    headers: {
+      'Content-Type': imageType, 
+    },
+  });
+
+  // --- Step 4: Confirm the upload with our backend ---
+  console.log('5. Confirming upload with backend...');
+  const updatedUser = await updateMyProfile({ avatarUrl: finalUrl });
+  
+  console.log('6. Avatar upload complete.');
+  return updatedUser;
+};

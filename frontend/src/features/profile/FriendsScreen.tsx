@@ -1,8 +1,10 @@
 import React, { useCallback, useState, useMemo } from 'react';
-import { View, StyleSheet, TouchableOpacity, FlatList, RefreshControl, Text } from 'react-native';
+import { View, StyleSheet, FlatList, RefreshControl, Text, ActivityIndicator } from 'react-native';
 import FriendsListItem from './components/FriendsListItem';
 import FriendsListHeader from './components/FriendsListHeader';
 import SearchBar from '../../components/SearchBar';
+import { useFriendships, useRemoveFriend } from '../../hooks/useFriendshipData';
+import { useQueryClient } from '@tanstack/react-query';
 
 type Friend = {
   id: string;
@@ -15,66 +17,94 @@ const FriendsScreen = () => {
   const [query, setQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
-  const DUMMY_FRIENDS: Friend[] = [
-    {
-      id: '1',
-      name: 'John',
-      handle: 'johndoe',
-      avatar: 'https://via.placeholder.com/150'
-    }
-  ]
+  const queryClient = useQueryClient();
+  const { friends, isError, isLoading, error } = useFriendships();
+  const { mutate: removeFriendMutate } = useRemoveFriend();
+
+  const displayFriends: Friend[] = useMemo(() => {
+    return friends.map(({ friendProfile }) => ({
+      id: friendProfile.id,
+      name: friendProfile.name || friendProfile.handle,
+      handle: friendProfile.handle,
+      avatar: friendProfile.avatarUrl || 'https://upload.wikimedia.org/wikipedia/commons/a/ac/Default_pfp.jpg',
+    }));
+  }, [friends]);
 
   const filteredFriends = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return DUMMY_FRIENDS;
-    return DUMMY_FRIENDS.filter(e =>
-      e.handle.toLowerCase().includes(q)
+    if (!q) return displayFriends;
+    return displayFriends.filter(e =>
+      (e.name?.toLowerCase().includes(q)) || e.handle.toLowerCase().includes(q)
     );
-  }, [query]);
+  }, [query, displayFriends]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
+    queryClient.invalidateQueries({ queryKey: ['friendships'] });
     setTimeout(() => {
       setRefreshing(false);
-    }, 1000);
-  }, []);
+    }, 500);
+  }, [queryClient]);
 
-    const ListHeader = useCallback(() => (
-        <View>
-            <FriendsListHeader />
-            <SearchBar onSearch={setQuery} placeholder="Search Friends" />
-        </View>
-    ), []);
+  const ListHeader = useCallback(() => (
+    <View>
+      <FriendsListHeader />
+      <SearchBar onSearch={setQuery} placeholder="Search Friends" />
+    </View>
+  ), []);
 
-    const ListEmpty = useCallback(() => (
-        <Text>No friends found</Text>
-    ), []);
+  const ListEmpty = useCallback(() => (
+    <View style={styles.emptyContainer}>
+      <Text style={styles.emptyText}>No friends found</Text>
+      <Text style={styles.emptySubtext}>Try adjusting your search or add some friends!</Text>
+    </View>
+  ), []);
 
-    const renderItem = useCallback(({ item }: { item: Friend }) => (
-      <FriendsListItem  
-        id={item.id}
-        name={item.name}
-        handle={item.handle}
-        avatar={item.avatar}
-        handleRemove={() => {}}
-        icon="close"
-      />
-    ), []);
+  const handleRemove = useCallback((friendId: string) => {
+    removeFriendMutate(friendId);
+  }, [removeFriendMutate]);
 
-    const keyExtractor = useCallback((item: Friend) => item.id, [])
+  const renderItem = useCallback(({ item }: { item: Friend }) => (
+    <FriendsListItem  
+      id={item.id}
+      name={item.name}
+      handle={item.handle}
+      avatar={item.avatar}
+      handleRemove={handleRemove}
+      icon="close"
+    />
+  ), [handleRemove]);
+
+  const keyExtractor = useCallback((item: Friend) => item.id, [])
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color="#0000ff" />
+      </View>
+    );
+   }
+  
+  if (isError) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <Text style={styles.errorText}>Failed to load friends: {error?.message}</Text>
+      </View>
+    );
+   }
 
   return (
     <View style={styles.container}>
-            <FlatList
-            data={filteredFriends}
-            keyExtractor={keyExtractor}
-            renderItem={renderItem}
-            ListHeaderComponent={ListHeader}
-            ListEmptyComponent={ListEmpty}
-            contentContainerStyle={styles.container}
-            keyboardShouldPersistTaps="handled"
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-         />
+      <FlatList
+        data={filteredFriends}
+        keyExtractor={keyExtractor}
+        renderItem={renderItem}
+        ListHeaderComponent={ListHeader}
+        ListEmptyComponent={ListEmpty}
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      />
     </View>
   );
 };
@@ -83,6 +113,33 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  center: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    color: '#d00',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 60,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
 
