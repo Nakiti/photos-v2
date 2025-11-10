@@ -49,7 +49,7 @@ const GalleryScreen = () => {
   };
 
   const handlePressCamera = () => {
-    // no-op handler for presentational component
+    navigation.navigate("Camera", {galleryId})
   };
 
   return (

@@ -98,7 +98,11 @@ const CameraScreen = ({ navigation }: CameraScreenProps) => {
    }
 
    const handleOpenGallery = () => {
-      navigation.navigate('Gallery')
+      if (navigation.canGoBack()) {
+         navigation.goBack()
+         return
+      }
+      navigation.navigate('Gallery', { screen: 'Gallery', params: { galleryId } })
    }
 
    const handleCapture = async () => {

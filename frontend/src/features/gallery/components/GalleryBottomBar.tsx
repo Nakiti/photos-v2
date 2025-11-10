@@ -9,34 +9,39 @@ type GalleryBottomBarProps = {
 const GalleryBottomBar = ({ onPressUpload, onPressCamera }: GalleryBottomBarProps) => {
 
    return (
-      <View style={styles.bottomBar}>
-         <TouchableOpacity onPress={onPressCamera}>
-            <Icon name="camera-outline" size={18} color="white" />
+      <>
+         <TouchableOpacity style={[styles.floatingButton, styles.floatingLeft]} onPress={onPressUpload}>
+            <Icon name="cloud-upload-outline" size={20} color="white" />
          </TouchableOpacity>
-      </View>
+         <TouchableOpacity style={[styles.floatingButton, styles.floatingRight]} onPress={onPressCamera}>
+            <Icon name="camera-outline" size={20} color="white" />
+         </TouchableOpacity>
+      </>
    )
 }
 
 export default GalleryBottomBar
 
 const styles = StyleSheet.create({
-   bottomBar: {
+   floatingButton: {
       position: 'absolute',
-      bottom: 20,
-      right: 20,
-      alignSelf: 'center',
-      width: 50, // you can adjust to 220 or so if needed
-      height: 50,
-      backgroundColor: 'rgba(50, 50, 50, 0.7)', // translucent gray
-      borderRadius: 30,
-      flexDirection: 'row',
+      bottom: 24,
+      width: 60,
+      height: 60,
+      backgroundColor: 'rgba(50, 50, 50, 0.7)',
+      borderRadius: 35,
       alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: 20,
+      justifyContent: 'center',
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.3,
       shadowRadius: 4,
       elevation: 6,
+   },
+   floatingLeft: {
+      left: 24,
+   },
+   floatingRight: {
+      right: 24,
    },
 })

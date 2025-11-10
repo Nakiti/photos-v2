@@ -12,7 +12,7 @@ async function startServer() {
       await prisma.$connect();
       console.log('Database connected successfully 🐘');
   
-      server.listen(4000, () => {
+      server.listen(4000, '0.0.0.0', () => {
         console.log(`🚀 Server listening on port ${4000}`);
       });
     } catch (error) {
