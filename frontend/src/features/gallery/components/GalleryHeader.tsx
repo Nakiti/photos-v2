@@ -1,7 +1,8 @@
-import { View, Text, TouchableOpacity, Image, StyleSheet, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
 import { useGallery } from "../../../hooks/useGalleryData";
-import FastImage from "react-native-fast-image";
 import { useNavigation } from "@react-navigation/native";
+import Ionicons from "react-native-vector-icons/Ionicons";
+import LinearGradient from "react-native-linear-gradient";
 
 interface GalleryHeaderProps {
    galleryId: string;
@@ -21,7 +22,7 @@ const GalleryHeader = ({galleryId,
 
    if (isLoading) {
       return (
-        <View style={[styles.container, styles.center]}>
+        <View style={[styles.header, styles.center]}>
           <ActivityIndicator size="large" color="#0000ff" />
         </View>
       );
@@ -29,30 +30,45 @@ const GalleryHeader = ({galleryId,
   
     if (isError) {
       return (
-        <View style={[styles.container, styles.center]}>
-          <Text style={styles.errorText}>Failed to load groups: {error.message}</Text>
+        <View style={[styles.header, styles.center]}>
+          <Text style={styles.errorText}>Failed to load groups: {error?.message ?? 'Unknown error'}</Text>
         </View>
       );
     }
+   
+   const handleNavigateDetails = () => {
+      if (onTitlePress) {
+         onTitlePress()
+         return
+      }
+      (navigation as any).navigate('GalleryDetails', {galleryId})
+   }
     
    return (
-      <View style={styles.header}>
-         <TouchableOpacity onPress={onBackPress} style={styles.backButton} activeOpacity={0.7}>
-            <Text style={{ fontSize: 26, color: "#333" }}>‹</Text>
-         </TouchableOpacity>
+      <View style={styles.overlayContainer}>
+         <LinearGradient
+            pointerEvents="none"
+            colors={["rgba(0,0,0,0.55)", "rgba(0,0,0,0.26)", "rgba(0,0,0,0.06)", "rgba(0,0,0,0.00)"]}
+            locations={[0, 0.35, 0.7, 1]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={styles.gradientOverlay}
+         />
+         <View style={styles.header}>
+            <TouchableOpacity onPress={onBackPress} style={styles.sideButton} activeOpacity={0.7}>
+               <Ionicons name="chevron-back" size={24} color="#fff" />
+            </TouchableOpacity>
 
-         <TouchableOpacity style={styles.groupInfo} onPress={onTitlePress} activeOpacity={0.8} disabled={!onTitlePress}>
-
-            <FastImage source={{uri: gallery?.iconUrl}} style={styles.image}/>
-
-            <View style={styles.textContainer}>
+            <TouchableOpacity style={styles.titleContainer} onPress={handleNavigateDetails} activeOpacity={0.8}>
                <Text style={styles.title} numberOfLines={1}>
                   {gallery?.name}
                </Text>
-               {/* {subtitle ? <Text style={styles.subtext}>{g}</Text> : null} */}
-            </View>
-            <Text style={[styles.arrow, { fontSize: 18, color: "#888" }]}>›</Text>
-         </TouchableOpacity>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={handleNavigateDetails} style={styles.sideButton} activeOpacity={0.7}>
+               <Ionicons name="settings-outline" size={20} color="#fff" />
+            </TouchableOpacity>
+         </View>
       </View>
    );
 };
@@ -60,45 +76,48 @@ const GalleryHeader = ({galleryId,
 export default GalleryHeader;
 
 const styles = StyleSheet.create({
+   overlayContainer: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 10,
+   },
+   gradientOverlay: {
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      height: 160,
+   },
    header: {
       flexDirection: "row",
       alignItems: "center",
-      paddingHorizontal: 16,
-      paddingTop: 50,
+      paddingHorizontal: 12,
+      paddingTop: 36,
       paddingBottom: 8,
-      backgroundColor: "#fff",
-      borderBottomWidth: 1,
-      borderBottomColor: "#eee",
+      backgroundColor: "transparent",
    },
-   backButton: {
-      paddingRight: 10,
-   },
-   groupInfo: {
-      flexDirection: "row",
-      alignItems: "center",
-      flex: 1,
-   },
-   image: {
-      width: 48,
-      height: 48,
-      borderRadius: 12,
-      marginRight: 12,
-      backgroundColor: "#ddd",
-   },
-   textContainer: {
-      flex: 1,
+   center: {
       justifyContent: "center",
    },
+   sideButton: {
+      width: 40,
+      height: 40,
+      alignItems: "center",
+      justifyContent: "center",
+   },
+   titleContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+   },
    title: {
-      fontSize: 17,
+      fontSize: 24,
       fontWeight: "600",
-      color: "#222",
+      color: "#fff",
    },
-   subtext: {
-      fontSize: 12,
-      color: "#888",
-   },
-   arrow: {
-      marginLeft: 8,
-   },
+   errorText: {
+      color: "#e11d48",
+   }
 });
