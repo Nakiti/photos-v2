@@ -32,6 +32,7 @@ export async function addMember(req: Request, res: Response) {
     const membership = await membersService.addMember(galleryId, userId);
     return res.status(201).json(membership);
   } catch (error) {
+    console.log("membership error ", error)
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
     }
@@ -97,12 +98,14 @@ export async function getMembers(req: Request, res: Response) {
     return res.status(200).json(filtered);
   }
 
-  const [accepted, pending] = await Promise.all([
+  const [accepted, pending, invited] = await Promise.all([
     membersService.getMembers(galleryId, 'ACCEPTED'),
     membersService.getMembers(galleryId, 'PENDING'),
+    membersService.getMembers(galleryId, 'INVITED'),
   ]);
 
-  return res.status(200).json({ members: accepted, pending });
+  // Treat both PENDING (join requests) and INVITED (outgoing invites) as "pending-like"
+  return res.status(200).json({ members: accepted, pending: [...pending, ...invited] });
 }
 
 /**

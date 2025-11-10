@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import SettingsItem from '../components/SettingsItem';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { useGallery } from '../../../hooks/useGalleryData';
+import { useDeleteGallery, useGallery } from '../../../hooks/useGalleryData';
 import { useAuth } from '../../../hooks/useAuth';
 
 interface SettingItem {
@@ -30,9 +30,33 @@ const GallerySettingsScreen = () => {
 
    const { gallery, isLoading } = useGallery(galleryId)
    const { user } = useAuth()
+   const deleteGalleryMutation = useDeleteGallery()
 
    const isOwner = gallery?.ownerId === user?.id
 
+
+   const confirmAndDeleteGallery = () => {
+      if (!gallery?.id) return;
+      
+      Alert.alert(
+         'Delete Gallery',
+         'This will permanently delete this gallery and its photos for all members. This action cannot be undone.',
+         [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+               text: 'Delete', 
+               style: 'destructive',
+               onPress: () => {
+                  deleteGalleryMutation.mutate(gallery.id, {
+                     onSuccess: () => {
+                        (navigation as any).navigate('TabNavigator', { screen: 'Groups' })
+                     },
+                  })
+               }
+            },
+         ]
+      )
+   }
 
    useEffect(() => {
       if (!gallery || !user) {
@@ -138,7 +162,7 @@ const GallerySettingsScreen = () => {
                  label: 'Delete Gallery', 
                  value: null, 
                  isDestructive: true, 
-                 onPress: () => { /* Call useDeleteGallery mutation */ } 
+                 onPress: confirmAndDeleteGallery 
                },
                { 
                   label: 'Change Owner', 

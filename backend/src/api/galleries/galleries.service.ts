@@ -95,7 +95,7 @@ export async function createGallery(
       data: {
         galleryId: gallery.id,
         userId: ownerId,
-        role: 'ADMIN',
+        role: 'OWNER',
         status: 'ACCEPTED',
       },
     });

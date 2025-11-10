@@ -67,7 +67,7 @@ export const useMemberships = (galleryId: string | null) => {
       Q.where('gallery_id', galleryId),
       Q.where(
         'status',
-        Q.oneOf([MembershipStatus.ACCEPTED, MembershipStatus.PENDING]),
+        Q.oneOf([MembershipStatus.ACCEPTED, MembershipStatus.PENDING, MembershipStatus.INVITED]),
       ),
     );
 
@@ -104,7 +104,10 @@ export const useMemberships = (galleryId: string | null) => {
               const enriched = { membership, user };
               if (membership.status === MembershipStatus.ACCEPTED) {
                 accepted.push(enriched);
-              } else if (membership.status === MembershipStatus.PENDING) {
+              } else if (
+                membership.status === MembershipStatus.PENDING ||
+                membership.status === MembershipStatus.INVITED
+              ) {
                 pending.push(enriched);
               }
             } else {
@@ -225,8 +228,74 @@ export const useLeaveGallery = () => {
  */
 export const useInviteMember = () => {
   const queryClient = useQueryClient();
-  return useMutation({
+  const database = useDatabase();
+  return useMutation<any, unknown, { galleryId: string; userId: string; user?: { id: string; name?: string; handle: string; avatarUrl?: string } }>({
     mutationFn: ({ galleryId, userId }: { galleryId: string; userId: string }) => inviteMember(galleryId, userId),
+    // Optimistically insert/update the invited user as PENDING locally for instant UI
+    onMutate: async ({ galleryId, userId, user }: { galleryId: string; userId: string; user?: { id: string; name?: string; handle: string; avatarUrl?: string } }) => {
+      try {
+        await database.write(async () => {
+          const usersCollection = database.collections.get<User>('users');
+          const membershipsCollection = database.collections.get<Membership>('memberships');
+
+          // Upsert user (if provided)
+          if (user && user.id) {
+            let existingUser: User | null = null;
+            try {
+              existingUser = await usersCollection.find(user.id);
+            } catch {
+              existingUser = null;
+            }
+
+            if (existingUser) {
+              await existingUser.update((record) => {
+                // Use same property names as sync to stay consistent
+                (record as any).name = user.name || user.handle;
+                (record as any).avatar_url = user.avatarUrl;
+                (record as any).handle = user.handle;
+              });
+            } else {
+              await usersCollection.create((record) => {
+                (record as any)._raw.id = user.id;
+                (record as any).name = user.name || user.handle;
+                (record as any).avatar_url = user.avatarUrl;
+                (record as any).handle = user.handle;
+              });
+            }
+          }
+
+          // Upsert membership as PENDING
+          const existing = await membershipsCollection
+            .query(
+              Q.where('gallery_id', galleryId),
+              Q.where('user_id', userId),
+            )
+            .fetch();
+
+          if (existing.length > 0) {
+            await existing[0].update((record) => {
+              (record as any).status = 'INVITED';
+              (record as any).role = 'MEMBER';
+              (record as any).isMuted = false;
+            });
+          } else {
+            await membershipsCollection.create((record) => {
+              // Temporary local id; server sync may keep this id, which is fine
+              (record as any)._raw.id = `optimistic-${galleryId}-${userId}`;
+              (record as any).gallery.id = galleryId;
+              (record as any).user.id = userId;
+              (record as any).joinedAt = Date.now();
+              (record as any).status = 'INVITED';
+              (record as any).role = 'MEMBER';
+              (record as any).isMuted = false;
+            });
+          }
+        });
+      } catch (e) {
+        // Best-effort optimistic update; fall back to server invalidate
+        console.warn('Optimistic invite failed:', e);
+      }
+    },
     onSuccess: (data, { galleryId }) => {
       queryClient.invalidateQueries({ queryKey: ['memberships', galleryId] });
     },

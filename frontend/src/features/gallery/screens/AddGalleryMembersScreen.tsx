@@ -2,9 +2,9 @@ import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useRoute } from '@react-navigation/native';
-import FriendsListItem from '../../profile/components/FriendsListItem';
 import { useMemberships, useInviteMember, useDenyOrRemoveMember } from '../../../hooks/useMembershipData';
 import { useSearchUsers } from '../../../hooks/useUser';
+import AddMemberListItem from '../../groups/components/AddMemberListItem';
 
 type DisplayUser = {
   id: string;
@@ -25,9 +25,19 @@ const AddGalleryMembersScreen = () => {
   const { acceptedMembers, pendingMembers } = useMemberships(galleryId);
   const { mutate: inviteMember, isPending: isInviting } = useInviteMember();
   const { mutate: denyOrRemove, isPending: isRemoving } = useDenyOrRemoveMember();
+    console.log("pending members ", pendingMembers)
 
   // Search users hook (manual trigger)
   const { users: searchResults, isLoading: isSearching, search, pagination } = useSearchUsers({}, false);
+
+  const acceptedMemberIds = useMemo(
+    () => new Set(acceptedMembers.map((m) => m.user.id)),
+    [acceptedMembers]
+  );
+  const pendingMemberIds = useMemo(
+    () => new Set(pendingMembers.map((m) => m.user.id)),
+    [pendingMembers]
+  );
 
   const members: DisplayUser[] = useMemo(
     () =>
@@ -64,9 +74,10 @@ const AddGalleryMembersScreen = () => {
   }, [value, search]);
 
   const handleInvite = useCallback(
-    (userId: string) => {
+    (user: any) => {
+      const userId = user.id;
       inviteMember(
-        { galleryId, userId },
+        { galleryId, userId, user },
         {
           onSuccess: () => {
             // No-op; queries invalidate in hook
@@ -78,20 +89,6 @@ const AddGalleryMembersScreen = () => {
       );
     },
     [inviteMember, galleryId]
-  );
-
-  const handleRemove = useCallback(
-    (userId: string) => {
-      denyOrRemove(
-        { galleryId, userId },
-        {
-          onError: () => {
-            Alert.alert('Error', 'Failed to remove member.');
-          },
-        }
-      );
-    },
-    [denyOrRemove, galleryId]
   );
 
   const toggleMembers = useCallback(() => setShowMembers((s) => !s), []);
@@ -154,17 +151,22 @@ const AddGalleryMembersScreen = () => {
             ) : searchResults.length === 0 ? (
               <Text style={styles.emptyRow}>No users found</Text>
             ) : (
-              searchResults.map((user) => (
-                <FriendsListItem
-                  key={user.id}
-                  id={user.id}
-                  avatar={user.avatarUrl}
-                  name={user.name || user.handle}
-                  handle={user.handle}
-                  icon="add"
-                  handleRemove={handleInvite}
-                />
-              ))
+              searchResults.map((user) => {
+                const status = acceptedMemberIds.has(user.id)
+                  ? 'member'
+                  : pendingMemberIds.has(user.id)
+                  ? 'pending'
+                  : 'can_add';
+                return (
+                  <AddMemberListItem
+                    key={user.id}
+                    user={user as any}
+                    status={status}
+                    onInvite={() => handleInvite(user)}
+                    isInviting={isInviting}
+                  />
+                );
+              })
             )}
           </View>
         )}
@@ -183,14 +185,20 @@ const AddGalleryMembersScreen = () => {
               <Text style={styles.emptyRow}>No pending requests</Text>
             ) : (
               pending.map((p) => (
-                <FriendsListItem
+                <AddMemberListItem
                   key={p.id}
-                  id={p.id}
-                  avatar={p.avatar}
-                  name={p.name}
-                  handle={p.handle}
-                  icon="remove"
-                  handleRemove={handleRemove}
+                  user={
+                    {
+                      id: p.id,
+                      name: p.name,
+                      handle: p.handle,
+                      avatarUrl: p.avatar,
+                    } as any
+                  }
+                  status="pending"
+                  onInvite={() => {}}
+                  onRemove={() => denyOrRemove({ galleryId, userId: p.id })}
+                  isInviting={isRemoving}
                 />
               ))
             ))}

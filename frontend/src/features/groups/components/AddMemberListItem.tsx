@@ -10,9 +10,10 @@ type Props = {
   status: FriendStatus;
   onInvite: () => void;
   isInviting: boolean;
+  onRemove?: () => void;
 };
 
-const AddMemberListItem = ({ user, status, onInvite, isInviting }: Props) => {
+const AddMemberListItem = ({ user, status, onInvite, isInviting, onRemove }: Props) => {
   
   console.log("user ", user.handle)
   // This component now contains the logic for what to display
@@ -26,7 +27,14 @@ const AddMemberListItem = ({ user, status, onInvite, isInviting }: Props) => {
       case 'member':
         return <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />;
       case 'pending':
-        return <Ionicons name="hourglass-outline" size={24} color="#888" />;
+        if (onRemove) {
+          return (
+            <TouchableOpacity style={styles.iconButton} onPress={onRemove}>
+              <Ionicons name="close" size={20} color="#FF3B30" />
+            </TouchableOpacity>
+          );
+        }
+        return <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />;
       case 'can_add':
         return (
           <TouchableOpacity style={styles.iconButton} onPress={onInvite}>
