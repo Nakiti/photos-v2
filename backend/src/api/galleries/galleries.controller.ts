@@ -6,6 +6,7 @@ import {
   createGallerySchema,
   updateGallerySchema,
   joinByLinkSchema,
+  searchGalleriesSchema,
   type CreateGalleryDto,
   type UpdateGalleryDto,
 } from './galleries.validation.js';
@@ -17,23 +18,32 @@ import { generateIconPresignedUrl } from './galleries.service.js';
  */
 export async function createGallery(req: Request, res: Response) {
   const ownerId = (req as any).user?.id as string | undefined;
-  if (!ownerId) return res.status(401).json({ message: 'Unauthorized' });
+  if (!ownerId) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+
   try {
+    // 1. Validate the request body
     const parsed = createGallerySchema.parse({ body: req.body });
-    const { name, type, iconUrl, startDate, endDate, location } = parsed.body as CreateGalleryDto;
-    const gallery = await galleriesService.createGallery(ownerId, {
-      name,
-      type: type as any,
-      iconUrl,
-      startDate: startDate ?? null,
-      endDate: endDate ?? null,
-      location: location ?? null,
-    });
-    return res.status(201).json(gallery);
+    const galleryData = parsed.body as CreateGalleryDto;
+
+    // 2. Call the service with the full data object
+    //    This now correctly passes 'wantsIconUpload' and permission fields.
+    const result = await galleriesService.createGallery(ownerId, galleryData);
+
+    // 3. Return the entire result
+    //    This will be { gallery } or { gallery, uploadInfo }
+    return res.status(201).json(result);
+
   } catch (error) {
+    console.log(error); // Always good for debugging
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
+      return res.status(400).json({ 
+        message: 'Validation failed', 
+        errors: error.flatten().fieldErrors 
+      });
     }
+    // Handle any other specific errors (like 'Gallery not found' if needed)
     return res.status(500).json({ message: 'Failed to create gallery' });
   }
 }
@@ -72,17 +82,23 @@ export async function updateGallery(req: Request, res: Response) {
   const ownerId = (req as any).user?.id as string | undefined;
   if (!ownerId) return res.status(401).json({ message: 'Unauthorized' });
   const { galleryId } = req.params;
+  console.log("dat body ", req.body)
+
   try {
     const parsed = updateGallerySchema.parse({ body: req.body });
+    console.log("parsed data ", parsed)
     const data = parsed.body as UpdateGalleryDto;
     // Ownership check before update
     const existing = await galleriesService.getGalleryDetails(ownerId, galleryId);
     if (!existing || existing.ownerId !== ownerId) {
       return res.status(403).json({ message: 'Forbidden' });
     }
+
+    console.log("backed update data ", data)
     const updated = await galleriesService.updateGallery(ownerId, galleryId, data);
     return res.status(200).json(updated);
   } catch (error) {
+    console.log(error)
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
     }
@@ -160,3 +176,40 @@ export const requestIconUpload = async (req: Request, res: Response, next: NextF
     next(error);
   }
 };
+
+/**
+ * GET /api/v1/galleries/search
+ * Search through galleries the user has access to with optional filters
+ * Query params: search, name, type, location, limit, offset
+ */
+export async function searchGalleries(req: Request, res: Response) {
+  const userId = (req as any).user?.id as string | undefined;
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+  try {
+    const parsed = searchGalleriesSchema.parse({ query: req.query });
+    const filters = parsed.query;
+
+    // Build filters object conditionally to satisfy exactOptionalPropertyTypes
+    const searchFilters: Parameters<typeof galleriesService.searchGalleries>[1] = {
+      limit: filters.limit,
+      offset: filters.offset,
+    };
+
+    if (filters.search !== undefined) searchFilters.search = filters.search;
+    if (filters.name !== undefined) searchFilters.name = filters.name;
+    if (filters.type !== undefined) searchFilters.type = filters.type;
+    if (filters.location !== undefined) searchFilters.location = filters.location;
+
+    const result = await galleriesService.searchGalleries(userId, searchFilters);
+    return res.status(200).json(result);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        message: 'Validation failed',
+        errors: error.flatten().fieldErrors,
+      });
+    }
+    return res.status(500).json({ message: 'Failed to search galleries' });
+  }
+}

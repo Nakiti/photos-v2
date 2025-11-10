@@ -3,20 +3,18 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from "@react-navigation/native";
 
 
-const DefaultHeader = ({ title } : { title: string }) => {
-   const navigation = useNavigation();
+const DefaultNoBackHeader = ({ title, } : { title: string }) => {
 
-   return (
-      <View style={styles.header}>
-         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backContainer}>
-            <Ionicons name="chevron-back" size={24}  />
+    return (
+        <View style={styles.header}>
+            <View style={styles.backContainer}>
             {title && <Text style={styles.title}>{title}</Text>}
-         </TouchableOpacity>
-      </View>
-   );
+            </View>
+        </View>
+    );
 };
 
-export default DefaultHeader;
+export default DefaultNoBackHeader;
 
 const styles = StyleSheet.create({
    header: {

@@ -4,6 +4,7 @@ import GalleryDetailsScreen from "../features/gallery/screens/GalleryDetailsScre
 import GallerySettingsScreen from "../features/gallery/screens/GallerySettingsScreen";
 import GalleryPermissionScreen from "../features/gallery/screens/GalleryPermissionScreen";
 import GalleryMembersScreen from "../features/gallery/screens/GalleryMembersScreen";
+import AddGalleryMembersScreen from "../features/gallery/screens/AddGalleryMembersScreen";
 import SingleImageScreen from "../features/gallery/screens/SingleImageScreen";
 import EditGalleryDetailsScreen from "../features/gallery/screens/GallerySettings/EditGalleryDetailsScreen";
 import EditGalleryEventScreen from "../features/gallery/screens/GallerySettings/EditGalleryEventScreen";
@@ -50,8 +51,16 @@ const GalleryStack = () => {
                 name="GalleryMembers" 
                 component={GalleryMembersScreen} 
                 options={{
-                    headerShown: true,
+                    headerShown: false,
                     header: () => <DefaultHeader title="Members"/>
+                }}
+            />
+            <Stack.Screen 
+                name="AddGalleryMembers" 
+                component={AddGalleryMembersScreen} 
+                options={{
+                    headerShown: true,
+                    header: () => <DefaultHeader title="Add Members"/>
                 }}
             />
             <Stack.Screen name="SingleImage" component={SingleImageScreen} />

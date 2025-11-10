@@ -2,7 +2,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as usersService from './user.service.js';
-import { addDeviceTokenSchema, updateMyProfileSchema, type AddDeviceTokenDto, type UpdateMyProfileDto } from './user.validation.js';
+import { addDeviceTokenSchema, updateMyProfileSchema, searchUsersSchema, type AddDeviceTokenDto, type UpdateMyProfileDto, type SearchUsersDto } from './user.validation.js';
 
 /**
  * GET /api/v1/users/me 
@@ -89,5 +89,42 @@ export const requestAvatarUpload = async (req: Request, res: Response, next: Nex
     next(error);
   }
 };
+
+/**
+ * GET /api/v1/users/search
+ * Search for users by name or handle
+ * Query params: search, limit, offset
+ */
+export async function searchUsers(req: Request, res: Response) {
+  const userId = (req as any).user?.id as string | undefined;
+  if (!userId) {
+    return res.status(401).json({ message: 'Unauthorized' });
+  }
+
+  try {
+    const parsed = searchUsersSchema.parse({ query: req.query });
+    const filters = parsed.query;
+    
+    // Build filters object conditionally to satisfy exactOptionalPropertyTypes
+    const searchFilters: Parameters<typeof usersService.searchUsers>[0] = {
+      limit: filters.limit,
+      offset: filters.offset,
+    };
+    
+    if (filters.search !== undefined) searchFilters.search = filters.search;
+
+    
+    const result = await usersService.searchUsers(searchFilters);
+    return res.status(200).json(result);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        message: 'Validation failed',
+        errors: error.flatten().fieldErrors,
+      });
+    }
+    return res.status(500).json({ message: 'Failed to search users' });
+  }
+}
 
 

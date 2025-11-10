@@ -1,6 +1,12 @@
 import { PrismaClient } from '@prisma/client';
 import AWS from 'aws-sdk';
 import config from '../../../../config/config.js';
+import { socketManager } from '../../../../libs/socket.manager.js';
+import { photoNotificationQueue } from '../../../../libs/photoNotification.queue.js';
+import {v4 as uuidv4} from "uuid"
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { thumbnailQueue } from '../../../../libs/thumbnail.queue.js';
 
 const prisma = new PrismaClient();
 
@@ -32,26 +38,91 @@ export async function getPhotoIdsForGallery(galleryId: string) {
   return photos.map((p) => p.id);
 }
 
-export async function createPresignedUpload(galleryId: string, contentType: string) {
-  const key = `galleries/${galleryId}/${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const params = {
-    Bucket: config.aws.s3Bucket,
-    Key: key,
-    Expires: 60 * 5,
-    ContentType: contentType,
-  } as const;
-  const uploadUrl = await s3.getSignedUrlPromise('putObject', params);
-  return { uploadUrl, s3Key: key };
-}
-
-export async function confirmUploadedPhoto(uploaderId: string, galleryId: string, s3Key: string) {
-  const s3Url = `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${s3Key}`;
-  const photo = await prisma.photo.create({
-    data: { uploaderId, galleryId, s3Key, s3Url },
-    select: { id: true, s3Url: true, uploaderId: true, galleryId: true, createdAt: true },
+export const generatePresignedUrl = async (galleryId: string, userId: string) => {
+  const membership = await prisma.membership.findFirst({
+    where: {
+      galleryId,
+      userId,
+      status: 'ACCEPTED', 
+    },
   });
-  return photo;
-}
+
+  if (!membership) {
+    throw new Error('Forbidden');
+  }
+
+
+  const s3Key = `photos/${galleryId}/${uuidv4()}.jpg`;
+  const expiresIn = 300; // 5 minutes
+
+  const command = new PutObjectCommand({
+    Bucket: config.aws.s3Bucket,
+    Key: s3Key,
+    ContentType: 'image/jpeg',
+  });
+
+  const presignedUrl = await getSignedUrl(s3, command, { expiresIn });
+  const finalUrl = `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${s3Key}`;
+
+  return { presignedUrl, s3Key, finalUrl };
+};
+
+export const confirmUpload = async (data: {
+  galleryId: string;
+  uploaderId: string;
+  s3Key: string;
+  s3Url: string;
+}) => {
+  const { galleryId, uploaderId, s3Key, s3Url } = data;
+
+  const newPhoto = await prisma.photo.create({
+    data: {
+      galleryId,
+      uploaderId,
+      s3Key,
+      s3Url,
+    },
+    include: {
+      uploader: {
+        select: { name: true, handle: true },
+      },
+      gallery: {
+        select: { name: true },
+      },
+    },
+  });
+
+  const uploaderName = newPhoto.uploader?.name || newPhoto.uploader?.handle || 'A user';
+  const galleryName = newPhoto.gallery.name;
+
+  const socketPayload = {
+    id: newPhoto.id,
+    s3Url: newPhoto.s3Url,
+    createdAt: newPhoto.createdAt,
+    galleryId: newPhoto.galleryId,
+    uploader: newPhoto.uploader,
+  };
+  socketManager.broadcastNewPhoto(galleryId, socketPayload);
+
+  // 3. Add job to queue for offline users
+  await photoNotificationQueue.add('send-notification', {
+    galleryId,
+    uploaderId,
+    photo: {
+      id: newPhoto.id,
+      uploaderName,
+      galleryName,
+    },
+  });
+
+  await thumbnailQueue.add('generate-thumbnail', {
+    photoId: newPhoto.id,
+    s3Key: newPhoto.s3Key,
+    s3Bucket: config.aws.s3Bucket,
+  });
+
+  return socketPayload; 
+};
 
 export async function deletePhoto(requesterId: string, galleryId: string, photoId: string) {
   const photo = await prisma.photo.findUnique({

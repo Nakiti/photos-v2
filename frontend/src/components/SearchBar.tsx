@@ -1,25 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { StyleSheet, View, TextInput } from 'react-native';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 
 type SearchBarProps = {
-  onSearch: (query: string) => void;
+  value: string;
+  onChangeText: (query: string) => void;
   placeholder?: string;
   autoFocus?: boolean;
-  isLoading?: boolean;
   testID?: string;
 };
 
 const SearchBar = ({
-  onSearch,
+  value,
+  onChangeText,
   placeholder = 'Search',
   autoFocus = false,
-  isLoading = false,
   testID,
 }: SearchBarProps) => {
-  const [query, setQuery] = useState('');
-
-
   return (
     <View style={styles.searchWrapper}>
         <View style={styles.searchContainer}>
@@ -33,8 +30,10 @@ const SearchBar = ({
             placeholder={placeholder}
             style={styles.searchInput}
             placeholderTextColor="gray"
-            // onChangeText={handleInputsChange}
-            // value={searchText}
+            onChangeText={onChangeText}
+            value={value}
+            autoFocus={autoFocus}
+            testID={testID}
         />
         </View>
     </View>

@@ -4,6 +4,7 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-g
 import { Camera, useCameraDevice } from 'react-native-vision-camera'; // <-- Corrected import
 import TopCameraBar from './components/TopCameraBar';
 import BottomCameraBar from './components/BottomCameraBar';
+import { useRoute } from '@react-navigation/native';
 
 type Facing = 'back' | 'front'
 type FlashMode = 'on' | 'off'
@@ -13,9 +14,10 @@ type CameraScreenProps = {
 }
 
 const CameraScreen = ({ navigation }: CameraScreenProps) => {
-   // --- REFACTORED PERMISSION LOGIC ---
    const [hasPermission, setHasPermission] = useState(false);
    const [permissionDenied, setPermissionDenied] = useState(false);
+   const route = useRoute()
+   const { galleryId } = route.params as { galleryId: string }
 
    useEffect(() => {
       const checkPermission = async () => {
@@ -109,10 +111,16 @@ const CameraScreen = ({ navigation }: CameraScreenProps) => {
             }
             setCountdown(null)
          }
-         await cameraRef.current?.takePhoto({ flash })
-         // No saving or API interactions – purely presentational capture
+         const photo = await cameraRef.current?.takePhoto({ flash })
+         if (photo) {
+            navigation.navigate('Preview', {
+              photoUri: `file://${photo.path}`, 
+              galleryId: galleryId,
+            });
+         }
       } catch (e) {
-         // swallow errors for dummy implementation
+         console.error("Failed to take photo:", e);
+         Alert.alert("Error", "Could not take picture. Please try again.");
       }
    }
 

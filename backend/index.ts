@@ -1,10 +1,10 @@
 import http from "http";
 import { PrismaClient } from "@prisma/client";
-import app from "./server.js"; 
+import httpServer from "./server.js";
 
 const prisma = new PrismaClient();
 
-const server = http.createServer(app);
+const server = httpServer
 
 async function startServer() {
     try {

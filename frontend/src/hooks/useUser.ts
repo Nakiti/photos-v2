@@ -3,7 +3,7 @@ import { useDatabase } from '@nozbe/watermelondb/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import UserModel from '../db/models/User';
 import { useAuthStore } from '../stores/auth.store';
-import { addDeviceToken, getMyProfile, updateMyProfile, UpdateMyProfileRequest, RegisterDeviceRequest, UserProfile, uploadNewAvatar } from '../services/api/userService';
+import { addDeviceToken, getMyProfile, updateMyProfile, UpdateMyProfileRequest, RegisterDeviceRequest, UserProfile, uploadNewAvatar, searchUsers, SearchUsersRequest, SearchUsersResponse } from '../services/api/userService';
 import { syncCurrentUser } from '../services/sync/user.sync';
 
 export const useUser = () => {
@@ -57,7 +57,6 @@ export const useUser = () => {
     enabled: !!authUser?.id,
     queryFn: async (): Promise<UserProfile> => {
       const profile = await getMyProfile();
-      console.log("user profile ", profile)
       await syncCurrentUser(database, profile);
       setAuthUser(profile); // keep auth store fresh
       return profile;
@@ -113,10 +112,49 @@ export const useUpdateAvatar = () => {
       // 2. Update WatermelonDB
       syncCurrentUser(database, updatedUser);
       // 3. Invalidate the profile query to ensure freshness
-      queryClient.invalidateQueries({ queryKey: ['userProfile', updatedUser.id] });
+      queryClient.invalidateQueries({ queryKey: ['me'] });
     },
     onError: (error) => {
       console.error('Failed to update avatar:', error);
     },
   });
+};
+
+/**
+ * Hook to search for users with flexible filtering options.
+ * 
+ * @param params Search parameters (search, name, email, handle, limit, offset)
+ * @param enabled Whether the query should run automatically (default: false)
+ * @returns Query result with users, pagination, and state
+ */
+export const useSearchUsers = (
+  params: SearchUsersRequest,
+  enabled: boolean = false
+) => {
+  const [searchParams, setSearchParams] = useState<SearchUsersRequest>(params);
+
+  const query = useQuery({
+    queryKey: ['users', 'search', searchParams],
+    queryFn: () => searchUsers(searchParams),
+    enabled: enabled && Object.keys(searchParams).some(
+      key => searchParams[key as keyof SearchUsersRequest] !== undefined
+    ),
+    staleTime: 30 * 1000, // Results are fresh for 30 seconds
+    retry: 1,
+  });
+
+  /**
+   * Perform a new search with updated parameters
+   */
+  const search = (newParams: SearchUsersRequest) => {
+    setSearchParams(newParams);
+    return query.refetch();
+  };
+
+  return {
+    ...query,
+    users: query.data?.users || [],
+    pagination: query.data?.pagination,
+    search,
+  };
 };

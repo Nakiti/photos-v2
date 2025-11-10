@@ -8,7 +8,8 @@ import {
   deleteGallery,
   joinGalleryByLink,
   reconcileGalleryPhotos,
-  requestIconUpload
+  requestIconUpload,
+  searchGalleries,
 } from './galleries.controller.js';
 import photoRoutes from './photos/photos.routes.js';
 import membersRoutes from './members/members.routes.js';
@@ -30,6 +31,19 @@ const router = Router();
  * @access Private
  */
 router.post('/', isAuthenticated, createGallery);
+
+/**
+ * @route GET /api/v1/galleries/search
+ * @summary Search through galleries the user has access to with optional filters
+ * @query search - General search term (searches name, location)
+ * @query name - Filter by gallery name (partial match)
+ * @query type - Filter by gallery type (GROUP or EVENT)
+ * @query location - Filter by location (partial match)
+ * @query limit - Maximum number of results (default: 20, max: 100)
+ * @query offset - Pagination offset (default: 0)
+ * @access Private
+ */
+router.get('/search', isAuthenticated, searchGalleries);
 
 /**
  * @route GET /api/v1/galleries

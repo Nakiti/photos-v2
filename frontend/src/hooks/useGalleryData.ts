@@ -9,6 +9,13 @@ import { syncGalleries, syncGalleryDetails } from '../services/sync/gallery.sync
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createGallery, getGalleryDetails } from '../services/api/gallery.service';
 import { UpdateGalleryRequest } from '../types/gallery.types';
+import { Photo as PhotoApi} from '../types';
+import { fetchPhotoIdsForSync, fetchPhotos } from '../services/api/photos.service';
+import { switchMap } from '@nozbe/watermelondb/utils/rx';
+import { of } from '@nozbe/watermelondb/utils/rx';
+import { syncPhotos, reconcileDeletedPhotos } from '../services/sync/photos.sync';
+import Photo from '../db/models/Photo';
+import { CreateGalleryRequest } from '../services/api/gallery.service';
 
 /**
  * A custom hook to get a live-updating list of galleries of a specific type.
@@ -16,8 +23,9 @@ import { UpdateGalleryRequest } from '../types/gallery.types';
  * data from the server in the background to keep it up to date.
  *
  * @param type - The type of galleries to fetch ('GROUP' or 'EVENT').
+ * @param searchQuery - Optional search term to filter galleries by name (case-insensitive partial match).
  */
-export const useGalleries = (type: 'GROUP' | 'EVENT') => {
+export const useGalleries = (type: 'GROUP' | 'EVENT', searchQuery?: string) => {
   const database = useDatabase();
   const [galleries, setGalleries] = useState<Gallery[]>([]);
 
@@ -25,28 +33,30 @@ export const useGalleries = (type: 'GROUP' | 'EVENT') => {
 
   useEffect(() => {
     const galleriesCollection = database.collections.get<Gallery>('galleries');
-    // Create a query for galleries of the specified type
-    const query = galleriesCollection.query(Q.where('type', type));
-
-    // Observe the query for changes
+    
+    // Build query conditions
+    const conditions = [Q.where('type', type)];
+    
+    // Add search filter if searchQuery is provided
+    if (searchQuery && searchQuery.trim() !== '') {
+      const sanitizedQuery = Q.sanitizeLikeString(searchQuery.trim());
+      conditions.push(Q.where('name', Q.like(`%${sanitizedQuery}%`)));
+    }
+    
+    const query = galleriesCollection.query(...conditions);
     const subscription = query.observe().subscribe(setGalleries);
 
-    // Clean up the subscription when the component unmounts
     return () => subscription.unsubscribe();
-  }, [database, type]);
-
+  }, [database, type, searchQuery]);
 
 
   // 2. FETCH & SYNC REMOTE DATA:
-  // This useQuery hook from TanStack Query handles fetching data from the
-  // server and syncing it to the local database.
   const { isLoading, isError, error, isFetching } = useQuery({
     queryKey: ['galleries', type], // A unique key for this query
     queryFn: async () => {
-      // Fetch the latest list of all galleries from the server
       const remoteGalleries = await fetchMyGalleries();
-      // Sync the fetched data with our local WatermelonDB
       await syncGalleries(database, remoteGalleries);
+
       return remoteGalleries;
     },
     refetchOnWindowFocus: true,
@@ -54,19 +64,17 @@ export const useGalleries = (type: 'GROUP' | 'EVENT') => {
 
 
   // 3. RETURN VALUES:
-  // We return the locally-sourced `galleries` for the UI to render,
-  // and the loading/error state from the server fetch.
   return {
-    galleries, // This data is live from the local DB and ready for your FlatList
-    isLoading: isLoading && galleries.length === 0, // Only show initial loading state
-    isSyncing: isFetching, // A flag to show a background refresh indicator
+    galleries, 
+    isLoading: isLoading && galleries.length === 0, 
+    isSyncing: isFetching, 
     isError,
     error,
   };
 };
 
 /**
- * Hook to get a live, observable record for a *single* gallery.
+ * Hook to get a live, observable record for a *single* gallery AND its photos.
  * It provides local data instantly, then syncs with the server in the background.
  *
  * @param galleryId The ID of the gallery to fetch.
@@ -74,73 +82,145 @@ export const useGalleries = (type: 'GROUP' | 'EVENT') => {
 export const useGallery = (galleryId: string | null) => {
   const database = useDatabase();
   const [gallery, setGallery] = useState<Gallery | null>(null);
+  const [photos, setPhotos] = useState<Photo[]>([]);
 
-  // 1. OBSERVE LOCAL DATA
-  // This effect subscribes to the local WatermelonDB record.
-  // It provides the initial data and updates the UI *instantly*
-  // if the record changes (e.g., from the sync in step 2).
   useEffect(() => {
     if (!galleryId) {
       setGallery(null);
+      setPhotos([]);
       return;
     }
 
     const galleryCollection = database.collections.get<Gallery>('galleries');
-    
-    // findAndObserve provides a live-updating record
-    const subscription = galleryCollection
-      .findAndObserve(galleryId)
-      .subscribe(
-        (foundGallery) => {
-          setGallery(foundGallery);
-        },
-        (error) => {
-          // Handle case where the gallery might not be found locally yet
-          console.warn(`Could not find gallery ${galleryId} locally. Waiting for sync.`);
-          setGallery(null);
-        }
-      );
+    const galleryObservable = galleryCollection.findAndObserve(galleryId);
 
-    // Clean up the subscription on unmount
-    return () => subscription.unsubscribe();
+    const gallerySubscription = galleryObservable.subscribe(setGallery);
+
+    const photosSubscription = galleryObservable
+      .pipe(
+        switchMap(g =>
+          g ? g.photos.observe(Q.sortBy('created_at', Q.desc)) : of([])
+        )
+      )
+      .subscribe(setPhotos);
+
+    return () => {
+      gallerySubscription.unsubscribe();
+      photosSubscription.unsubscribe();
+    };
   }, [database, galleryId]);
 
 
-  // 2. FETCH & SYNC REMOTE DATA
-  // useQuery handles background fetching, caching, and state management.
+  // 2. FETCH & SYNC REMOTE DATA ("Inbox" and "Deletion" Sync)
   const { isLoading, isError, error, isFetching } = useQuery({
     queryKey: ['gallery', galleryId], 
     queryFn: async () => {
       if (!galleryId) return null;
+
+      const photosCollection = database.collections.get<Photo>('photos');
+      const latestLocalPhoto = await photosCollection.query(
+        Q.where('gallery_id', galleryId),
+        Q.where('status', 'synced'), 
+        Q.sortBy('created_at', Q.desc),
+        Q.take(1)
+      ).fetch();
       
-      // 1. Fetch details from the server
-      const remoteGallery = await getGalleryDetails(galleryId);
-      await syncGalleryDetails(database, remoteGallery);
+      const lastSyncedTimestamp = latestLocalPhoto[0]?.createdAt;
+
+      // 2. Fetch all data from the server
+      const [remoteDetails, newPhotos, remotePhotoIds] = await Promise.all([
+        getGalleryDetails(galleryId),
+        fetchPhotos(galleryId, lastSyncedTimestamp),
+        fetchPhotoIdsForSync(galleryId)
+      ]);
+
+      // 3. Sync gallery details
+      await syncGalleryDetails(database, remoteDetails);
       
-      return remoteGallery;
+      // 4. Sync the new photos
+      await syncPhotos(database, newPhotos);
+
+      // 5. Reconcile deletions
+      await reconcileDeletedPhotos(database, galleryId, remotePhotoIds);
+
+      return remoteDetails;
     },
-    // Only run this query if galleryId is not null
     enabled: !!galleryId,
-    staleTime: 60 * 1000, // 1 minute
+    refetchOnWindowFocus: true, 
+    staleTime: 60 * 1000, 
   });
 
-  // 3. RETURN VALUES
   return {
-    gallery, // This is the live, local data for your UI
-    isLoading: isLoading && !gallery, // Show loading only if we have no local data yet
-    isSyncing: isFetching, // Show a refresh indicator
+    gallery, 
+    photos,  
+    isLoading: isLoading && !gallery,
+    isSyncing: isFetching,
     isError,
     error,
   };
 };
 
+interface CreateGalleryWithIconParams {
+  galleryData: CreateGalleryRequest;
+  imageUri: string | null;
+}
+
 export const useCreateGallery = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: createGallery,
-    onSuccess: () => {
+    mutationFn: async ({ galleryData, imageUri }: CreateGalleryWithIconParams) => {
+      
+      if (!imageUri) {
+        // --- Flow 1: No icon selected ---
+        const { gallery } = await createGallery(galleryData);
+        return gallery;
+      }
+
+      // --- Flow 2: Icon is selected ---
+      const { gallery, uploadInfo } = await createGallery({
+        ...galleryData,
+        wantsIconUpload: true, 
+      });
+
+      if (!uploadInfo) {
+        // This should never happen if wantsIconUpload is true
+        throw new Error('Server did not return upload info.');
+      }
+
+      // 2. Get the image blob from the device
+      const imageFetchResponse = await fetch(imageUri);
+      const blob = await imageFetchResponse.blob();
+      const imageType = blob.type || 'image/jpeg';
+
+      // 3. Upload the image directly to S3
+      const s3UploadResponse = await fetch(uploadInfo.presignedUrl, {
+        method: 'PUT',
+        body: blob,
+        headers: {
+          'Content-Type': imageType,
+        },
+      });
+
+      if (!s3UploadResponse.ok) {
+        throw new Error('Failed to upload image to S3.');
+      }
+
+      // 4. Success! Return the new gallery.
+      return {
+        ...gallery,
+        iconUrl: uploadInfo.finalUrl,
+      };
+    },
+
+    onSuccess: (newGallery) => {
       queryClient.invalidateQueries({ queryKey: ['galleries'] });
+
+      queryClient.setQueryData(['gallery', newGallery.id], newGallery);
+    },
+
+    onError: (error) => {
+      console.error('Failed to create gallery:', error);
     },
   });
 };

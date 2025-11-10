@@ -23,3 +23,19 @@ export interface User {
     createdAt: string;
     updatedAt: string;
 }
+
+/**
+ * The main Photo object.
+ * This is what's returned from the API.
+ */
+export interface Photo {
+    id: string;
+    galleryId: string;
+    uploaderId: string;
+    s3Key: string;
+    s3Url: string;
+    createdAt: string; 
+    
+
+    uploader?: UserProfile;
+}

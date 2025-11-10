@@ -3,6 +3,7 @@ import GroupsListScreen from "../features/groups/screens/GroupsListScreen";
 import CreateGroupDetailsScreen from "../features/groups/screens/CreateGroupDetailsScreen";
 import AddGroupMembersScreen from "../features/groups/screens/AddGroupMembersScreen";
 import DefaultHeader from "../components/DefaultHeader";
+import DefaultNoBackHeader from "../components/DefaultNoBackHeader";
 
 const Stack = createNativeStackNavigator();
 
@@ -40,7 +41,7 @@ const GroupsStack = () => {
                 name="AddGroupMembers" 
                 component={AddGroupMembersScreen} 
                 options={{
-                    header: () => <DefaultHeader title="Add Group Members" />
+                    header: () => <DefaultNoBackHeader title="Add Group Members" />
                 }}
                 />
         </Stack.Navigator>

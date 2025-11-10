@@ -102,10 +102,6 @@ export const useMemberships = (galleryId: string | null) => {
 
             if (user) {
               const enriched = { membership, user };
-              console.log('Enriched (Raw Data):', {
-                membership: enriched.membership._raw,
-                user: enriched.user._raw,
-              });
               if (membership.status === MembershipStatus.ACCEPTED) {
                 accepted.push(enriched);
               } else if (membership.status === MembershipStatus.PENDING) {
@@ -139,7 +135,6 @@ export const useMemberships = (galleryId: string | null) => {
 
       // 1. Fetch from API
       const remoteData = await getMembers(galleryId);
-      console.log("remote data ", remoteData)
 
       // 2. Combine all remote members into ONE list
       const allRemoteMembers = [

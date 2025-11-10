@@ -5,6 +5,7 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import config from '../../../config/config.js';
 import {v4 as uuidv4} from "uuid"
+import { checkGalleryPermission } from './permission.service.js';
 
 const prisma = new PrismaClient();
 
@@ -33,10 +34,24 @@ export async function createGallery(
     location?: string | null;
     addPermission?: string;
     deletePermission?: string;
-    joinRequiresAproval?: boolean;
+    joinRequiresAproval?: boolean; // ⚠️ Typo: 'Aproval'
+    wantsIconUpload?: boolean;
   }
 ) {
-  const { name, type, iconUrl, startDate, endDate, location } = data;
+  // --- FIX 2 (Start): Destructure ALL fields ---
+  const {
+    name,
+    type,
+    iconUrl,
+    startDate,
+    endDate,
+    location,
+    wantsIconUpload,
+    addPermission,
+    deletePermission,
+    joinRequiresAproval, // ⚠️ Typo: 'Aproval'
+  } = data;
+  
   const shareableLink = type === 'EVENT' ? randomUUID() : undefined;
 
   // Use a transaction to create the gallery AND the owner's membership
@@ -52,8 +67,10 @@ export async function createGallery(
         location: location ?? undefined,
         ownerId,
         shareableLink,
-        // Set approval based on type. Events are open, Groups are private.
-        // joinRequiresApproval: type === 'GROUP' ? true : false,
+
+        addPermission: addPermission ?? 'ADMIN', // Set your own default
+        deletePermission: deletePermission ?? 'ADMIN', // Set your own default
+        joinRequiresApproval: joinRequiresAproval ?? (type === 'GROUP'),
       },
       select: {
         id: true,
@@ -87,7 +104,22 @@ export async function createGallery(
     return gallery;
   });
 
-  return newGallery;
+  // --- FIX 1: Move this ENTIRE block OUTSIDE the transaction ---
+  if (wantsIconUpload) {
+    const { presignedUrl, finalUrl } = await generateIconPresignedUrl(
+      ownerId,
+      newGallery.id
+    );
+
+    // Return both the gallery and the upload info
+    return {
+      gallery: newGallery,
+      uploadInfo: { presignedUrl, finalUrl },
+    };
+  }
+
+  // If no upload was requested, just return the gallery
+  return { gallery: newGallery };
 }
 
 /**
@@ -342,31 +374,18 @@ export async function getPhotoIdsForGallery(galleryId: string) {
  * @returns An object with the presigned URL and the final URL.
  */
 export const generateIconPresignedUrl = async (userId: string, galleryId: string) => {
-  // 1. Check Permissions: Verify the user is an admin or owner of this gallery
-  const membership = await prisma.membership.findFirst({
-    where: {
-      galleryId: galleryId,
-      userId: userId,
-      role: 'ADMIN', // Check if the user's role is ADMIN
-    },
-  });
 
-  // If no membership is found, or they aren't an admin, throw an error
-  if (!membership) {
-    throw new Error('Forbidden');
-  }
+  await checkGalleryPermission(userId, galleryId, 'editPermission')
 
   // 2. Generate Key and Command (similar to the avatar function)
-  const fileExtension = '.jpg'; // Or get from request
-  const s3Key = `icons/${galleryId}-${uuidv4()}${fileExtension}`; // Use 'icons/' prefix
-  const expiresIn = 60 * 5; // URL is valid for 5 minutes
+  const fileExtension = '.jpg'
+  const s3Key = `icons/${galleryId}-${uuidv4()}${fileExtension}`; 
+  const expiresIn = 60 * 5; 
 
   const command = new PutObjectCommand({
     Bucket: config.aws.s3Bucket,
     Key: s3Key,
-    ContentType: 'image/jpeg',
-    // We remove the 'ACL' property to work with modern S3 buckets
-    // The file will be public based on the Bucket Policy for the 'icons/' prefix
+    ContentType: 'image/jpeg', 
   });
 
   const presignedUrl = await getSignedUrl(s3, command, { expiresIn });
@@ -374,5 +393,142 @@ export const generateIconPresignedUrl = async (userId: string, galleryId: string
   // 3. Generate Final URL (This is the permanent, cacheable URL)
   const finalUrl = `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${s3Key}`;
 
+  await prisma.gallery.update({
+    where: { id: galleryId },
+    data: { iconUrl: finalUrl },
+  });
+
   return { presignedUrl, finalUrl };
 };
+
+/**
+ * Search through galleries the user has access to (owned or member of) with flexible filtering.
+ * Supports general search term and specific field filters with case-insensitive partial matching.
+ * @param userId - Authenticated user's ID
+ * @param filters - Object containing search criteria
+ * @returns Array of galleries matching the search criteria with pagination info
+ */
+export async function searchGalleries(
+  userId: string,
+  filters: {
+    search?: string;
+    name?: string;
+    type?: 'GROUP' | 'EVENT';
+    location?: string;
+    limit?: number;
+    offset?: number;
+  }
+) {
+  const { search, name, type, location, limit = 20, offset = 0 } = filters;
+
+  // Build where conditions
+  const whereConditions: any[] = [];
+
+  // If general search is provided, search across multiple fields
+  if (search && search.trim()) {
+    whereConditions.push(
+      { name: { contains: search, mode: 'insensitive' } },
+      { location: { contains: search, mode: 'insensitive' } }
+    );
+  }
+
+  // Add specific field filters (these are combined with AND)
+  const andConditions: any = {};
+  if (name && name.trim()) {
+    andConditions.name = { contains: name, mode: 'insensitive' };
+  }
+  if (type) {
+    andConditions.type = type;
+  }
+  if (location && location.trim()) {
+    andConditions.location = { contains: location, mode: 'insensitive' };
+  }
+
+  // Construct the gallery filter
+  let galleryWhere: any = {};
+  if (whereConditions.length > 0 && Object.keys(andConditions).length > 0) {
+    galleryWhere = {
+      AND: [
+        { OR: whereConditions },
+        andConditions
+      ]
+    };
+  } else if (whereConditions.length > 0) {
+    galleryWhere = { OR: whereConditions };
+  } else if (Object.keys(andConditions).length > 0) {
+    galleryWhere = andConditions;
+  }
+
+  // Add access control: user must be owner or member
+  const finalWhere: any = {
+    ...galleryWhere,
+    OR: [
+      { ownerId: userId },
+      { memberships: { some: { userId } } },
+    ],
+  };
+
+  // Execute the search query
+  const galleries = await prisma.gallery.findMany({
+    where: finalWhere,
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      iconUrl: true,
+      startDate: true,
+      endDate: true,
+      location: true,
+      shareableLink: true,
+      ownerId: true,
+      addPermission: true,
+      deletePermission: true,
+      joinRequiresApproval: true,
+      createdAt: true,
+      updatedAt: true,
+      _count: {
+        select: {
+          memberships: true,
+        },
+      },
+    },
+    take: limit,
+    skip: offset,
+    orderBy: [
+      { createdAt: 'desc' },
+    ],
+  });
+
+  // Get total count for pagination
+  const total = await prisma.gallery.count({ where: finalWhere });
+
+  // Map to include member count
+  const galleriesWithCount = galleries.map((g) => ({
+    id: g.id,
+    name: g.name,
+    type: g.type,
+    iconUrl: g.iconUrl,
+    startDate: g.startDate,
+    endDate: g.endDate,
+    location: g.location,
+    shareableLink: g.shareableLink,
+    ownerId: g.ownerId,
+    addPermission: g.addPermission,
+    deletePermission: g.deletePermission,
+    joinRequiresApproval: g.joinRequiresApproval,
+    createdAt: g.createdAt,
+    updatedAt: g.updatedAt,
+    memberCount: g._count.memberships,
+  }));
+
+  return {
+    galleries: galleriesWithCount,
+    pagination: {
+      total,
+      limit,
+      offset,
+      hasMore: offset + galleries.length < total,
+    },
+  };
+}
+

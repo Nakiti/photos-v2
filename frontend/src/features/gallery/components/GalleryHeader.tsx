@@ -1,20 +1,39 @@
-import { View, Text, TouchableOpacity, Image, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, Image, StyleSheet, ActivityIndicator } from "react-native";
+import { useGallery } from "../../../hooks/useGalleryData";
+import FastImage from "react-native-fast-image";
+import { useNavigation } from "@react-navigation/native";
 
 interface GalleryHeaderProps {
-   title?: string;
-   imageUri?: string;
-   subtitle?: string;
+   galleryId: string;
    onBackPress?: () => void;
    onTitlePress?: () => void;
 }
 
-const GalleryHeader = ({
-   title = "Group",
-   imageUri,
-   subtitle = "Tap for details",
+const GalleryHeader = ({galleryId,
    onBackPress,
    onTitlePress,
 }: GalleryHeaderProps) => {
+   const navigation = useNavigation()
+   const {gallery, isLoading, isError, error} = useGallery(galleryId)
+
+   console.log(gallery)
+   
+
+   if (isLoading) {
+      return (
+        <View style={[styles.container, styles.center]}>
+          <ActivityIndicator size="large" color="#0000ff" />
+        </View>
+      );
+    }
+  
+    if (isError) {
+      return (
+        <View style={[styles.container, styles.center]}>
+          <Text style={styles.errorText}>Failed to load groups: {error.message}</Text>
+        </View>
+      );
+    }
     
    return (
       <View style={styles.header}>
@@ -23,19 +42,14 @@ const GalleryHeader = ({
          </TouchableOpacity>
 
          <TouchableOpacity style={styles.groupInfo} onPress={onTitlePress} activeOpacity={0.8} disabled={!onTitlePress}>
-            <Image
-               source={{
-                  uri:
-                     imageUri ||
-                     "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS0Wr3oWsq6KobkPqznhl09Wum9ujEihaUT4Q&s",
-               }}
-               style={styles.image}
-            />
+
+            <FastImage source={{uri: gallery?.iconUrl}} style={styles.image}/>
+
             <View style={styles.textContainer}>
                <Text style={styles.title} numberOfLines={1}>
-                  {title}
+                  {gallery?.name}
                </Text>
-               {subtitle ? <Text style={styles.subtext}>{subtitle}</Text> : null}
+               {/* {subtitle ? <Text style={styles.subtext}>{g}</Text> : null} */}
             </View>
             <Text style={[styles.arrow, { fontSize: 18, color: "#888" }]}>›</Text>
          </TouchableOpacity>

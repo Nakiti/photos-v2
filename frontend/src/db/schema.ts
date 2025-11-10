@@ -2,7 +2,7 @@ import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const mySchema = appSchema({
   // Ensure version matches the latest changes (added tags/friendships)
-  version: 5,
+  version: 6,
   tables: [
     tableSchema({
       name: 'users',
@@ -27,7 +27,7 @@ export const mySchema = appSchema({
         { name: 'location', type: 'string', isOptional: true },
         { name: 'shareable_link', type: 'string', isOptional: true },
         // Settings
-        { name: 'join_permission', type: 'string', isOptional: true }, // 'all' | 'admin_approval'
+        { name: 'join_requires_approval', type: 'boolean', isOptional: true }, // true | false
         { name: 'add_permission', type: 'string', isOptional: true },  // 'all' | 'admin'
         { name: 'delete_permission', type: 'string', isOptional: true }, // 'admins_authors' | 'admin'
         { name: 'created_at', type: 'number' },

@@ -26,3 +26,17 @@ export const removeFriendSchema = z.object({
 
 export type SendRequestDto = z.infer<typeof sendRequestSchema>['body'];
 
+// Schema for searching friends
+export const searchFriendsSchema = z.object({
+  query: z.object({
+    search: z.string().optional(), // General search term (searches friend's name, email, handle)
+    name: z.string().optional(),
+    email: z.string().optional(),
+    handle: z.string().optional(),
+    limit: z.coerce.number().int().positive().max(100).optional().default(20),
+    offset: z.coerce.number().int().nonnegative().optional().default(0),
+  }),
+});
+
+export type SearchFriendsDto = z.infer<typeof searchFriendsSchema>['query'];
+

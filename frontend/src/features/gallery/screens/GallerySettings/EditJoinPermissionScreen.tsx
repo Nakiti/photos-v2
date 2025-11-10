@@ -1,37 +1,81 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import React, { useEffect, useState, useMemo } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { useRoute } from "@react-navigation/native";
+import { useGallery, useUpdateGallery } from "../../../../hooks/useGalleryData";
+import { useMyMembership } from "../../../../hooks/useMembershipData";
+import { ActivityIndicator } from "react-native-paper";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface EditJoinPermissionProps { galleryId: string | number }
 
-const EditJoinPermissionScreen = ({ galleryId }: EditJoinPermissionProps) => {
-   const [selectedOption, setSelectedOption] = useState("all");
-   const [originalOption, setOriginalOption] = useState("all");
-   const [data, setData] = useState<any>(null)
-   const [userInfo, setUserInfo] = useState<{ role: string } | null>(null)
+const EditJoinPermissionScreen = () => {
+   const route = useRoute();
+   const queryClient = useQueryClient();
+   const { galleryId } = route.params as { galleryId: string };
+
+   // Fetch gallery data and user's membership
+   const { gallery, isLoading, isError, error } = useGallery(galleryId);
+   const { data: myMembership } = useMyMembership(galleryId);
+   const { mutate: updateGallery, isPending: isUpdating } = useUpdateGallery();
+
+   console.log("Gallery ", gallery)
+
+   // Local state: false = anyone can join, true = requires approval
+   const [requiresApproval, setRequiresApproval] = useState(false);
 
    const options = [
-      { id: "1", value: "all", title: "Anyone", subtitle: "Anyone with the link can join" },
-      { id: "2", value: "admin_approval", title: "Require Admin Approval", subtitle: "Requests must be approved by an admin" },
+      { id: "1", value: false, title: "Anyone", subtitle: "Anyone with the link can join" },
+      { id: "2", value: true, title: "Require Admin Approval", subtitle: "Requests must be approved by an admin" },
    ];
 
+   // Set initial value when gallery loads
+   useEffect(() => {
+      if (gallery?.joinRequiresApproval) {
+         // Map frontend "all" | "admin_approval" to boolean
+         setRequiresApproval(gallery.joinRequiresApproval === 'admin_approval');
+      }
+   }, [gallery]);
+
+   const isDirty = useMemo(() => {
+      const currentValue = gallery?.joinRequiresApproval === 'admin_approval';
+      return currentValue !== requiresApproval;
+   }, [gallery?.joinRequiresApproval, requiresApproval]);
+
    const handleSave = () => {
-      setOriginalOption(selectedOption);
+      if (!isDirty || isUpdating) return;
+
+      updateGallery(
+         { galleryId, data: { joinRequiresApproval: requiresApproval } },
+         {
+            onSuccess: () => {
+               Alert.alert('Success', 'Join permission updated!');
+               queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });
+            },
+            onError: () => {
+               Alert.alert('Error', 'Failed to update permission.');
+            },
+         }
+      );
+   };
+
+   if (isLoading) {
+      return (
+         <View style={[styles.container, styles.center]}>
+            <ActivityIndicator size="large" color="#0000ff" />
+         </View>
+      );
    }
 
-   useEffect(() => {
-      // Dummy data load
-      const dummy = {
-         name: `Gallery ${galleryId}`,
-         description: "A sample gallery",
-         join_permission: "all",
-         owner_id: 1,
-         image: undefined,
-      };
-      setData(dummy);
-      setSelectedOption(dummy.join_permission);
-      setOriginalOption(dummy.join_permission);
-      setUserInfo({ role: "owner" });
-   }, [galleryId])
+   if (isError) {
+      return (
+         <View style={[styles.container, styles.center]}>
+            <Text style={styles.errorText}>Failed to load gallery: {error?.message || 'Unknown error'}</Text>
+         </View>
+      );
+   }
+
+   const userRole = myMembership?.role;
+   const canEdit = userRole === 'ADMIN' || gallery?.ownerId === myMembership?.userId;
 
    return (
       <View style={styles.container}>
@@ -42,26 +86,27 @@ const EditJoinPermissionScreen = ({ galleryId }: EditJoinPermissionProps) => {
             <TouchableOpacity
                key={item.id}
                style={[styles.option, index !== options.length - 1 && styles.optionBorder]}
-               onPress={() => setSelectedOption(item.value)}
+               onPress={() => setRequiresApproval(item.value)}
+               disabled={!canEdit}
             >
                <View>
                   <Text style={styles.optionTitle}>{item.title}</Text>
                   <Text style={styles.optionSubtitle}>{item.subtitle}</Text>
                </View>
-               {selectedOption === item.value && <Text style={{ color: 'green', fontSize: 18 }}>✓</Text>}
+               {requiresApproval === item.value && <Text style={{ color: 'green', fontSize: 18 }}>✓</Text>}
             </TouchableOpacity>
          ))}
          </View>
 
-         {userInfo && (userInfo.role == "admin" || userInfo.role == "owner") && <TouchableOpacity
+         {canEdit && <TouchableOpacity
             style={[
                styles.saveButton,
-               selectedOption !== originalOption ? styles.saveButtonActive : styles.saveButtonDisabled
+               (!isDirty || isUpdating) ? styles.saveButtonDisabled : styles.saveButtonActive
             ]}
-            disabled={selectedOption === originalOption}
+            disabled={!isDirty || isUpdating}
             onPress={handleSave}
          >
-            <Text style={styles.saveButtonText}>Save</Text>
+            <Text style={styles.saveButtonText}>{isUpdating ? 'Saving...' : 'Save'}</Text>
          </TouchableOpacity>}
       </View>
    );
@@ -74,6 +119,10 @@ const styles = StyleSheet.create({
      flex: 1,
      backgroundColor: "white",
      padding: 20,
+   },
+   center: {
+     justifyContent: 'center',
+     alignItems: 'center',
    },
    title: {
      color: "black",
@@ -120,6 +169,9 @@ const styles = StyleSheet.create({
      color: "white",
      fontSize: 16,
      fontWeight: "bold",
+   },
+   errorText: {
+     color: 'red',
    },
 });
 

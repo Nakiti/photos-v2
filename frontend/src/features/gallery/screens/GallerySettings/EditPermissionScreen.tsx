@@ -1,45 +1,67 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import React, { useEffect, useState, useMemo } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { useRoute } from "@react-navigation/native";
+import { useGallery } from "../../../../hooks/useGalleryData";
+import { useMyMembership } from "../../../../hooks/useMembershipData";
+import { ActivityIndicator } from "react-native-paper";
 
 interface EditPermissionProps { galleryId: string | number }
 
-const GroupEditScreen = ({ galleryId }: EditPermissionProps) => {
-   const [selectedOption, setSelectedOption] = useState("all");
-   const [originalOption, setOriginalOption] = useState("all");
-   const [data, setData] = useState<any>(null)
-   const [userInfo, setUserInfo] = useState<{ role: string } | null>(null)
+// NOTE: This screen manages "edit permission" which is not yet implemented in the backend schema.
+// The UI is functional but saving is disabled until the backend adds support for this field.
+const GroupEditScreen = () => {
+   const route = useRoute();
+   const { galleryId } = route.params as { galleryId: string };
+
+   // Fetch gallery data and user's membership
+   const { gallery, isLoading, isError, error } = useGallery(galleryId);
+   const { data: myMembership } = useMyMembership(galleryId);
+
+   // Local state (not persisted to backend yet)
+   const [selectedOption, setSelectedOption] = useState<'all' | 'admin'>('all');
 
    const options = [
-      { id: "1", value: "all", title: "Anyone", subtitle: "Anyone can edit the group" },
-      { id: "2", value: "admin", title: "Admin", subtitle: "Only admins can edit the group" },
+      { id: "1", value: "all" as const, title: "Anyone", subtitle: "Anyone can edit the group" },
+      { id: "2", value: "admin" as const, title: "Admin", subtitle: "Only admins can edit the group" },
    ];
 
    const handleSave = () => {
-      setOriginalOption(selectedOption);
+      // TODO: Implement once backend supports editPermission field
+      Alert.alert(
+         "Not Implemented", 
+         "Edit permission is not yet supported by the backend. This feature will be available in a future update."
+      );
+   };
+   if (isLoading) {
+      return (
+         <View style={[styles.container, styles.center]}>
+            <ActivityIndicator size="large" color="#0000ff" />
+         </View>
+      );
    }
 
-   useEffect(() => {
-      // Dummy data load
-      const dummy = {
-         name: `Gallery ${galleryId}`,
-         description: "A sample gallery",
-         edit_permission: "all",
-         add_permission: "admin",
-         owner_id: 1,
-         image: undefined,
-      };
-      setData(dummy);
-      setSelectedOption(dummy.edit_permission);
-      setOriginalOption(dummy.edit_permission);
-      setUserInfo({ role: "owner" });
-   }, [galleryId])
+   if (isError) {
+      return (
+         <View style={[styles.container, styles.center]}>
+            <Text style={styles.errorText}>Failed to load gallery: {error?.message || 'Unknown error'}</Text>
+         </View>
+      );
+   }
 
-   const fetchData = async () => {};
+   const userRole = myMembership?.role;
+   const canEdit = userRole === 'ADMIN' || gallery?.ownerId === myMembership?.userId;
+
    return (
       <View style={styles.container}>
-
          {/* Title */}
          <Text style={styles.title}>Who can edit the group?</Text>
+         
+         {/* Info banner */}
+         <View style={styles.infoBanner}>
+            <Text style={styles.infoText}>
+               ⚠️ This feature is not yet implemented in the backend
+            </Text>
+         </View>
 
          {/* Options */}
          <View style={styles.optionsContainer}>
@@ -48,6 +70,7 @@ const GroupEditScreen = ({ galleryId }: EditPermissionProps) => {
                key={item.id}
                style={[styles.option, index !== options.length - 1 && styles.optionBorder]}
                onPress={() => setSelectedOption(item.value)}
+               disabled={!canEdit}
             >
                <View>
                   <Text style={styles.optionTitle}>{item.title}</Text>
@@ -59,17 +82,12 @@ const GroupEditScreen = ({ galleryId }: EditPermissionProps) => {
          </View>
 
          {/* Save Button */}
-         {userInfo && (userInfo.role == "admin" || userInfo.role == "owner") && <TouchableOpacity
-            style={[
-               styles.saveButton,
-               selectedOption !== originalOption ? styles.saveButtonActive : styles.saveButtonDisabled
-            ]}
-            disabled={selectedOption === originalOption}
+         {canEdit && <TouchableOpacity
+            style={[styles.saveButton, styles.saveButtonDisabled]}
             onPress={handleSave}
          >
             <Text style={styles.saveButtonText}>Save</Text>
          </TouchableOpacity>}
-
       </View>
    );
 };
@@ -82,12 +100,29 @@ const styles = StyleSheet.create({
      backgroundColor: "white",
      padding: 20,
    },
+   center: {
+     justifyContent: 'center',
+     alignItems: 'center',
+   },
    title: {
      color: "black",
      fontSize: 16,
      marginBottom: 10,
      paddingHorizontal: 2,
      fontWeight: "600",
+   },
+   infoBanner: {
+     backgroundColor: "#fff3cd",
+     padding: 12,
+     borderRadius: 8,
+     marginBottom: 15,
+     borderWidth: 1,
+     borderColor: "#ffc107",
+   },
+   infoText: {
+     color: "#856404",
+     fontSize: 14,
+     textAlign: "center",
    },
    optionsContainer: {
      backgroundColor: "#f2f2f2",
@@ -127,5 +162,8 @@ const styles = StyleSheet.create({
      color: "white",
      fontSize: 16,
      fontWeight: "bold",
+   },
+   errorText: {
+     color: 'red',
    },
 });

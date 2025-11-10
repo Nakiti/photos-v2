@@ -65,13 +65,13 @@ export const syncMembers = async (
         // UPDATE USER
         if (
           localUser.name !== user.name ||
-          localUser.avatarUrl !== user.avatarUrl ||
+          localUser.avatar_url !== user.avatarUrl ||
           localUser.handle !== user.handle 
         ) {
           operations.push(
             localUser.prepareUpdate((record) => {
               record.name = user.name;
-              record.avatarUrl = user.avatarUrl;
+              record.avatar_url = user.avatarUrl;
               record.handle = user.handle;
             }),
           );
@@ -82,7 +82,7 @@ export const syncMembers = async (
           usersCollection.prepareCreate((record) => {
             record._raw.id = user.id; // Set server ID
             record.name = user.name;
-            record.avatarUrl = user.avatarUrl;
+            record.avatar_url = user.avatarUrl;
             record.handle = user.handle;
           }),
         );

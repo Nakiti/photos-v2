@@ -5,6 +5,7 @@ import FriendsListHeader from './components/FriendsListHeader';
 import SearchBar from '../../components/SearchBar';
 import { useFriendships, useRemoveFriend } from '../../hooks/useFriendshipData';
 import { useQueryClient } from '@tanstack/react-query';
+import FastImage from 'react-native-fast-image';
 
 type Friend = {
   id: string;

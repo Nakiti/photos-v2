@@ -3,17 +3,27 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, TouchableWi
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { useNavigation } from "@react-navigation/native";
 import { useCreateGallery } from "../../../hooks/useGalleryData";
+import { launchImageLibrary, ImagePickerResponse } from "react-native-image-picker";
 
 const CreateGroupDetailsScreen = () => {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [imageUri, setImageUri] = useState<string | undefined>(undefined);
 
-  const { mutateAsync, isPending } = useCreateGallery()
+  const { mutateAsync, isPending, isError } = useCreateGallery()
   const navigation = useNavigation()
 
   const onPickImage = () => {
-    setImageUri((prev) => prev ? undefined : "https://placehold.co/300x300/EEE/333?text=Group");
+    launchImageLibrary({ mediaType: 'photo', quality: 0.7 }, (response: ImagePickerResponse) => {
+      if (response.didCancel) {
+        return;
+      } else if (response.errorMessage) {
+        Alert.alert('Error', response.errorMessage);
+        return;
+      } else if (response.assets && response.assets[0]?.uri) {
+        setImageUri(response.assets[0].uri);
+      }
+    });
   };
 
   const onContinue = async () => {
@@ -21,14 +31,14 @@ const CreateGroupDetailsScreen = () => {
 
     try {
       const gallery = await mutateAsync({
-        name: name.trim(),
-        description: description.trim() || undefined, 
-        iconUrl: imageUri, 
-        type: "GROUP", 
+        galleryData: {
+          name: name.trim(),
+          type: "GROUP",
+        },
+        imageUri: imageUri ?? null,
       });
 
-      console.log(gallery.id)
-      navigation.navigate("AddGroupMembers", {galleryId: gallery.id});
+      (navigation as any).navigate("AddGroupMembers", {galleryId: gallery.id});
     } catch (error) {
       console.error("Failed to create group:", error);
       Alert.alert(
@@ -75,11 +85,15 @@ const CreateGroupDetailsScreen = () => {
           </View>
 
           <TouchableOpacity
-            style={[styles.button, isButtonDisabled && styles.buttonDisabled]}
+            style={[styles.button, (isButtonDisabled || isPending) && styles.buttonDisabled]}
             onPress={onContinue}
-            disabled={isButtonDisabled}
+            disabled={isButtonDisabled || isPending}
           >
-            <Text style={styles.buttonText}>Continue</Text>
+            {isPending ? (
+              <ActivityIndicator color={COLORS.white} />
+            ) : (
+              <Text style={styles.buttonText}>Continue</Text>
+            )}
           </TouchableOpacity>
         </View>
       </TouchableWithoutFeedback>

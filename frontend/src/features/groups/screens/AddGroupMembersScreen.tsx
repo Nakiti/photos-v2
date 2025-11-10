@@ -27,6 +27,8 @@ export type AddGroupMembersScreenProps = {
   activeUserContent?: React.ReactNode; // optional overlay/content provided by parent
 };
 
+type FriendStatus = 'member' | 'pending' | 'can_add';
+
 const AddGroupMembersScreen = () => {
   const [searchText, setSearchText] = useState('')
 
@@ -48,6 +50,7 @@ const AddGroupMembersScreen = () => {
   , [pendingMembers]);
 
   console.log("galleryId in add", galleryId)
+  console.log("friends ", friends)
 
 
   const displayList = useMemo(() => {
@@ -117,6 +120,13 @@ const AddGroupMembersScreen = () => {
     />
   );
 
+  const handleContinue = () => {
+    (navigation as any).navigate('Gallery', {
+      screen: 'Gallery',
+      params: { galleryId },
+    });
+  };
+
   return (
     <View style={styles.container}>
       {(isLoadingFriends || isLoadingMembers) ? (
@@ -137,7 +147,12 @@ const AddGroupMembersScreen = () => {
           contentContainerStyle={styles.listContentContainer}
           keyboardShouldPersistTaps="handled"
         />
+        
       )}
+      <TouchableOpacity style={styles.continueButton} onPress={handleContinue}>
+        <Text style={styles.continueButtonText}>Continue</Text>
+      </TouchableOpacity>
+      
     </View>
   );
 };
@@ -180,7 +195,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   listContentContainer: {
-    paddingBottom: 24,
+    paddingBottom: 120,
+  },
+  statusText: {
+    color: COLORS.gray,
+    fontSize: 14,
+  },
+  addButton: {
+    padding: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#007AFF',
+    backgroundColor: 'transparent',
   },
   tabs: {
     flexDirection: "row",
@@ -200,6 +226,27 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: "#007AFF",
     paddingBottom: 5,
+  },
+  continueButton: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    bottom: 20,
+    backgroundColor: '#007AFF',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  continueButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

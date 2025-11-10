@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl, Text } from 'react-native';
 import GroupsListHeader from '../components/GroupsListHeader';
 import SearchBar from '../../../components/SearchBar';
@@ -7,49 +7,54 @@ import { useNavigation } from '@react-navigation/native';
 import { useGalleries } from '../../../hooks/useGalleryData';
 import { useQueryClient } from '@tanstack/react-query';
 import { ActivityIndicator } from 'react-native';
-
-type Group = { id: string; title: string; lastUploadedBy: string; unseenCount: number; lastUpdated: string };
+import Gallery from '../../../db/models/Gallery';
 
 const GroupsListScreen = () => {
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const navigation = useNavigation();
   const queryClient = useQueryClient();
-  const { galleries, isLoading, isSyncing, isError, error } = useGalleries('GROUP');
   
-  const filteredGroups = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return galleries;
-    
-    return galleries.filter(g =>
-      g.name.toLowerCase().includes(q)
-    );
-  }, [query, galleries]);
+  // Debounce the search query
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 300); // 300ms debounce delay
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [query]);
+  
+  const { galleries, isLoading, isSyncing, isError, error } = useGalleries('GROUP', debouncedQuery);
 
   const onRefresh = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['galleries'] });
   }, [queryClient]);
 
   const handleGroupPress = (galleryId: string) => {
-    console.log(galleryId)
-    navigation.navigate('Gallery', {
+    console.log(galleryId);
+    (navigation as any).navigate('Gallery', {
       screen: 'Gallery',
       params: { galleryId },
-    })
+    });
     // navigation.navigate('Camera', { galleryId })
   }
 
-  const renderItem = useCallback(({ item }: { item: Group }) => (
+  const renderItem = useCallback(({ item }: { item: Gallery }) => (
     <GroupListItem
       id={item.id}
       title={item.name}
-      lastUploadedBy={item.lastUploadedBy}
-      unseenCount={item.unseenCount}
+      icon={item.iconUrl || ''}
+      lastUploadedBy=""
+      unseenCount={0}
+      lastUpdated={new Date(item.updatedAt).toISOString()}
       onPress={() => handleGroupPress(item.id)}
     />
   ), []);
 
-  const keyExtractor = useCallback((item: Group) => item.id, []);
+  const keyExtractor = useCallback((item: Gallery) => item.id, []);
 
   const ListHeaderComponent = useCallback(() => (
     <View>
@@ -69,7 +74,7 @@ const GroupsListScreen = () => {
   if (isError) {
     return (
       <View style={[styles.container, styles.center]}>
-        <Text style={styles.errorText}>Failed to load groups: {error.message}</Text>
+        <Text style={styles.errorText}>Failed to load groups: {error?.message || 'Unknown error'}</Text>
       </View>
     );
   }
@@ -77,7 +82,7 @@ const GroupsListScreen = () => {
   return (
     <View style={styles.container}>
       <FlatList
-        data={filteredGroups}
+        data={galleries}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
@@ -93,6 +98,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  center: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#d32f2f',
+    textAlign: 'center',
+    paddingHorizontal: 24,
   },
   listContent: {
     backgroundColor: '#fff',

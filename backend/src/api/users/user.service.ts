@@ -102,3 +102,61 @@ export const generateAvatarPresignedUrl = async (userId: string, contentType: st
   return { presignedUrl, finalUrl };
 };
 
+/**
+ * Search for users by matching name or handle (case-insensitive).
+ * @param filters - Object containing search criteria
+ * @returns Array of users matching the search criteria
+ */
+export async function searchUsers(filters: {
+  search?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const { search, limit = 20, offset = 0 } = filters;
+
+  // Build where clause - search across name and handle only
+  let where: any = {};
+  
+  if (search && search.trim()) {
+    where = {
+      OR: [
+        { name: { contains: search.trim() } },
+        { handle: { contains: search.trim() } }
+      ]
+    };
+  }
+
+  // Execute the search query
+  const users = await prisma.user.findMany({
+    where,
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      handle: true,
+      avatarUrl: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+    take: limit,
+    skip: offset,
+    orderBy: [
+      { name: 'asc' },
+      { handle: 'asc' }
+    ],
+  });
+
+  // Get total count for pagination
+  const total = await prisma.user.count({ where });
+
+  return {
+    users,
+    pagination: {
+      total,
+      limit,
+      offset,
+      hasMore: offset + users.length < total,
+    },
+  };
+}
+

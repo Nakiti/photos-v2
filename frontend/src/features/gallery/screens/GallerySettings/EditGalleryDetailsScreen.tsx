@@ -69,7 +69,7 @@ const EditGalleryDetailsScreen = () => {
            updateGalleryIcon(uri, {
              onSuccess: () => {
                setLocalImageUri(null);
-               Alert.alert('Success', 'Gallery image updated!');
+               queryClient.invalidateQueries({queryKey: ['gallery', galleryId]})
              },
              onError: (err) => {
                Alert.alert('Upload Failed', (err as Error)?.message || 'Unable to update image');

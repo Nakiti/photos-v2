@@ -13,6 +13,8 @@ import MemberItem from '../components/MemberItem';
 import { useMemberships } from '../../../hooks/useMembershipData';
 import { useRoute } from '@react-navigation/native';
 import UserInfoCard from '../../../components/UserInfoCard';
+import MembersListHeader from '../components/MembersListHeader';
+import { useGallery } from '../../../hooks/useGalleryData';
 
 type DisplayUser = {
    id: string;
@@ -33,7 +35,7 @@ const GalleryMembersScreen = () => {
    const { acceptedMembers, isLoading, isSyncing, isError, error } = useMemberships(galleryId);
    const [selectedMember, setSelectedMember] = useState<DisplayUser | null>(null)
 
-   console.log(acceptedMembers)
+   console.log("accepted members ", acceptedMembers)
 
    const displayMembers = useMemo(() => {
       return acceptedMembers.map(m => ({
@@ -41,6 +43,7 @@ const GalleryMembersScreen = () => {
          name: m.user.name || m.user.handle,
          handle: m.user.handle,
          avatarUri: m.user.avatarUrl,
+         role: m.membership.role
       }));
    }, [acceptedMembers]);
 
@@ -96,11 +99,12 @@ const GalleryMembersScreen = () => {
 
    return (
       <SafeAreaView style={styles.container}>
+         <MembersListHeader galleryId={galleryId} />
          <FlatList
             data={filteredMembers}
             keyExtractor={(item) => String(item.id)}
             renderItem={({ item }) => (
-               <MemberItem name={item.name} handle={item.handle} avatarUri={item.avatarUri} onPressLeft={() => handleMemberPress(item)}/>
+               <MemberItem name={item.name} role={item.role} handle={item.handle} avatarUri={item.avatarUri} onPressLeft={() => handleMemberPress(item)}/>
             )}
             ListHeaderComponent={ListHeader}
             contentContainerStyle={[

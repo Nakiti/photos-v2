@@ -20,7 +20,7 @@ export default class Gallery extends Model {
   @text('location') location?: string;
   @text('shareable_link') shareableLink?: string;
   // Settings
-  @text('join_permission') joinPermission?: 'all' | 'admin_approval';
+  @text('join_requires_approval') joinRequiresApproval?: 'all' | 'admin_approval';
   @text('add_permission') addPermission?: 'all' | 'admin';
   @text('delete_permission') deletePermission?: 'admins_authors' | 'admin';
   @readonly @date('created_at') createdAt!: number;

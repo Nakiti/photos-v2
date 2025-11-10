@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import * as friendshipService from './friendship.service.js';
-import { sendRequestSchema, acceptRequestSchema, cancelOrRejectSchema, removeFriendSchema } from './friendships.validation.js';
+import { sendRequestSchema, acceptRequestSchema, cancelOrRejectSchema, removeFriendSchema, searchFriendsSchema } from './friendships.validation.js';
 
 /**
  * GET /api/v1/friendships
@@ -41,6 +41,7 @@ export async function sendFriendRequest(req: Request, res: Response) {
     const created = await friendshipService.sendRequest(requesterId, receiverId);
     return res.status(201).json(created);
   } catch (error) {
+    console.log(error)
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
     }
@@ -106,6 +107,43 @@ export async function removeFriend(req: Request, res: Response) {
       return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
     }
     return res.status(500).json({ message: 'Failed to remove friend' });
+  }
+}
+
+/**
+ * GET /api/v1/friendships/search
+ * Search through the user's accepted friends with optional filters
+ * Query params: search, name, email, handle, limit, offset
+ */
+export async function searchFriends(req: Request, res: Response) {
+  const userId = (req as any).user?.id as string | undefined;
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+  try {
+    const parsed = searchFriendsSchema.parse({ query: req.query });
+    const filters = parsed.query;
+
+    // Build filters object conditionally to satisfy exactOptionalPropertyTypes
+    const searchFilters: Parameters<typeof friendshipService.searchFriends>[1] = {
+      limit: filters.limit,
+      offset: filters.offset,
+    };
+
+    if (filters.search !== undefined) searchFilters.search = filters.search;
+    if (filters.name !== undefined) searchFilters.name = filters.name;
+    if (filters.email !== undefined) searchFilters.email = filters.email;
+    if (filters.handle !== undefined) searchFilters.handle = filters.handle;
+
+    const result = await friendshipService.searchFriends(userId, searchFilters);
+    return res.status(200).json(result);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        message: 'Validation failed',
+        errors: error.flatten().fieldErrors,
+      });
+    }
+    return res.status(500).json({ message: 'Failed to search friends' });
   }
 }
 

@@ -85,7 +85,7 @@ const GallerySettingsScreen = () => {
       if (isOwner) {
          privacySection.items.push({
             label: 'Require Admin Approval to Join',
-            value: null,
+            value: gallery.joinRequiresApproval,
             onPress: () => (navigation as any).navigate("EditJoinPermission", { galleryId: gallery.id })
          });
 
@@ -109,7 +109,7 @@ const GallerySettingsScreen = () => {
 
       permissionsSection.items.push({
          label: 'Who can add members?',
-         value: 'Admins Only', // This would come from gallery data
+         value: gallery.addPermission, // This would come from gallery data
          onPress: () => (navigation as any).navigate("EditAddMembersPermission", { galleryId: gallery.id })
       });
 
@@ -121,7 +121,7 @@ const GallerySettingsScreen = () => {
 
       permissionsSection.items.push({
          label: 'Who can delete pictures?',
-         value: 'Admins and Authors', // This would come from gallery data
+         value: gallery.deletePermission, // This would come from gallery data
          onPress: () => (navigation as any).navigate("EditDeletePermission", { galleryId: gallery.id }),
          bottom: true
       });

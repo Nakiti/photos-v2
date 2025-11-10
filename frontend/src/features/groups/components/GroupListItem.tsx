@@ -3,6 +3,7 @@ import { StyleSheet, View, TouchableOpacity, Image } from 'react-native';
 import { Text } from 'react-native-paper';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import {useNavigation} from '@react-navigation/native';
+import FastImage from 'react-native-fast-image';
 
 export type GroupListItemProps = {
   id: string;
@@ -38,7 +39,7 @@ const GroupListItem = ({ id, icon, title, lastUploadedBy, unseenCount, lastUpdat
             onPress={onPress}
         >
             
-            <Image source={{ uri: "https://www.shutterstock.com/image-vector/premium-picture-icon-logo-line-260nw-749843887.jpg" }} style={styles.groupImage} />
+            <FastImage source={{ uri: icon || "https://www.shutterstock.com/image-vector/premium-picture-icon-logo-line-260nw-749843887.jpg" }} style={styles.groupImage} />
         
             <View style={styles.groupInfo}>
             <View style={styles.nameRow}>

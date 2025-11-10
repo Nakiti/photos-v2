@@ -1,4 +1,5 @@
 import apiClient from '../apiClient';
+import { Photo } from '../../types';
 
 export interface GalleryPhotoItem {
   id: string;
@@ -19,34 +20,62 @@ export interface PresignResponse {
   s3Key: string;
 }
 
-/**
- * List photos for a gallery using pagination.
- *
- * @param galleryId The gallery id
- * @param page Page number (1-based)
- * @param limit Page size
- * @returns Promise resolving to paginated photo items
- */
-export const listGalleryPhotos = async (
+export const uploadPhoto = async (
+  localUri: string,
   galleryId: string,
-  page: number,
-  limit: number
-): Promise<GalleryPhotosResponse> => {
-  const response = await apiClient.get(`/api/v1/galleries/${galleryId}/photos`, {
-    params: { page, limit },
+): Promise<Photo> => {
+  // 1. Get a presigned URL from our backend
+  const presignResponse = await apiClient.post(
+    `/api/v1/galleries/${galleryId}/photos/presign`
+  );
+  const { presignedUrl, s3Key, finalUrl } = presignResponse.data;
+
+  // 2. Get the image file as a blob
+  const response = await fetch(localUri);
+  const blob = await response.blob();
+  const imageType = blob.type || 'image/jpeg';
+
+  // 3. Upload the image directly to S3
+  await fetch(presignedUrl, {
+    method: 'PUT',
+    body: blob,
+    headers: { 'Content-Type': imageType },
   });
-  return response.data as GalleryPhotosResponse;
+
+  // 4. Confirm the upload with our backend
+  const confirmResponse = await apiClient.post(
+    `/api/v1/galleries/${galleryId}/photos/confirm`,
+    {
+      s3Key: s3Key,
+      s3Url: finalUrl,
+    }
+  );
+
+  return confirmResponse.data as Photo; // Return the final, permanent photo object
 };
 
 /**
- * Get all photo ids currently in a gallery for reconciliation.
- *
- * @param galleryId The gallery id
- * @returns Promise resolving to an array of photo ids
+ * Fetches photos added to a gallery since a given timestamp.
+ * @param galleryId - The gallery ID.
+ * @param since - An ISO timestamp.
  */
-export const getPhotoIdsForSync = async (galleryId: string): Promise<string[]> => {
+export const fetchPhotos = async (galleryId: string, since?: number): Promise<Photo[]> => {
+  let url = `/api/v1/galleries/${galleryId}/photos`;
+  if (since) {
+    // Convert number timestamp to ISO string for the API
+    url += `?since=${new Date(since).toISOString()}`;
+  }
+  const response = await apiClient.get(url);
+  return response.data.items;
+};
+
+/**
+ * Fetches a lightweight list of all photo IDs for reconciliation.
+ * @param galleryId - The gallery ID.
+ */
+export const fetchPhotoIdsForSync = async (galleryId: string): Promise<string[]> => {
   const response = await apiClient.get(`/api/v1/galleries/${galleryId}/photos/sync`);
-  return response.data.photoIds as string[];
+  return response.data.photoIds;
 };
 
 /**

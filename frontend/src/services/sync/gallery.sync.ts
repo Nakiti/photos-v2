@@ -24,11 +24,14 @@ export const syncGalleries = async (database: Database, remoteGalleries: Gallery
     if (local) {
       // Record exists, check if it needs an update
       // A more advanced sync would compare a `updated_at` timestamp
-      if (local.name !== remoteGallery.name || local.iconUrl !== remoteGallery.iconUrl) {
+      if (local.name !== remoteGallery.name || local.iconUrl !== remoteGallery.iconUrl || local.joinRequiresApproval !== remoteGallery.joinRequiresApproval || local.addPermission !== remoteGallery.addPermission || local.deletePermission !== remoteGallery.deletePermission) {
         operations.push(
           local.prepareUpdate(record => {
             record.name = remoteGallery.name;
             record.iconUrl = remoteGallery.iconUrl;
+            record.joinRequiresApproval = remoteGallery.joinRequiresApproval,
+            record.addPermission = remoteGallery.addPermission,
+            record.deletePermission = remoteGallery.deletePermission
             // map other updatable fields
           })
         );
@@ -42,6 +45,9 @@ export const syncGalleries = async (database: Database, remoteGalleries: Gallery
           record.type = remoteGallery.type;
           record.iconUrl = remoteGallery.iconUrl;
           record.ownerId = remoteGallery.ownerId;
+          record.joinRequiresApproval = remoteGallery.joinRequiresApproval,
+          record.addPermission = remoteGallery.addPermission,
+          record.deletePermission = remoteGallery.deletePermission
         })
       );
     }

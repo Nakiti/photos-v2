@@ -5,6 +5,7 @@ import GalleryBottomBar from '../components/GalleryBottomBar';
 import GalleryHeader from '../components/GalleryHeader';
 import { useRoute, useNavigation } from '@react-navigation/native';
 
+
 type GalleryImage = {
   local_filepath: string;
   is_uploaded: number;
@@ -53,7 +54,7 @@ const GalleryScreen = () => {
 
   return (
     <View style={styles.container}>
-      <GalleryHeader onTitlePress={handlePressHeader} onBackPress={handleBackPress} />
+      <GalleryHeader galleryId={galleryId} onTitlePress={handlePressHeader} onBackPress={handleBackPress} />
       <ImagesDisplay images={images} onPressImage={handlePressImage} />
       <GalleryBottomBar onPressUpload={handlePressUpload} onPressCamera={handlePressCamera} />
     </View>

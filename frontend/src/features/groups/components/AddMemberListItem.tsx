@@ -14,12 +14,14 @@ type Props = {
 
 const AddMemberListItem = ({ user, status, onInvite, isInviting }: Props) => {
   
+  console.log("user ", user.handle)
   // This component now contains the logic for what to display
   const renderStatusIndicator = () => {
     if (isInviting) {
       return <ActivityIndicator size="small" />;
     }
     
+
     switch (status) {
       case 'member':
         return <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />;

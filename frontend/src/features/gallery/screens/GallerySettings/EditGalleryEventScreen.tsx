@@ -1,12 +1,24 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { 
     View, Text, TouchableOpacity, StyleSheet, Alert, Platform, ScrollView 
 } from "react-native";
-// Presentational: avoid external datetime picker dependency
+import { useRoute } from "@react-navigation/native";
+import { useGallery, useUpdateGallery } from "../../../../hooks/useGalleryData";
+import { useMyMembership } from "../../../../hooks/useMembershipData";
+import { ActivityIndicator } from "react-native-paper";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface EditGalleryEventProps { galleryId: string | number }
 
-const EditGalleryEventScreen = ({ galleryId }: EditGalleryEventProps) => {
+const EditGalleryEventScreen = () => {
+   const route = useRoute();
+   const queryClient = useQueryClient();
+   const { galleryId } = route.params as { galleryId: string };
+
+   // Fetch gallery data and user's membership
+   const { gallery, isLoading, isError, error } = useGallery(galleryId);
+   const { data: myMembership } = useMyMembership(galleryId);
+   const { mutate: updateGallery, isPending: isUpdating } = useUpdateGallery();
 
    const [startDate, setStartDate] = useState(new Date());
    const [endDate, setEndDate] = useState(new Date());
@@ -16,32 +28,53 @@ const EditGalleryEventScreen = ({ galleryId }: EditGalleryEventProps) => {
 
    const [pickerMode, setPickerMode] = useState('start');
    const [isPickerVisible, setIsPickerVisible] = useState(false);
-   const [isDisabled, setIsDisabled] = useState(true);
 
+   // Load initial dates from gallery
    useEffect(() => {
-      // Dummy load
-      const now = new Date();
-      const later = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-      setStartDate(now);
-      setEndDate(later);
-      setInitialStartDate(now);
-      setInitialEndDate(later);
-   }, [galleryId]);
+      if (gallery) {
+         const start = gallery.startDate ? new Date(gallery.startDate) : new Date();
+         const end = gallery.endDate ? new Date(gallery.endDate) : new Date(start.getTime() + 2 * 60 * 60 * 1000);
+         setStartDate(start);
+         setEndDate(end);
+         setInitialStartDate(start);
+         setInitialEndDate(end);
+      }
+   }, [gallery]);
 
-   useEffect(() => {
-      const hasChanged = startDate.toISOString() !== initialStartDate.toISOString() || endDate.toISOString() !== initialEndDate.toISOString();
-      setIsDisabled(!hasChanged);
+   const isDirty = useMemo(() => {
+      return startDate.toISOString() !== initialStartDate.toISOString() || 
+             endDate.toISOString() !== initialEndDate.toISOString();
    }, [startDate, endDate, initialStartDate, initialEndDate]);
 
    const handleSave = () => {
-      if (isDisabled) return;
-      setIsDisabled(true);
+      if (!isDirty || isUpdating) return;
+      
       if (startDate >= endDate) {
          Alert.alert("Invalid Dates", "The start date must be before the end date.");
-         setIsDisabled(false);
          return;
       }
-      Alert.alert("Success", `Event dates saved for Gallery ${galleryId}.`);
+
+      updateGallery(
+         { 
+            galleryId, 
+            data: { 
+               startDate: startDate.toISOString(), 
+               endDate: endDate.toISOString() 
+            } 
+         },
+         {
+            onSuccess: () => {
+               Alert.alert('Success', 'Event dates updated!');
+               queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });
+               // Update initial dates to reflect saved state
+               setInitialStartDate(startDate);
+               setInitialEndDate(endDate);
+            },
+            onError: () => {
+               Alert.alert('Error', 'Failed to update event dates.');
+            },
+         }
+      );
    };
 
    const showPicker = (mode: 'start' | 'end') => {
@@ -66,15 +99,42 @@ const EditGalleryEventScreen = ({ galleryId }: EditGalleryEventProps) => {
       });
    };
 
+   if (isLoading) {
+      return (
+         <View style={[styles.container, styles.center]}>
+            <ActivityIndicator size="large" color="#0000ff" />
+         </View>
+      );
+   }
+
+   if (isError) {
+      return (
+         <View style={[styles.container, styles.center]}>
+            <Text style={styles.errorText}>Failed to load gallery: {error?.message || 'Unknown error'}</Text>
+         </View>
+      );
+   }
+
+   const userRole = myMembership?.role;
+   const canEdit = userRole === 'ADMIN' || gallery?.ownerId === myMembership?.userId;
+
    return (
       <View style={styles.container}>
          <ScrollView contentContainerStyle={styles.scrollContainer}>
-               <TouchableOpacity style={styles.dateButton} onPress={() => showPicker('start')}>
+               <TouchableOpacity 
+                  style={styles.dateButton} 
+                  onPress={() => showPicker('start')}
+                  disabled={!canEdit}
+               >
                   <Text style={styles.dateButtonLabel}>Starts</Text>
                   <Text style={styles.dateButtonValue}>{formatDate(startDate)}</Text>
                </TouchableOpacity>
 
-               <TouchableOpacity style={styles.dateButton} onPress={() => showPicker('end')}>
+               <TouchableOpacity 
+                  style={styles.dateButton} 
+                  onPress={() => showPicker('end')}
+                  disabled={!canEdit}
+               >
                   <Text style={styles.dateButtonLabel}>Ends</Text>
                   <Text style={styles.dateButtonValue}>{formatDate(endDate)}</Text>
                </TouchableOpacity>
@@ -82,15 +142,17 @@ const EditGalleryEventScreen = ({ galleryId }: EditGalleryEventProps) => {
                {/* Dummy: omit real picker in presentational mode */}
          </ScrollView>
 
-         <View style={styles.buttonContainer}>
+         {canEdit && <View style={styles.buttonContainer}>
                <TouchableOpacity 
-                  style={[styles.saveButton, isDisabled && styles.disabledButton]} 
+                  style={[styles.saveButton, (!isDirty || isUpdating) && styles.disabledButton]} 
                   onPress={handleSave}
-                  disabled={isDisabled}
+                  disabled={!isDirty || isUpdating}
                >
-                  <Text style={styles.saveButtonText}>Save Changes</Text>
+                  <Text style={styles.saveButtonText}>
+                     {isUpdating ? 'Saving...' : 'Save Changes'}
+                  </Text>
                </TouchableOpacity>
-         </View>
+         </View>}
       </View>
    );
 };
@@ -100,6 +162,10 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#FFFFFF',
         justifyContent: 'space-between',
+    },
+    center: {
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     scrollContainer: {
         paddingTop: 30,
@@ -143,6 +209,9 @@ const styles = StyleSheet.create({
         color: '#FFFFFF',
         fontSize: 17,
         fontWeight: '600',
+    },
+    errorText: {
+        color: 'red',
     },
 });
 

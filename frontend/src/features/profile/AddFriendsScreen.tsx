@@ -1,8 +1,9 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import FriendsListItem from './components/FriendsListItem';
-import { useFriendships, useRejectFriendRequest } from '../../hooks/useFriendshipData';
+import { useFriendships, useRejectFriendRequest, useSendFriendRequest } from '../../hooks/useFriendshipData';
+import { useSearchUsers } from '../../hooks/useUser';
 
 type Friend = {
   id: string;
@@ -15,10 +16,14 @@ const AddFriendsScreen = () => {
   const [value, setValue] = useState("");
   const [showOutgoing, setShowOutgoing] = useState(true);
   const [showIncoming, setShowIncoming] = useState(true);
-  const [searchResult, setSearchResult] = useState<Friend | null>(null);
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
-  const { pendingIncoming, pendingOutgoing, isLoading, isError, error } = useFriendships();
+  const { pendingIncoming, pendingOutgoing, isLoading: friendshipsLoading, isError, error } = useFriendships();
   const { mutate: rejectOrCancel } = useRejectFriendRequest();
+  const { mutate: sendRequest, isPending: isSendingRequest } = useSendFriendRequest();
+  
+  // Search users hook (manual trigger)
+  const { users: searchResults, isLoading: isSearching, search, pagination } = useSearchUsers({}, false);
 
   // Map hook data to presentational shape
   const outgoingRequests: Friend[] = useMemo(() => (
@@ -39,10 +44,33 @@ const AddFriendsScreen = () => {
     }))
   ), [pendingIncoming]);
 
-  const handleSearch = () => {
-    if (!value.trim()) return;
+  // Search handler (triggered by search button or Enter key)
+  const handleSearch = useCallback(async () => {
+    if (!value.trim()) {
+      setShowSearchResults(false);
+      return;
+    }
 
-  };
+    // Perform case-insensitive search (backend handles this)
+    await search({ 
+      search: value.trim(),
+      limit: 20 
+    });
+    setShowSearchResults(true);
+  }, [value, search]);
+
+  const handleSendRequest = useCallback((userId: string) => {
+    sendRequest(userId, {
+      onSuccess: () => {
+        console.log('Friend request sent successfully');
+        // Optionally clear search or show a success message
+      },
+      onError: (error) => {
+        console.error('Failed to send friend request:', error);
+        // Optionally show an error message
+      },
+    });
+  }, [sendRequest]);
 
   const handleCancelOutgoing = useCallback((otherUserId: string) => {
     rejectOrCancel(otherUserId);
@@ -60,42 +88,72 @@ const AddFriendsScreen = () => {
       <ScrollView>
         {/* Search Bar */}
         <View style={styles.searchContainer}>
+          <Ionicons name='search-outline' size={16} color="#999" style={{ marginRight: 8 }} />
           <TextInput
             style={styles.searchBar}
-            placeholder="Enter a handle"
+            placeholder="Search by name or handle"
             placeholderTextColor="gray"
             value={value}
             onChangeText={setValue}
             onSubmitEditing={handleSearch}
             returnKeyType="search"
-            editable={!isLoading}
+            autoCapitalize="none"
+            autoCorrect={false}
           />
-          <TouchableOpacity style={styles.searchButton} onPress={handleSearch} disabled={isLoading}>
-            {isLoading ? (
+          {value.length > 0 && (
+            <TouchableOpacity 
+              style={styles.clearButton} 
+              onPress={() => {
+                setValue("");
+                setShowSearchResults(false);
+              }}
+            >
+              <Ionicons name='close-circle' size={18} color="#999" />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity 
+            style={styles.searchButton} 
+            onPress={handleSearch} 
+            disabled={isSearching || !value.trim()}
+          >
+            {isSearching ? (
               <ActivityIndicator size="small" color="gray" />
             ) : (
-              <Ionicons name='search-outline' size={16} />
+              <Ionicons name='arrow-forward' size={16} color={value.trim() ? "#333" : "#ccc"} />
             )}
           </TouchableOpacity>
         </View>
 
-        {/* Loading indicator beneath search bar */}
-        {isLoading ? <ActivityIndicator size="large" color="gray" style={{ marginTop: 10 }} /> : null}
-
-        {/* Optional search result (presentational) */}
-        {searchResult ? (
+        {/* Search Results */}
+        {showSearchResults && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Search result</Text>
-            <FriendsListItem
-              id={searchResult.id}
-              avatar={searchResult.avatar}
-              name={searchResult.name}
-              handle={searchResult.handle}
-              icon="add"
-              handleRemove={() => { /* presentational no-op */ }}
-            />
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>
+                Search results {pagination ? `(${pagination.total})` : ''}
+              </Text>
+              <TouchableOpacity onPress={() => setShowSearchResults(false)}>
+                <Ionicons name='close-outline' size={20} color="#666" />
+              </TouchableOpacity>
+            </View>
+            {isSearching ? (
+              <ActivityIndicator size="large" color="gray" style={{ marginVertical: 10 }} />
+            ) : searchResults.length === 0 ? (
+              <Text style={styles.emptyRow}>No users found</Text>
+            ) : (
+              searchResults.map((user) => (
+                <FriendsListItem
+                  key={user.id}
+                  id={user.id}
+                  avatar={user.avatarUrl}
+                  name={user.name || user.handle}
+                  handle={user.handle}
+                  icon="add"
+                  handleRemove={handleSendRequest}
+                />
+              ))
+            )}
           </View>
-        ) : null}
+        )}
 
         {/* Outgoing Friend Requests */}
         <View style={styles.section}>
@@ -182,8 +240,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#333",
   },
+  clearButton: {
+    padding: 4,
+    marginRight: 8,
+  },
   searchButton: {
-    marginLeft: 10,
+    padding: 4,
   },
   section: {
     marginTop: 16,

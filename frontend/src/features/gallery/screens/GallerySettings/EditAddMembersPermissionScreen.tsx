@@ -1,37 +1,78 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import React, { useEffect, useState, useMemo } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { useRoute } from "@react-navigation/native";
+import { useGallery, useUpdateGallery } from "../../../../hooks/useGalleryData";
+import { useMyMembership } from "../../../../hooks/useMembershipData";
+import { ActivityIndicator } from "react-native-paper";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface EditAddMembersPermissionProps { galleryId: string | number }
 
-const EditAddMembersPermissionScreen = ({ galleryId }: EditAddMembersPermissionProps) => {
-   const [selectedOption, setSelectedOption] = useState("admin");
-   const [originalOption, setOriginalOption] = useState("admin");
-   const [data, setData] = useState<any>(null)
-   const [userInfo, setUserInfo] = useState<{ role: string } | null>(null)
+const EditAddMembersPermissionScreen = () => {
+   const route = useRoute();
+   const queryClient = useQueryClient();
+   const { galleryId } = route.params as { galleryId: string };
+
+   // Fetch gallery data and user's membership
+   const { gallery, isLoading, isError, error } = useGallery(galleryId);
+   const { data: myMembership } = useMyMembership(galleryId);
+   const { mutate: updateGallery, isPending: isUpdating } = useUpdateGallery();
+
+   const [selectedOption, setSelectedOption] = useState<'all' | 'admin'>('admin');
 
    const options = [
-      { id: "1", value: "all", title: "Anyone", subtitle: "Anyone can add members to the group" },
-      { id: "2", value: "admin", title: "Admin", subtitle: "Only admins can add new members" },
+      { id: "1", value: "all" as const, title: "Anyone", subtitle: "Anyone can add members to the group" },
+      { id: "2", value: "admin" as const, title: "Admin", subtitle: "Only admins can add new members" },
    ];
 
+   // Set initial value when gallery loads
+   useEffect(() => {
+      if (gallery?.addPermission) {
+         setSelectedOption(gallery.addPermission);
+      }
+   }, [gallery]);
+
+   const isDirty = useMemo(() => {
+      return gallery?.addPermission !== selectedOption;
+   }, [gallery?.addPermission, selectedOption]);
+
    const handleSave = () => {
-      setOriginalOption(selectedOption);
+      if (!isDirty || isUpdating) return;
+
+      // Map frontend values to backend enum values
+      const backendValue = selectedOption === 'all' ? 'ANYONE' : 'ADMIN';
+      updateGallery(
+         { galleryId, data: { addPermission: backendValue } },
+         {
+            onSuccess: () => {
+               Alert.alert('Success', 'Add members permission updated!');
+               queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });
+            },
+            onError: () => {
+               Alert.alert('Error', 'Failed to update permission.');
+            },
+         }
+      );
+   };
+
+   if (isLoading) {
+      return (
+         <View style={[styles.container, styles.center]}>
+            <ActivityIndicator size="large" color="#0000ff" />
+         </View>
+      );
    }
 
-   useEffect(() => {
-      // Dummy data load
-      const dummy = {
-         name: `Gallery ${galleryId}`,
-         description: "A sample gallery",
-         add_permission: "admin",
-         owner_id: 1,
-         image: undefined,
-      };
-      setData(dummy);
-      setSelectedOption(dummy.add_permission);
-      setOriginalOption(dummy.add_permission);
-      setUserInfo({ role: "owner" });
-   }, [galleryId])
+   if (isError) {
+      return (
+         <View style={[styles.container, styles.center]}>
+            <Text style={styles.errorText}>Failed to load gallery: {error?.message || 'Unknown error'}</Text>
+         </View>
+      );
+   }
+
+   const userRole = myMembership?.role;
+   const canEdit = userRole === 'ADMIN' || gallery?.ownerId === myMembership?.userId;
 
    return (
       <View style={styles.container}>
@@ -43,6 +84,7 @@ const EditAddMembersPermissionScreen = ({ galleryId }: EditAddMembersPermissionP
                key={item.id}
                style={[styles.option, index !== options.length - 1 && styles.optionBorder]}
                onPress={() => setSelectedOption(item.value)}
+               disabled={!canEdit}
             >
                <View>
                   <Text style={styles.optionTitle}>{item.title}</Text>
@@ -53,15 +95,15 @@ const EditAddMembersPermissionScreen = ({ galleryId }: EditAddMembersPermissionP
          ))}
          </View>
 
-         {userInfo && (userInfo.role == "admin" || userInfo.role == "owner") && <TouchableOpacity
+         {canEdit && <TouchableOpacity
             style={[
                styles.saveButton,
-               selectedOption !== originalOption ? styles.saveButtonActive : styles.saveButtonDisabled
+               (!isDirty || isUpdating) ? styles.saveButtonDisabled : styles.saveButtonActive
             ]}
-            disabled={selectedOption === originalOption}
+            disabled={!isDirty || isUpdating}
             onPress={handleSave}
          >
-            <Text style={styles.saveButtonText}>Save</Text>
+            <Text style={styles.saveButtonText}>{isUpdating ? 'Saving...' : 'Save'}</Text>
          </TouchableOpacity>}
       </View>
    );
@@ -74,6 +116,10 @@ const styles = StyleSheet.create({
      flex: 1,
      backgroundColor: "white",
      padding: 20,
+   },
+   center: {
+     justifyContent: 'center',
+     alignItems: 'center',
    },
    title: {
      color: "black",
@@ -120,6 +166,9 @@ const styles = StyleSheet.create({
      color: "white",
      fontSize: 16,
      fontWeight: "bold",
+   },
+   errorText: {
+     color: 'red',
    },
 });
 

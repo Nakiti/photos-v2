@@ -12,6 +12,7 @@ import {
 import { useGallery } from '../../../hooks/useGalleryData';
 import { useUpdateMyMembership } from '../../../hooks/useMembershipData';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import FastImage from 'react-native-fast-image';
 
 type DummyGroup = { name?: string; image?: string; is_muted?: boolean; is_event?: number } | null;
 
@@ -35,6 +36,7 @@ const GalleryDetailsScreen = () => {
 
 
    const handleSharePress = () => {};
+   
    const handleMutePress = () => {
       const next = !isMuted;
       setIsMuted(next); // optimistic
@@ -78,10 +80,7 @@ const GalleryDetailsScreen = () => {
             <>
                {/* --- Profile Section --- */}
                <View style={styles.profileContainer}>
-                  <Image
-                        source={{ uri: gallery.image || 'https://via.placeholder.com/120' }}
-                        style={styles.groupImage}
-                  />
+                  <FastImage source={{uri: gallery.iconUrl}} style={styles.groupImage}/>
                   <View style={styles.groupNameContainer}>
                      <Text style={styles.groupName}>{gallery.name}</Text>
                   </View>

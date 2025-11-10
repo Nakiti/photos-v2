@@ -5,4 +5,7 @@ export interface UpdateGalleryRequest {
     startDate?: string | null;
     endDate?: string | null;
     location?: string | null;
+    addPermission?: 'ANYONE' | 'ADMIN';
+    deletePermission?: 'ADMINS_AUTHORS' | 'ADMIN';
+    joinRequiresApproval?: boolean;
 }

@@ -16,6 +16,22 @@ export interface RegisterDeviceRequest {
   platform: 'ios' | 'android';
 }
 
+export interface SearchUsersRequest {
+  search?: string;  // Searches name and handle
+  limit?: number;
+  offset?: number;
+}
+
+export interface SearchUsersResponse {
+  users: UserProfile[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
+}
+
 /**
  * Fetch the current authenticated user's profile.
  *
@@ -104,4 +120,21 @@ export const uploadNewAvatar = async (imageUri: string): Promise<UserProfile> =>
 
   console.log('6. Avatar upload complete.');
   return updatedUser;
+};
+
+/**
+ * Search for users by name or handle.
+ *
+ * @param params Search parameters (search term matches name or handle)
+ * @returns Promise resolving to search results with pagination
+ */
+export const searchUsers = async (params: SearchUsersRequest): Promise<SearchUsersResponse> => {
+  const queryParams = new URLSearchParams();
+  
+  if (params.search) queryParams.append('search', params.search);
+  if (params.limit !== undefined) queryParams.append('limit', params.limit.toString());
+  if (params.offset !== undefined) queryParams.append('offset', params.offset.toString());
+
+  const response = await apiClient.get(`/api/v1/users/search?${queryParams.toString()}`);
+  return response.data as SearchUsersResponse;
 };

@@ -69,6 +69,7 @@ export const updateGallery = async (
   galleryId: string,
   data: UpdateGalleryRequest
 ): Promise<GalleryApiResponse> => {
+  console.log("update data ", data)
   const response = await apiClient.put(`/api/v1/galleries/${galleryId}`, data);
   return response.data;
 };

@@ -1,9 +1,19 @@
 // src/api/users/user.routes.ts
 import { Router } from 'express';
 import { isAuthenticated } from '../../middleware/auth.middleware.js';
-import { addDeviceToken, getMyProfile, requestAvatarUpload, updateMyProfile } from './users.controller.js';
+import { addDeviceToken, getMyProfile, requestAvatarUpload, updateMyProfile, searchUsers } from './users.controller.js';
 
 const router = Router();
+
+/**
+ * @route GET /api/v1/users/search
+ * @summary Search for users by name or handle
+ * @query search - Search term (matches name or handle, case-insensitive)
+ * @query limit - Maximum number of results (default: 20, max: 100)
+ * @query offset - Pagination offset (default: 0)
+ * @access Private
+ */
+router.get('/search', isAuthenticated, searchUsers);
 
 /**
  * @route GET /api/v1/users/me

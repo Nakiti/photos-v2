@@ -21,4 +21,15 @@ export const addDeviceTokenSchema = z.object({
 
 export type AddDeviceTokenDto = z.infer<typeof addDeviceTokenSchema>['body'];
 
+// Schema for searching users (searches name and handle)
+export const searchUsersSchema = z.object({
+  query: z.object({
+    search: z.string().optional(), // Search term (matches name or handle)
+    limit: z.coerce.number().int().positive().max(100).optional().default(20),
+    offset: z.coerce.number().int().nonnegative().optional().default(0),
+  }),
+});
+
+export type SearchUsersDto = z.infer<typeof searchUsersSchema>['query'];
+
 
