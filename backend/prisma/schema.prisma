@@ -47,6 +47,8 @@ model Gallery {
   addPermission        GalleryAddPermission      @default(ADMIN)
   deletePermission     GalleryDeletePermission   @default(ADMINS_AUTHORS)
 
+  defaultTagId String? @unique
+
   owner       User         @relation("OwnedGalleries", fields: [ownerId], references: [id], onDelete: Cascade) // Cascade delete if owner is deleted (adjust if needed)
   memberships Membership[]
   photos      Photo[]

@@ -1,7 +1,7 @@
 import { Model } from '@nozbe/watermelondb';
 import { field, readonly, date } from '@nozbe/watermelondb/decorators';
 
-export default class PhotoTags extends Model {
+export default class PhotoTag extends Model {
   static table = 'photo_tags';
 
   static associations = {

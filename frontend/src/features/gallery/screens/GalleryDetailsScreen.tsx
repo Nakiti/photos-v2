@@ -36,7 +36,7 @@ const GalleryDetailsScreen = () => {
 
 
    const handleSharePress = () => {};
-   
+
    const handleMutePress = () => {
       const next = !isMuted;
       setIsMuted(next); // optimistic
@@ -57,6 +57,10 @@ const GalleryDetailsScreen = () => {
    const handleSettingsPress = () => {
       navigation.navigate("GallerySettings", {galleryId})
    };
+
+   const handleTagsPress = () => {
+      navigation.navigate("GalleryTags", {galleryId})
+   }
 
    if (isLoading) {
       return (
@@ -122,6 +126,16 @@ const GalleryDetailsScreen = () => {
                            <Ionicons name="settings-outline" size={24} color="black"/>
                         </Text>
                         <Text style={styles.listText}>Settings</Text>
+                        <Text style={{ fontSize: 18, color: '#C7C7CC' }}>
+                           <Ionicons name="chevron-forward-outline" size={16} color="gray"/>
+                        </Text>
+                  </TouchableOpacity>
+                  <View style={styles.separator} />
+                  <TouchableOpacity style={styles.listItem} onPress={handleTagsPress}>
+                        <Text style={{ fontSize: 18, color: '#8A8A8E' }}>
+                           <Ionicons name="tags-outline" size={24} color="black"/>
+                        </Text>
+                        <Text style={styles.listText}>Tags</Text>
                         <Text style={{ fontSize: 18, color: '#C7C7CC' }}>
                            <Ionicons name="chevron-forward-outline" size={16} color="gray"/>
                         </Text>

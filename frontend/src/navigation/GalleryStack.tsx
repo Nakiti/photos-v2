@@ -14,6 +14,7 @@ import EditDeletePermissionScreen from "../features/gallery/screens/GallerySetti
 import EditJoinPermissionScreen from "../features/gallery/screens/GallerySettings/EditJoinPermissionScreen";
 import ChangeOwnerScreen from "../features/gallery/screens/GallerySettings/ChangeOwnerScreen";
 import DefaultHeader from "../components/DefaultHeader";
+import GalleryTagsScreen from "../features/gallery/screens/GalleryTagsScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -64,6 +65,14 @@ const GalleryStack = () => {
                 }}
             />
             <Stack.Screen name="SingleImage" component={SingleImageScreen} />
+            <Stack.Screen 
+                name="GalleryTags" 
+                component={GalleryTagsScreen as any}
+                options={{
+                    headerShown: true,
+                    header: () => <DefaultHeader title="Tags"/>
+                }}
+            />
             <Stack.Screen 
                 name="EditGalleryDetails" 
                 component={EditGalleryDetailsScreen} 

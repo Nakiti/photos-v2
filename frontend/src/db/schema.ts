@@ -19,6 +19,7 @@ export const mySchema = appSchema({
       name: 'galleries',
       columns: [
         { name: 'name', type: 'string' },
+        { name: 'defaultTagId', type: 'string'}
         { name: 'owner_id', type: 'string', isIndexed: true },
         { name: 'icon_url', type: 'string', isOptional: true },
         { name: 'type', type: 'string' }, // 'GROUP' or 'EVENT'

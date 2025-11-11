@@ -17,8 +17,8 @@ export async function getPhotosForGallery(req: Request, res: Response) {
     if (!access) return res.status(403).json({ message: 'Forbidden' });
 
     const parsed = getPhotosQuerySchema.parse({ query: req.query });
-    const { page, limit } = parsed.query;
-    const result = await photosService.listPhotos(galleryId, page, limit);
+    const { page, limit, tagId } = parsed.query as { page: number; limit: number; tagId?: string };
+    const result = await photosService.listPhotos(galleryId, page, limit, tagId);
     return res.status(200).json(result);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -79,8 +79,8 @@ export async function confirmPhotoUpload(req: Request, res: Response) {
     if (!access) return res.status(403).json({ message: 'Forbidden' });
 
     const parsed = confirmBodySchema.parse({ body: req.body });
-    const { s3Key } = parsed.body;
-    const photo = await photosService.confirmUploadedPhoto(userId, galleryId, s3Key);
+    const { s3Key, s3Url, tagIds } = parsed.body as { s3Key: string; s3Url?: string; tagIds?: string[] };
+    const photo = await photosService.confirmUploadedPhoto(userId, galleryId, s3Key, s3Url, tagIds);
     return res.status(201).json(photo);
   } catch (error) {
     if (error instanceof z.ZodError) {

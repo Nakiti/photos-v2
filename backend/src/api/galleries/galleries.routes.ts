@@ -13,6 +13,7 @@ import {
 } from './galleries.controller.js';
 import photoRoutes from './photos/photos.routes.js';
 import membersRoutes from './members/members.routes.js';
+import tagsRoutes from './tags/tags.routes.js';
 import {
   joinGallery as joinGalleryAsUser,
   acceptInvite,
@@ -120,6 +121,10 @@ router.use('/:galleryId/photos', photoRoutes);
 // --- Nested Members Routes ---
 // Mounts all routes from members.routes.ts under /:galleryId/members
 router.use('/:galleryId/members', membersRoutes);
+
+// --- Nested Tags Routes ---
+// Mounts all routes from tags.routes.ts under /:galleryId/tags
+router.use('/:galleryId/tags', tagsRoutes);
 
 
 export default router;

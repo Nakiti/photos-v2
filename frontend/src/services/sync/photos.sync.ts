@@ -2,6 +2,9 @@ import { Database } from "@nozbe/watermelondb";
 import { Q } from "@nozbe/watermelondb";
 import Photo from "../../db/models/Photo";
 import { Photo as PhotoApi } from "../../types";
+import Tag from "../../db/models/Tag";
+import PhotoTag from "../../db/models/PhotoTag";
+import { TagApi } from "../api/tags.service";
 
 /**
  * Syncs a list of new or updated photos from the server.
@@ -10,36 +13,61 @@ import { Photo as PhotoApi } from "../../types";
  * @param remotePhotos - Array of photo objects from the API
  * @param syncMode - 'merge' (create/update)
  */
- export const syncPhotos = async (
+ export const syncTags = async (
     database: Database,
-    remotePhotos: PhotoApi[],
-    syncMode: 'merge'
+    galleryId: string,
+    remoteTags: TagApi[]
   ) => {
-    const photosCollection = database.collections.get<Photo>('photos');
+    const tagsCollection = database.collections.get<Tag>('tags');
+  
+    // 1. Fetch all local tags for this gallery ONCE
+    const localTags = await tagsCollection.query(Q.where('gallery_id', galleryId)).fetch();
+    const localTagMap = new Map(localTags.map(t => [t.id, t]));
+    const remoteTagIdSet = new Set(remoteTags.map(t => t.id));
+  
     const operations: any[] = [];
   
-    for (const remotePhoto of remotePhotos) {
-      // Prepare an upsert operation (create or update)
-      operations.push(
-        (photosCollection as any).prepareUpsert(remotePhoto.id, (record: Photo) => {
-          record._raw.id = remotePhoto.id;
-          record.galleryId = remotePhoto.galleryId;
-          record.uploaderId = remotePhoto.uploaderId;
-          record.s3Key = remotePhoto.s3Key;
-          record.s3Url = remotePhoto.s3Url;
-          record.status = 'synced'; // Mark as synced
-          record.createdAt = new Date(remotePhoto.createdAt).getTime();
-        })
-      );
+    // 2. Loop and find create/update operations
+    for (const remoteTag of remoteTags) {
+      const local = localTagMap.get(remoteTag.id);
+      if (local) {
+        // It exists, check for update
+        if (local.name !== remoteTag.name || local.color !== remoteTag.color) {
+          operations.push(
+            local.prepareUpdate(record => {
+              record.name = remoteTag.name;
+              record.color = remoteTag.color;
+            })
+          );
+        }
+      } else {
+        // It doesn't exist, create it
+        operations.push(
+          tagsCollection.prepareCreate(record => {
+            record._raw.id = remoteTag.id;
+            record.name = remoteTag.name;
+            record.color = remoteTag.color;
+            record.galleryId = galleryId;
+          })
+        );
+      }
     }
   
+    // 3. Find delete operations
+    for (const localTag of localTags) {
+      if (!remoteTagIdSet.has(localTag.id)) {
+        operations.push(localTag.prepareDestroyPermanently());
+      }
+    }
+  
+    // 4. Batch write
     if (operations.length > 0) {
       await database.write(async () => {
         await database.batch(...operations);
       });
-      console.log(`✅ Synced ${operations.length} new photos.`);
+      console.log(`✅ Synced ${operations.length} tag operations for gallery ${galleryId}.`);
     }
-};
+  };
 
 /**
  * Reconciles deleted photos.

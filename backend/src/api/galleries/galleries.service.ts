@@ -11,10 +11,10 @@ const prisma = new PrismaClient();
 
 const s3 = new S3Client({
   credentials: {
-    accessKeyId: config.aws.accessKeyId,
-    secretAccessKey: config.aws.secretAccessKey,
+    accessKeyId: config.aws.accessKeyId!,
+    secretAccessKey: config.aws.secretAccessKey!,
   },
-  region: config.aws.region,
+  region: config.aws.region!,
 }); 
 
 
@@ -34,7 +34,7 @@ export async function createGallery(
     location?: string | null;
     addPermission?: string;
     deletePermission?: string;
-    joinRequiresAproval?: boolean; // ⚠️ Typo: 'Aproval'
+    joinRequiresApproval?: boolean; // ⚠️ Typo: 'Aproval'
     wantsIconUpload?: boolean;
   }
 ) {
@@ -49,10 +49,10 @@ export async function createGallery(
     wantsIconUpload,
     addPermission,
     deletePermission,
-    joinRequiresAproval, // ⚠️ Typo: 'Aproval'
+    joinRequiresApproval, // ⚠️ Typo: 'Aproval'
   } = data;
   
-  const shareableLink = type === 'EVENT' ? randomUUID() : undefined;
+  const shareableLink = type === 'EVENT' ? randomUUID() : null;
 
   // Use a transaction to create the gallery AND the owner's membership
   const newGallery = await prisma.$transaction(async (tx) => {
@@ -61,16 +61,16 @@ export async function createGallery(
       data: {
         name,
         type,
-        iconUrl: iconUrl ?? undefined,
-        startDate: startDate ? new Date(startDate) : undefined,
-        endDate: endDate ? new Date(endDate) : undefined,
-        location: location ?? undefined,
+        iconUrl: iconUrl ?? null,
+        startDate: startDate ? new Date(startDate) : null,
+        endDate: endDate ? new Date(endDate) : null,
+        location: location ?? null,
         ownerId,
         shareableLink,
 
-        addPermission: addPermission ?? 'ADMIN', // Set your own default
-        deletePermission: deletePermission ?? 'ADMIN', // Set your own default
-        joinRequiresApproval: joinRequiresAproval ?? (type === 'GROUP'),
+        addPermission: (addPermission as any) ?? undefined,
+        deletePermission: (deletePermission as any) ?? undefined,
+        joinRequiresApproval: joinRequiresApproval ?? (type === 'GROUP'),
       },
       select: {
         id: true,
@@ -95,13 +95,43 @@ export async function createGallery(
       data: {
         galleryId: gallery.id,
         userId: ownerId,
-        role: 'OWNER',
+        role: 'ADMIN',
         status: 'ACCEPTED',
       },
     });
 
-    // Return the gallery object, which is what the controller expects
-    return gallery;
+    // 3. Create default "all" tag and set as gallery.defaultTagId
+    const defaultTag = await tx.tag.create({
+      data: {
+        name: 'all',
+        galleryId: gallery.id,
+      },
+      select: { id: true },
+    });
+
+    const updatedGallery = await tx.gallery.update({
+      where: { id: gallery.id },
+      data: ({ defaultTagId: defaultTag.id } as unknown) as any,
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        iconUrl: true,
+        startDate: true,
+        endDate: true,
+        location: true,
+        shareableLink: true,
+        ownerId: true,
+        addPermission: true,
+        deletePermission: true,
+        joinRequiresApproval: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    // Return the updated gallery (with defaultTagId)
+    return updatedGallery;
   });
 
   // --- FIX 1: Move this ENTIRE block OUTSIDE the transaction ---
@@ -250,20 +280,24 @@ export async function getGalleryById(galleryId: string) {
 export async function updateGallery(
   ownerId: string,
   galleryId: string,
-  data: Partial<{ name: string; iconUrl: string | null; startDate: string | null; endDate: string | null; location: string | null }>
+  data: Partial<{ name: string; iconUrl: string | null; startDate: string | null; endDate: string | null; location: string | null }> & {
+    addPermission?: any;
+    deletePermission?: any;
+    joinRequiresApproval?: boolean;
+  }
 ) {
   const updated = await prisma.gallery.update({
     where: { id: galleryId },
-    data: {
-      name: data.name ?? undefined,
-      iconUrl: data.iconUrl ?? undefined,
-      startDate: data.startDate ? new Date(data.startDate) : undefined,
-      endDate: data.endDate ? new Date(data.endDate) : undefined,
-      location: data.location ?? undefined,
-      addPermission: data.addPermission,
-      deletePermission: data.deletePermission,
+    data: ({
+      name: data.name,
+      iconUrl: data.iconUrl ?? null,
+      startDate: data.startDate ? new Date(data.startDate) : null,
+      endDate: data.endDate ? new Date(data.endDate) : null,
+      location: data.location ?? null,
+      addPermission: (data as any).addPermission,
+      deletePermission: (data as any).deletePermission,
       joinRequiresApproval: data.joinRequiresApproval,
-    },
+    } as unknown) as any,
     select: {
       id: true,
       name: true,

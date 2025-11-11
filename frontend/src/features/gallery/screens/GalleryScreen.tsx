@@ -1,9 +1,12 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, StyleSheet, FlatList, TouchableOpacity, Text } from 'react-native';
 import ImagesDisplay from '../components/ImagesDisplay';
 import GalleryBottomBar from '../components/GalleryBottomBar';
 import GalleryHeader from '../components/GalleryHeader';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { useGallery } from '../../../hooks/useGalleryData';
+import { useGalleryTags } from '../../../hooks/useGalleryTagData';
+import apiClient from '../../../services/apiClient';
 
 
 type GalleryImage = {
@@ -16,21 +19,54 @@ const GalleryScreen = () => {
   console.log("params", route)
   const { galleryId } = route.params as { galleryId: string }
 
+  // Tags state
+  const { tags } = useGalleryTags(galleryId);
+  const [selectedTagId, setSelectedTagId] = useState<string | null>(null); // null means 'All'
 
-  const images: GalleryImage[] = [
-    { local_filepath: 'https://picsum.photos/seed/1/300/300', is_uploaded: 0 },
-    { local_filepath: 'https://picsum.photos/seed/2/300/300', is_uploaded: 1 },
-    { local_filepath: 'https://picsum.photos/seed/3/300/300', is_uploaded: 2 },
-    { local_filepath: 'https://picsum.photos/seed/4/300/300', is_uploaded: 3 },
-    { local_filepath: 'https://picsum.photos/seed/5/300/300', is_uploaded: 2 },
-    { local_filepath: 'https://picsum.photos/seed/6/300/300', is_uploaded: 0 },
-    { local_filepath: 'https://picsum.photos/seed/7/300/300', is_uploaded: 1 },
-    { local_filepath: 'https://picsum.photos/seed/8/300/300', is_uploaded: 2 },
-    { local_filepath: 'https://picsum.photos/seed/9/300/300', is_uploaded: 3 },
-    { local_filepath: 'https://picsum.photos/seed/10/300/300', is_uploaded: 0 },
-  ];
+  // Photos from local DB (observed)
+  const { photos } = useGallery(galleryId);
 
-  const navigation = useNavigation();
+  // When filtering by a specific tag, fetch filtered photos from API
+  const [filteredImages, setFilteredImages] = useState<GalleryImage[] | null>(null);
+  useEffect(() => {
+    let active = true;
+    async function run() {
+      if (!selectedTagId) {
+        if (active) setFilteredImages(null);
+        return;
+      }
+      try {
+        const res = await apiClient.get(`/api/v1/galleries/${galleryId}/photos`, {
+          params: { tagId: selectedTagId },
+        });
+        const items = (res.data?.items ?? []) as Array<{ s3Url: string }>;
+        if (!active) return;
+        setFilteredImages(
+          items.map(p => ({
+            local_filepath: p.s3Url,
+            is_uploaded: 1,
+          }))
+        );
+      } catch (e) {
+        if (active) setFilteredImages([]);
+      }
+    }
+    run();
+    return () => { active = false; };
+  }, [galleryId, selectedTagId]);
+
+  // Compute images to display
+  const images: GalleryImage[] = useMemo(() => {
+    if (selectedTagId && filteredImages) return filteredImages;
+    return (photos || [])
+      .map((p: any) => ({
+        local_filepath: p.s3Url || '',
+        is_uploaded: p.status === 'synced' ? 1 : 0,
+      }))
+      .filter(img => !!img.local_filepath);
+  }, [photos, filteredImages, selectedTagId]);
+
+  const navigation = useNavigation<any>();
 
   const handlePressHeader = () => {
     navigation.navigate('GalleryDetails', {galleryId});
@@ -56,7 +92,13 @@ const GalleryScreen = () => {
     <View style={styles.container}>
       <GalleryHeader galleryId={galleryId} onTitlePress={handlePressHeader} onBackPress={handleBackPress} />
       <ImagesDisplay images={images} onPressImage={handlePressImage} />
-      <GalleryBottomBar onPressUpload={handlePressUpload} onPressCamera={handlePressCamera} />
+      <GalleryBottomBar 
+        onPressUpload={handlePressUpload} 
+        onPressCamera={handlePressCamera}
+        tags={tags as any}
+        selectedTagId={selectedTagId}
+        onSelectTag={setSelectedTagId}
+      />
     </View>
   );
 };

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { isAuthenticated } from '../../../middleware/auth.middleware.js';
 import { getPhotosForGallery, getPhotoIdsForSync, requestPresignedUrl, confirmPhotoUpload, deletePhoto } from './photos.controller.js';
+import photoTagsRoutes from './photoTags/photoTags.routes.js';
 
 // This router is merged into the galleries router, so the path is relative.
 // The full path will be /api/v1/galleries/:galleryId/photos
@@ -48,5 +49,9 @@ router.post('/confirm', isAuthenticated, confirmPhotoUpload);
  * @access Private (must be the photo uploader or gallery owner)
  */
 router.delete('/:photoId', isAuthenticated, deletePhoto);
+
+// --- Nested Photo Tags Routes ---
+// Mounts all routes from photoTags.routes.ts under /:galleryId/photos/:photoId/tags
+router.use('/:photoId/tags', photoTagsRoutes);
 
 export default router;
