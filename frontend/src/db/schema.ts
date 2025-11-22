@@ -2,7 +2,7 @@ import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const mySchema = appSchema({
   // Ensure version matches the latest changes (added tags/friendships)
-  version: 6,
+  version: 9,
   tables: [
     tableSchema({
       name: 'users',
@@ -19,7 +19,7 @@ export const mySchema = appSchema({
       name: 'galleries',
       columns: [
         { name: 'name', type: 'string' },
-        { name: 'defaultTagId', type: 'string'}
+        { name: 'default_tag_id', type: 'string'},
         { name: 'owner_id', type: 'string', isIndexed: true },
         { name: 'icon_url', type: 'string', isOptional: true },
         { name: 'type', type: 'string' }, // 'GROUP' or 'EVENT'
@@ -54,6 +54,8 @@ export const mySchema = appSchema({
         { name: 's3_key', type: 'string', isOptional: true },
         { name: 's3_url', type: 'string', isOptional: true },
         { name: 'local_uri', type: 'string', isOptional: true },
+        { name: 'local_thumbnail_uri', type: 'string', isOptional: true },
+        { name: 'thumbnail_url', type: 'string', isOptional: true },
         { name: 'status', type: 'string' }, // 'queued', 'uploading', 'upload_failed', 'synced'
         { name: 'created_at', type: 'number' },
       ],

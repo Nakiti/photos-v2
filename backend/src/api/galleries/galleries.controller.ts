@@ -54,10 +54,8 @@ export async function createGallery(req: Request, res: Response) {
  */
 export async function getMyGalleries(req: Request, res: Response) {
   const userId = (req as any).user?.id as string | undefined;
-  console.log("user id", userId)
   if (!userId) return res.status(401).json({ message: 'Unauthorized' });
   const galleries = await galleriesService.getMyGalleries(userId);
-  console.log("galleires ", galleries)
   return res.status(200).json(galleries);
 }
 

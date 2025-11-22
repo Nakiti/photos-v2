@@ -2,6 +2,7 @@ import {createNativeStackNavigator} from "@react-navigation/native-stack";
 import GroupsListScreen from "../features/groups/screens/GroupsListScreen";
 import CreateGroupDetailsScreen from "../features/groups/screens/CreateGroupDetailsScreen";
 import AddGroupMembersScreen from "../features/groups/screens/AddGroupMembersScreen";
+import AddGroupTagsScreen from "../features/groups/screens/AddGroupTagsScreen";
 import DefaultHeader from "../components/DefaultHeader";
 import DefaultNoBackHeader from "../components/DefaultNoBackHeader";
 
@@ -22,7 +23,7 @@ const defaultHeaderOptions = {
 
 const GroupsStack = () => {
     return (
-        <Stack.Navigator initialRouteName="GroupsList" id="GroupsStack">
+        <Stack.Navigator initialRouteName="GroupsList">
             <Stack.Screen 
                 name="GroupsList"  
                 component={GroupsListScreen} 
@@ -44,6 +45,13 @@ const GroupsStack = () => {
                     header: () => <DefaultNoBackHeader title="Add Group Members" />
                 }}
                 />
+            <Stack.Screen 
+                name="AddGroupTags" 
+                component={AddGroupTagsScreen} 
+                options={{
+                    header: () => <DefaultNoBackHeader title="Add Group Tags" />
+                }}
+            />
         </Stack.Navigator>
     )
 }

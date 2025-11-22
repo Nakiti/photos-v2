@@ -13,6 +13,7 @@ export default class Gallery extends Model {
   // Define fields
   @text('name') name!: string;
   @field('owner_id') ownerId!: string;
+  @field('default_tag_id') defaultTagId!: string;
   @text('icon_url') iconUrl?: string;
   @field('type') type!: 'GROUP' | 'EVENT';
   @field('start_date') startDate?: number;
@@ -32,4 +33,5 @@ export default class Gallery extends Model {
 
   // Define relation to the owner (User)
   @relation('users', 'owner_id') owner!: any;
+  @relation('tags', 'default_tag_id') defaultTag!: any;
 }

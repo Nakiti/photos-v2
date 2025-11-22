@@ -36,6 +36,7 @@ export async function createGallery(
     deletePermission?: string;
     joinRequiresApproval?: boolean; // ⚠️ Typo: 'Aproval'
     wantsIconUpload?: boolean;
+    defaultTagId?: string;
   }
 ) {
   // --- FIX 2 (Start): Destructure ALL fields ---
@@ -85,9 +86,10 @@ export async function createGallery(
         addPermission: true,
         deletePermission: true,
         joinRequiresApproval: true,
+        defaultTagId: true,
         createdAt: true,
         updatedAt: true,
-      },
+      }
     });
 
     // 2. Create the owner's Membership record
@@ -100,38 +102,7 @@ export async function createGallery(
       },
     });
 
-    // 3. Create default "all" tag and set as gallery.defaultTagId
-    const defaultTag = await tx.tag.create({
-      data: {
-        name: 'all',
-        galleryId: gallery.id,
-      },
-      select: { id: true },
-    });
-
-    const updatedGallery = await tx.gallery.update({
-      where: { id: gallery.id },
-      data: ({ defaultTagId: defaultTag.id } as unknown) as any,
-      select: {
-        id: true,
-        name: true,
-        type: true,
-        iconUrl: true,
-        startDate: true,
-        endDate: true,
-        location: true,
-        shareableLink: true,
-        ownerId: true,
-        addPermission: true,
-        deletePermission: true,
-        joinRequiresApproval: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
-
-    // Return the updated gallery (with defaultTagId)
-    return updatedGallery;
+    return gallery
   });
 
   // --- FIX 1: Move this ENTIRE block OUTSIDE the transaction ---
@@ -178,6 +149,7 @@ export async function getMyGalleries(userId: string) {
       addPermission: true,
       deletePermission: true,
       joinRequiresApproval: true,
+      defaultTagId: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -215,6 +187,7 @@ export async function getGalleryDetails(userId: string, galleryId: string) {
       addPermission: true,
       deletePermission: true,
       joinRequiresApproval: true,
+      defaultTagId: true,
       createdAt: true,
       updatedAt: true,
       
@@ -297,6 +270,7 @@ export async function updateGallery(
       addPermission: (data as any).addPermission,
       deletePermission: (data as any).deletePermission,
       joinRequiresApproval: data.joinRequiresApproval,
+      defaultTagId: data.defaultTagId,
     } as unknown) as any,
     select: {
       id: true,
@@ -311,6 +285,7 @@ export async function updateGallery(
       addPermission: true,
       deletePermission: true,
       joinRequiresApproval: true,
+      defaultTagId: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -383,6 +358,7 @@ export async function joinGalleryByLink(userId: string, shareableLink: string) {
       addPermission: true,
       deletePermission: true,
       joinRequiresApproval: true,
+      defaultTagId: true,
       ownerId: true,
       createdAt: true,
       updatedAt: true,
@@ -518,6 +494,7 @@ export async function searchGalleries(
       addPermission: true,
       deletePermission: true,
       joinRequiresApproval: true,
+      defaultTagId: true,
       createdAt: true,
       updatedAt: true,
       _count: {
@@ -550,6 +527,7 @@ export async function searchGalleries(
     addPermission: g.addPermission,
     deletePermission: g.deletePermission,
     joinRequiresApproval: g.joinRequiresApproval,
+    defaultTagId: g.defaultTagId,
     createdAt: g.createdAt,
     updatedAt: g.updatedAt,
     memberCount: g._count.memberships,
@@ -566,3 +544,4 @@ export async function searchGalleries(
   };
 }
 
+ 

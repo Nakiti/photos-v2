@@ -56,9 +56,13 @@ export async function requestPresignedUrl(req: Request, res: Response) {
 
     const parsed = presignBodySchema.parse({ body: req.body });
     const { contentType } = parsed.body;
-    const presign = await photosService.createPresignedUpload(galleryId, contentType);
+    const presign = await photosService.createPresignedUploadUrls(galleryId, contentType, userId);
+
+    console.log("presign urls ", presign)
     return res.status(200).json(presign);
   } catch (error) {
+    console.log(error)
+
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
     }
@@ -79,10 +83,12 @@ export async function confirmPhotoUpload(req: Request, res: Response) {
     if (!access) return res.status(403).json({ message: 'Forbidden' });
 
     const parsed = confirmBodySchema.parse({ body: req.body });
-    const { s3Key, s3Url, tagIds } = parsed.body as { s3Key: string; s3Url?: string; tagIds?: string[] };
-    const photo = await photosService.confirmUploadedPhoto(userId, galleryId, s3Key, s3Url, tagIds);
+    const { s3Key, s3Url, tagIds, thumbnailKey, thumbnailUrl } = parsed.body as { s3Key: string; s3Url?: string; tagIds?: string[]; thumbnailKey: string; thumbnailUrl: string };
+    const photo = await photosService.confirmUploadedPhoto(userId, galleryId, s3Key, s3Url, tagIds, thumbnailUrl, thumbnailKey);
     return res.status(201).json(photo);
   } catch (error) {
+    console.log(error)
+
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
     }

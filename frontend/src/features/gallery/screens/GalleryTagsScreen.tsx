@@ -7,6 +7,9 @@ import { createTag as createTagApi, deleteTag as deleteTagApi, listTagsForGaller
 import { syncTags } from '../../../services/sync/tags.sync';
 import Tag from '../../../db/models/Tag';
 import { useRoute } from '@react-navigation/native';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import { useGallery } from '../../../hooks/useGalleryData';
+import { useUpdateGallery } from '../../../hooks/useGalleryData';
 
 const GalleryTagsScreen = () => {
   const route = useRoute()
@@ -15,9 +18,10 @@ const GalleryTagsScreen = () => {
   const queryClient = useQueryClient();
 
   const { tags, isLoading, isSyncing } = useGalleryTags(galleryId);
+  const { gallery } = useGallery(galleryId);
+  const updateGalleryMutation = useUpdateGallery();
 
   const [name, setName] = useState('');
-  const [color, setColor] = useState('');
 
   const canCreate = useMemo(() => name.trim().length > 0, [name]);
 
@@ -26,21 +30,6 @@ const GalleryTagsScreen = () => {
     await syncTags(database, galleryId, remote);
     queryClient.invalidateQueries({ queryKey: ['gallery-tags', galleryId] });
   };
-
-  const createMutation = useMutation({
-    mutationFn: async () => {
-      const payload: { name: string; color?: string } = { name: name.trim() };
-      if (color.trim()) {
-        payload.color = normalizeHex(color.trim());
-      }
-      await createTagApi(galleryId, payload);
-    },
-    onSuccess: async () => {
-      setName('');
-      setColor('');
-      await refreshTags();
-    },
-  });
 
   const deleteMutation = useMutation({
     mutationFn: async (tagId: string) => {
@@ -51,7 +40,25 @@ const GalleryTagsScreen = () => {
     },
   });
 
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const tagName = name.trim();
+      if (!tagName) return;
+      await createTagApi(galleryId, { name: tagName });
+    },
+    onSuccess: async () => {
+      setName('');
+      await refreshTags();
+    },
+  });
+
+  const handleCreate = () => {
+    if (!canCreate || createMutation.isPending) return;
+    createMutation.mutate();
+  };
+
   const renderItem = ({ item }: { item: Tag }) => {
+    const isDefault = gallery?.defaultTagId === item.id;
     return (
       <View style={styles.tagRow}>
         <View style={styles.tagLeft}>
@@ -59,15 +66,41 @@ const GalleryTagsScreen = () => {
             <View style={[styles.colorDot, { backgroundColor: (item as any).color }]} />
           )}
           <Text style={styles.tagName}>{item.name}</Text>
+          {isDefault && (
+            <View style={styles.defaultBadge}>
+              <Text style={styles.defaultBadgeText}>Default</Text>
+            </View>
+          )}
         </View>
-        <TouchableOpacity
-          onPress={() => deleteMutation.mutate(item.id)}
-          style={styles.deleteBtn}
-          accessibilityRole="button"
-          accessibilityLabel={`Delete tag ${item.name}`}
-        >
-          <Text style={styles.deleteText}>Delete</Text>
-        </TouchableOpacity>
+        <View style={styles.tagRight}>
+          {!isDefault && (
+            <>
+              <TouchableOpacity
+                onPress={() => updateGalleryMutation.mutate({ galleryId, data: { defaultTagId: item.id } })}
+                style={[styles.makeDefaultBtn, updateGalleryMutation.isPending && styles.btnDisabled]}
+                disabled={updateGalleryMutation.isPending}
+                accessibilityRole="button"
+                accessibilityLabel={`Make ${item.name} default`}
+              >
+                <Text style={styles.makeDefaultText}>Make default</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => deleteMutation.mutate(item.id)}
+                style={[styles.deleteBtn, updateGalleryMutation.isPending && styles.btnDisabled]}
+                disabled={updateGalleryMutation.isPending}
+                accessibilityRole="button"
+                accessibilityLabel={`Delete tag ${item.name}`}
+              >
+                <Text style={styles.deleteText}>Delete</Text>
+              </TouchableOpacity>
+            </>
+          )}
+          {isDefault && (
+            <View style={[styles.deleteBtn, styles.disabledDeleteBtn]}>
+              <Text style={[styles.deleteText, styles.disabledDeleteText]}>Delete</Text>
+            </View>
+          )}
+        </View>
       </View>
     );
   };
@@ -75,27 +108,26 @@ const GalleryTagsScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.form}>
-        <Text style={styles.label}>Create a new tag</Text>
-        <TextInput
-          placeholder="Name"
-          value={name}
-          onChangeText={setName}
-          style={styles.input}
-        />
-        <TextInput
-          placeholder="#RRGGBB (optional)"
-          value={color}
-          onChangeText={setColor}
-          autoCapitalize="none"
-          style={styles.input}
-        />
-        <TouchableOpacity
-          disabled={!canCreate || createMutation.isPending}
-          style={[styles.createBtn, (!canCreate || createMutation.isPending) && styles.btnDisabled]}
-          onPress={() => createMutation.mutate()}
-        >
-          <Text style={styles.createText}>{createMutation.isPending ? 'Creating...' : 'Create Tag'}</Text>
-        </TouchableOpacity>
+        <Text style={styles.label}>Create a tag</Text>
+        <View style={styles.inputRow}>
+          <TextInput
+            placeholder="Tag name (e.g. Hiking)"
+            value={name}
+            onChangeText={setName}
+            style={styles.inputField}
+            returnKeyType="done"
+            onSubmitEditing={handleCreate}
+          />
+          <TouchableOpacity
+            disabled={!canCreate || createMutation.isPending}
+            onPress={handleCreate}
+            style={[styles.plusBtn, (!canCreate || createMutation.isPending) && styles.btnDisabled]}
+            accessibilityRole="button"
+            accessibilityLabel="Add tag to list"
+          >
+            <Ionicons name="add" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.listHeader}>
@@ -118,12 +150,6 @@ const GalleryTagsScreen = () => {
   );
 };
 
-function normalizeHex(input: string) {
-  const v = input.startsWith('#') ? input : `#${input}`;
-  if (/^#[0-9a-fA-F]{6}$/.test(v)) return v.toUpperCase();
-  return input; // let server validation handle bad inputs
-}
-
 export default GalleryTagsScreen;
 
 const styles = StyleSheet.create({
@@ -136,33 +162,35 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 12,
   },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   label: {
     fontSize: 14,
     color: '#666',
     marginBottom: 8,
   },
-  input: {
+  inputField: {
     height: 44,
     borderWidth: 1,
     borderColor: '#e5e5e5',
     borderRadius: 8,
     paddingHorizontal: 12,
-    marginBottom: 10,
     backgroundColor: '#fafafa',
+    flex: 1,
   },
-  createBtn: {
+  btnDisabled: {
+    opacity: 0.5,
+  },
+  plusBtn: {
+    width: 44,
     height: 44,
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#111',
-  },
-  btnDisabled: {
-    opacity: 0.5,
-  },
-  createText: {
-    color: '#fff',
-    fontWeight: '600',
   },
   listHeader: {
     paddingHorizontal: 16,
@@ -208,14 +236,49 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: '#fbe9e9',
   },
+  tagRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  disabledDeleteBtn: {
+    opacity: 0.5,
+  },
   deleteText: {
     color: '#c62828',
+    fontWeight: '600',
+  },
+  disabledDeleteText: {
+    color: '#c62828',
+  },
+  makeDefaultBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#c7d8ff',
+    backgroundColor: '#eef5ff',
+  },
+  makeDefaultText: {
+    color: '#1651c5',
     fontWeight: '600',
   },
   emptyText: {
     textAlign: 'center',
     paddingVertical: 40,
     color: '#666',
+  },
+  defaultBadge: {
+    marginLeft: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: '#eef5ff',
+  },
+  defaultBadgeText: {
+    color: '#1651c5',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 

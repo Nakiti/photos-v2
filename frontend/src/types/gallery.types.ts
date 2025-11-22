@@ -8,4 +8,5 @@ export interface UpdateGalleryRequest {
     addPermission?: 'ANYONE' | 'ADMIN';
     deletePermission?: 'ADMINS_AUTHORS' | 'ADMIN';
     joinRequiresApproval?: boolean;
+    defaultTagId?: string;
 }

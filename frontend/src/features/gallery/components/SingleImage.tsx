@@ -1,5 +1,6 @@
 import { Image, Text, TouchableOpacity, View, StyleSheet } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
+import FastImage from "react-native-fast-image";
 
 type GalleryImage = any;
 
@@ -57,7 +58,7 @@ const SingleImage = ({ imageSize, images, item, index, onPress }: SingleImagePro
 
    return (
       <TouchableOpacity style={[styles.imageContainer, { width: imageSize, height: imageSize }]} onPress={handlePress}>
-         <Image source={{ uri: item.local_filepath }} style={styles.image} />
+         <FastImage source={{uri: item.thumbnailUri || item.localThumbnailUri}}/>
          {/* <Text>{item.is_uploaded}</Text> */}
          
          {/* Render the status icon */}

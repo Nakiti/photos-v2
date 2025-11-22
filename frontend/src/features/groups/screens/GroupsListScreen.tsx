@@ -63,6 +63,15 @@ const GroupsListScreen = () => {
     </View>
   ), [query]);
 
+  const ListEmptyComponent = useCallback(() => (
+    <View style={styles.emptyContainer}>
+      <Text style={styles.emptyText}>No groups yet</Text>
+      <Text style={styles.emptySubtext}>
+        Tap the + button above to create your first group.
+      </Text>
+    </View>
+  ), []);
+
   if (isLoading) {
     return (
       <View style={[styles.container, styles.center]}>
@@ -87,6 +96,7 @@ const GroupsListScreen = () => {
         renderItem={renderItem}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={ListHeaderComponent}
+        ListEmptyComponent={ListEmptyComponent}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         contentContainerStyle={styles.listContent}
       />
@@ -117,6 +127,25 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#f1f1f1',
     marginLeft: 72,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 60,
+    paddingBottom: 24,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
 

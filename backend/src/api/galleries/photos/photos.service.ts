@@ -40,7 +40,9 @@ export async function listPhotos(galleryId: string, page: number, limit: number,
       select: {
         id: true,
         s3Url: true,
+        thumbnailUrl: true,
         uploaderId: true,
+        galleryId: true,
         createdAt: true,
         photoTags: {
           select: {
@@ -68,12 +70,14 @@ export async function getPhotoIdsForGallery(galleryId: string) {
   return photos.map((p) => p.id);
 }
 
-export const generatePresignedUrl = async (galleryId: string, userId: string) => {
+export const createPresignedUploadUrls = async (galleryId: string, contentType: string, userId: string) => {
+  // 1. Check if user is an accepted member of the gallery
   const membership = await prisma.membership.findFirst({
     where: {
       galleryId,
       userId,
-      status: 'ACCEPTED', 
+      status: 'ACCEPTED', // Ensure they are an accepted member
+      // TODO: Add check for gallery.postPermission
     },
   });
 
@@ -81,93 +85,49 @@ export const generatePresignedUrl = async (galleryId: string, userId: string) =>
     throw new Error('Forbidden');
   }
 
-
-  const s3Key = `photos/${galleryId}/${uuidv4()}.jpg`;
+  // 2. Generate a single UUID for both files
+  const fileId = uuidv4();
   const expiresIn = 300; // 5 minutes
 
-  const command = new PutObjectCommand({
+  // 3. Define keys and commands for BOTH files
+  const s3KeyFull = `photos/${galleryId}/${fileId}.jpg`;
+  const s3KeyThumb = `thumbnails/${galleryId}/${fileId}.jpg`;
+
+  const commandFull = new PutObjectCommand({
     Bucket: config.aws.s3Bucket,
-    Key: s3Key,
-    ContentType: 'image/jpeg',
-  });
-
-  const presignedUrl = await getSignedUrl(s3ClientV3, command, { expiresIn });
-  const finalUrl = `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${s3Key}`;
-
-  return { presignedUrl, s3Key, finalUrl };
-};
-
-/**
- * Create a presigned upload URL for a photo (controller-level access already checked).
- */
-export async function createPresignedUpload(galleryId: string, contentType: string) {
-  const s3Key = `photos/${galleryId}/${uuidv4()}.jpg`;
-  const expiresIn = 300; // 5 minutes
-  const command = new PutObjectCommand({
-    Bucket: config.aws.s3Bucket,
-    Key: s3Key,
+    Key: s3KeyFull,
     ContentType: contentType || 'image/jpeg',
   });
-  const presignedUrl = await getSignedUrl(s3ClientV3, command, { expiresIn });
-  const finalUrl = `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${s3Key}`;
-  return { presignedUrl, s3Key, finalUrl };
-}
 
-export const confirmUpload = async (data: {
-  galleryId: string;
-  uploaderId: string;
-  s3Key: string;
-  s3Url: string;
-}) => {
-  const { galleryId, uploaderId, s3Key, s3Url } = data;
-
-  const newPhoto = await prisma.photo.create({
-    data: {
-      galleryId,
-      uploaderId,
-      s3Key,
-      s3Url,
-    },
-    include: {
-      uploader: {
-        select: { name: true, handle: true },
-      },
-      gallery: {
-        select: { name: true },
-      },
-    },
+  const commandThumb = new PutObjectCommand({
+    Bucket: config.aws.s3Bucket,
+    Key: s3KeyThumb,
+    ContentType: contentType || 'image/jpeg',
   });
 
-  const uploaderName = newPhoto.uploader?.name || newPhoto.uploader?.handle || 'A user';
-  const galleryName = newPhoto.gallery.name;
+  // 4. Get both presigned URLs in parallel
+  const [presignedUrlFull, presignedUrlThumb] = await Promise.all([
+    getSignedUrl(s3ClientV3, commandFull, { expiresIn }),
+    getSignedUrl(s3ClientV3, commandThumb, { expiresIn })
+  ]);
 
-  const socketPayload = {
-    id: newPhoto.id,
-    s3Url: newPhoto.s3Url,
-    createdAt: newPhoto.createdAt,
-    galleryId: newPhoto.galleryId,
-    uploader: newPhoto.uploader,
+  // 5. Define the final, permanent URLs
+  const finalUrlFull = `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${s3KeyFull}`;
+  const finalUrlThumb = `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${s3KeyThumb}`;
+
+  // 6. Return all data to the client
+  return {
+    full: {
+      presignedUrl: presignedUrlFull,
+      s3Key: s3KeyFull,
+      finalUrl: finalUrlFull,
+    },
+    thumb: {
+      presignedUrl: presignedUrlThumb,
+      s3Key: s3KeyThumb,
+      finalUrl: finalUrlThumb,
+    },
   };
-  socketManager.broadcastNewPhoto(galleryId, socketPayload);
-
-  // 3. Add job to queue for offline users
-  await photoNotificationQueue.add('send-notification', {
-    galleryId,
-    uploaderId,
-    photo: {
-      id: newPhoto.id,
-      uploaderName,
-      galleryName,
-    },
-  });
-
-  await thumbnailQueue.add('generate-thumbnail', {
-    photoId: newPhoto.id,
-    s3Key: newPhoto.s3Key,
-    s3Bucket: config.aws.s3Bucket,
-  });
-
-  return socketPayload; 
 };
 
 /**
@@ -179,7 +139,9 @@ export async function confirmUploadedPhoto(
   galleryId: string,
   s3Key: string,
   s3Url?: string,
-  tagIds?: string[]
+  tagIds?: string[],
+  thumbnailUrl?: string,
+  thumbnailKey?: string,
 ) {
   const resolvedS3Url =
     s3Url ??
@@ -193,6 +155,8 @@ export async function confirmUploadedPhoto(
         uploaderId,
         s3Key,
         s3Url: resolvedS3Url,
+        thumbnailUrl,
+        thumbnailKey
       },
       select: {
         id: true,
@@ -200,6 +164,8 @@ export async function confirmUploadedPhoto(
         uploaderId: true,
         s3Key: true,
         s3Url: true,
+        thumbnailUrl: true,
+        thumbnailKey: true,
         createdAt: true,
       },
     });
@@ -251,12 +217,6 @@ export async function confirmUploadedPhoto(
       uploaderName,
       galleryName,
     },
-  });
-
-  await thumbnailQueue.add('generate-thumbnail', {
-    photoId: created.id,
-    s3Key: created.s3Key,
-    s3Bucket: config.aws.s3Bucket,
   });
 
   return socketPayload;

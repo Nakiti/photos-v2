@@ -28,7 +28,7 @@ new Worker('thumbnail-generation', async job => {
       .toBuffer();
 
     // 3. Upload new thumbnail to S3
-    const thumbnailKey = s3Key.replace('photos/', 'thumbnails/');
+    const thumbnailKey = s3Key.replace('photos/', 'thumbnails/'); 
     const putCommand = new PutObjectCommand({
       Bucket: s3Bucket,
       Key: thumbnailKey,

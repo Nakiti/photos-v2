@@ -1,3 +1,4 @@
+import 'react-native-get-random-values'
 import React, { useEffect, useState } from 'react';
 import { StatusBar, StyleSheet, useColorScheme, View, ActivityIndicator } from 'react-native';
 import {
@@ -11,6 +12,7 @@ import { DatabaseProvider } from '@nozbe/watermelondb/react';
 import { database } from './src/db';
 import RootStack from './src/navigation/RootStack';
 import { useAuth } from './src/hooks/useAuth';
+import { usePhotoUploadQueue } from './src/hooks/usePhotoData';
 
 // --- CRITICAL FIX ---
 // Create the QueryClient *outside* the component so it persists.
@@ -42,6 +44,8 @@ function App() {
 function AppContent() {
   const [isLoading, setIsLoading] = useState(true);
   const { checkAuthStatus } = useAuth();
+
+  usePhotoUploadQueue()
 
   useEffect(() => {
     const initializeApp = async () => {

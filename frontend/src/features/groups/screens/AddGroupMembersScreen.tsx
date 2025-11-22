@@ -121,16 +121,20 @@ const AddGroupMembersScreen = () => {
   );
 
   const handleContinue = () => {
-    (navigation as any).navigate('Gallery', {
-      screen: 'Gallery',
-      params: { galleryId },
-    });
+    (navigation as any).navigate('AddGroupTags', { galleryId });
   };
 
   return (
     <View style={styles.container}>
       {(isLoadingFriends || isLoadingMembers) ? (
         <ActivityIndicator size="large" style={{ marginTop: 50 }} />
+      ) : friends.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>No friends available</Text>
+          <Text style={styles.emptySubtext}>
+            Add some friends first, then you can add members to this group later.
+          </Text>
+        </View>
       ) : (
         <FlatList
           data={displayList}
@@ -197,6 +201,26 @@ const styles = StyleSheet.create({
   listContentContainer: {
     paddingBottom: 120,
   },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 40,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
   statusText: {
     color: COLORS.gray,
     fontSize: 14,
@@ -232,9 +256,9 @@ const styles = StyleSheet.create({
     left: 20,
     right: 20,
     bottom: 20,
-    backgroundColor: '#007AFF',
-    paddingVertical: 14,
-    borderRadius: 12,
+    backgroundColor: '#111',
+    height: 48,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',

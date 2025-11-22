@@ -10,13 +10,13 @@ import apiClient from '../../../services/apiClient';
 
 
 type GalleryImage = {
-  local_filepath: string;
+  fullsize: string;
+  thumbnail: string;
   is_uploaded: number;
 };
 
 const GalleryScreen = () => {
   const route = useRoute()
-  console.log("params", route)
   const { galleryId } = route.params as { galleryId: string }
 
   // Tags state
@@ -43,7 +43,8 @@ const GalleryScreen = () => {
         if (!active) return;
         setFilteredImages(
           items.map(p => ({
-            local_filepath: p.s3Url,
+            fullsize: p.s3Url,
+            thumbnail: p.thumbnailUrl,
             is_uploaded: 1,
           }))
         );
@@ -60,11 +61,15 @@ const GalleryScreen = () => {
     if (selectedTagId && filteredImages) return filteredImages;
     return (photos || [])
       .map((p: any) => ({
-        local_filepath: p.s3Url || '',
+        fullsize: p.s3Url || '',
+        thumbnail: p.thumbnailUrl || '',
         is_uploaded: p.status === 'synced' ? 1 : 0,
       }))
-      .filter(img => !!img.local_filepath);
+      .filter(img => !!img.fullsize);
   }, [photos, filteredImages, selectedTagId]);
+
+
+  console.log("images ", images)
 
   const navigation = useNavigation<any>();
 
@@ -85,13 +90,33 @@ const GalleryScreen = () => {
   };
 
   const handlePressCamera = () => {
-    navigation.navigate("Camera", {galleryId})
+    navigation.navigate("Camera", {
+      screen: "Camera", 
+      params: {galleryId}
+    })
   };
 
   return (
     <View style={styles.container}>
       <GalleryHeader galleryId={galleryId} onTitlePress={handlePressHeader} onBackPress={handleBackPress} />
-      <ImagesDisplay images={images} onPressImage={handlePressImage} />
+      {images.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>No photos yet</Text>
+          <Text style={styles.emptySubtext}>
+            Upload some photos or open the camera to take new ones.
+          </Text>
+          <View style={styles.ctaRow}>
+            <TouchableOpacity style={[styles.ctaBtn, styles.ctaBtnSecondary]} onPress={handlePressUpload}>
+              <Text style={styles.ctaTextSecondary}>Upload photos</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.ctaBtn, styles.ctaBtnPrimary]} onPress={handlePressCamera}>
+              <Text style={styles.ctaTextPrimary}>Open camera</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : (
+        <ImagesDisplay images={images} onPressImage={handlePressImage} />
+      )}
       <GalleryBottomBar 
         onPressUpload={handlePressUpload} 
         onPressCamera={handlePressCamera}
@@ -125,6 +150,52 @@ const styles = StyleSheet.create({
    },
    iconButton: {
       marginHorizontal: 10,
+   },
+   emptyContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 24,
+   },
+   emptyTitle: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: '#666',
+      marginBottom: 8,
+      textAlign: 'center',
+   },
+   emptySubtext: {
+      fontSize: 14,
+      color: '#999',
+      textAlign: 'center',
+      lineHeight: 20,
+      marginBottom: 16,
+   },
+   ctaRow: {
+      flexDirection: 'row',
+      gap: 8,
+   },
+   ctaBtn: {
+      flex: 1,
+      height: 44,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 12,
+   },
+   ctaBtnPrimary: {
+      backgroundColor: '#111',
+   },
+   ctaBtnSecondary: {
+      backgroundColor: '#f4f4f4',
+   },
+   ctaTextPrimary: {
+      color: '#fff',
+      fontWeight: '600',
+   },
+   ctaTextSecondary: {
+      color: '#111',
+      fontWeight: '600',
    },
    floatingLeft: {
       position: 'absolute',

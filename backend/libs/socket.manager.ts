@@ -12,7 +12,7 @@ class SocketManager {
       },
     });
 
-    console.log('🔌 WebSocket server initialized');
+    console.log('🔌 WebSocket server initialized'); 
 
     // Add your authentication and connection logic here
     this.io.on('connection', (socket: Socket) => {

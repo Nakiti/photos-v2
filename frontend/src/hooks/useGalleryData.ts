@@ -102,7 +102,10 @@ export const useGallery = (galleryId: string | null) => {
           g ? g.photos.observe(Q.sortBy('created_at', Q.desc)) : of([])
         )
       )
-      .subscribe(setPhotos);
+      .subscribe((list) => {
+        setPhotos(list as unknown as Photo[]);
+        console.log(`[Local][Gallery ${galleryId}] observed ${(list as any).length} photos`);
+      });
 
     return () => {
       gallerySubscription.unsubscribe();
@@ -126,6 +129,7 @@ export const useGallery = (galleryId: string | null) => {
       ).fetch();
       
       const lastSyncedTimestamp = latestLocalPhoto[0]?.createdAt;
+      console.log(`[Local][Gallery ${galleryId}] lastSynced=${lastSyncedTimestamp ?? 'none'}`);
 
       // 2. Fetch all data from the server
       const [remoteDetails, newPhotos, remotePhotoIds] = await Promise.all([
@@ -133,6 +137,10 @@ export const useGallery = (galleryId: string | null) => {
         fetchPhotos(galleryId, lastSyncedTimestamp),
         fetchPhotoIdsForSync(galleryId)
       ]);
+
+      console.log(
+        `[Cloud][Gallery ${galleryId}] fetched photos=${newPhotos.length} idsForSync=${remotePhotoIds.length}`
+      );
 
       // 3. Sync gallery details
       await syncGalleryDetails(database, remoteDetails);

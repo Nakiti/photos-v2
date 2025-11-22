@@ -16,8 +16,6 @@ const GalleryHeader = ({galleryId,
 }: GalleryHeaderProps) => {
    const navigation = useNavigation()
    const {gallery, isLoading, isError, error} = useGallery(galleryId)
-
-   console.log(gallery)
    
 
    if (isLoading) {

@@ -15,6 +15,8 @@ export default class Photo extends Model {
   @text('s3_key') s3Key?: string;
   @text('s3_url') s3Url?: string;
   @text('local_uri') localUri?: string;
+  @text('local_thumbnail_uri') localThumbnailUri?: string;
+  @text('thumbnail_url') thumbnailUri?: string;
   @field('status') status!: 'queued' | 'uploading' | 'upload_failed' | 'synced';
   @readonly @date('created_at') createdAt!: number;
 

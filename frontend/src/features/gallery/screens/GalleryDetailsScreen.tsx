@@ -133,7 +133,7 @@ const GalleryDetailsScreen = () => {
                   <View style={styles.separator} />
                   <TouchableOpacity style={styles.listItem} onPress={handleTagsPress}>
                         <Text style={{ fontSize: 18, color: '#8A8A8E' }}>
-                           <Ionicons name="tags-outline" size={24} color="black"/>
+                           <Ionicons name="pricetags-outline" size={24} color="black"/>
                         </Text>
                         <Text style={styles.listText}>Tags</Text>
                         <Text style={{ fontSize: 18, color: '#C7C7CC' }}>

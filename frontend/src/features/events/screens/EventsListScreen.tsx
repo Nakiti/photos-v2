@@ -1,23 +1,18 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
+import { View, StyleSheet, FlatList, RefreshControl, Text, TouchableOpacity } from 'react-native';
 import EventsListHeader from '../components/EventsListHeader';
 import SearchBar from '../../../components/SearchBar';
 import EventListItem from '../components/EventListItem';
-import JoinEventButton from '../components/JoinEventButton';
-import ArchiveEventButton from '../components/ArchiveEventButton';
 
 
 type Event = { id: string; title: string; lastUploadedBy: string; unseenCount: number; lastUpdated: string; icon: string };
 
-const DUMMY_EVENTS: Event[] = [
-  { id: '1', title: 'Family', lastUploadedBy: 'Alice', unseenCount: 5, lastUpdated: '2025-01-01', icon: 'https://www.shutterstock.com/image-vector/premium-picture-icon-logo-line-260nw-749843887.jpg' },
-  { id: '2', title: 'Friends', lastUploadedBy: 'Bob', unseenCount: 0, lastUpdated: '2025-01-01', icon: 'https://www.shutterstock.com/image-vector/premium-picture-icon-logo-line-260nw-749843887.jpg' },
-  { id: '3', title: 'Work', lastUploadedBy: 'Clara', unseenCount: 2, lastUpdated: '2025-01-01', icon: 'https://www.shutterstock.com/image-vector/premium-picture-icon-logo-line-260nw-749843887.jpg' },
-];
+const DUMMY_EVENTS: Event[] = [];
 
 const EventsListScreen = () => {
   const [query, setQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [tab, setTab] = useState<'ACTIVE' | 'ARCHIVED'>('ACTIVE');
 
   const filteredEvents = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -26,6 +21,11 @@ const EventsListScreen = () => {
       e.title.toLowerCase().includes(q) || e.lastUploadedBy.toLowerCase().includes(q)
     );
   }, [query]);
+
+  const displayEvents = useMemo(() => {
+    // Presentational: using same dummy list for both tabs
+    return tab === 'ACTIVE' ? filteredEvents : filteredEvents;
+  }, [filteredEvents, tab]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -51,22 +51,50 @@ const EventsListScreen = () => {
   const ListHeaderComponent = useCallback(() => (
     <View>
       <EventsListHeader />
-      <View style={styles.actionRow}>
-        <JoinEventButton style={styles.actionButtonLeft} />
-        <ArchiveEventButton style={styles.actionButtonRight} />
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity
+          onPress={() => setTab('ACTIVE')}
+          style={[styles.tabButton, tab === 'ACTIVE' && styles.tabButtonActive]}
+          accessibilityRole="button"
+          accessibilityLabel="Show active events"
+        >
+          <Text style={[styles.tabText, tab === 'ACTIVE' && styles.tabTextActive]}>Active</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setTab('ARCHIVED')}
+          style={[styles.tabButton, tab === 'ARCHIVED' && styles.tabButtonActive]}
+          accessibilityRole="button"
+          accessibilityLabel="Show archived events"
+        >
+          <Text style={[styles.tabText, tab === 'ARCHIVED' && styles.tabTextActive]}>Archived</Text>
+        </TouchableOpacity>
       </View>
-      <SearchBar onSearch={setQuery} placeholder="Search events" />
+      <SearchBar value={query} onChangeText={setQuery} placeholder="Search events" />
     </View>
-  ), [query]);
+  ), [query, tab]);
+
+  const ListEmptyComponent = useCallback(() => (
+    <View style={styles.emptyContainer}>
+      <Text style={styles.emptyText}>
+        {tab === 'ACTIVE' ? 'No active events yet' : 'No archived events'}
+      </Text>
+      {tab === 'ACTIVE' && (
+        <Text style={styles.emptySubtext}>
+          Join an event with the QR button above or create a new one.
+        </Text>
+      )}
+    </View>
+  ), [tab]);
 
   return (
     <View style={styles.container}>
       <FlatList
-        data={filteredEvents}
+        data={displayEvents}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={ListHeaderComponent}
+        ListEmptyComponent={ListEmptyComponent}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         contentContainerStyle={styles.listContent}
       />
@@ -88,18 +116,49 @@ const styles = StyleSheet.create({
     backgroundColor: '#f1f1f1',
     marginLeft: 72,
   },
-  actionRow: {
+  tabsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
     marginBottom: 12,
+    gap: 8,
   },
-  actionButtonLeft: {
+  tabButton: {
     flex: 1,
-    marginRight: 8,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f5f5f5',
   },
-  actionButtonRight: {
-    flex: 1,
+  tabButtonActive: {
+    backgroundColor: '#111',
+  },
+  tabText: {
+    color: '#333',
+    fontWeight: '600',
+  },
+  tabTextActive: {
+    color: '#fff',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 40,
+    paddingBottom: 12,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
 

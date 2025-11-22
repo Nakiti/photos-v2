@@ -13,59 +13,117 @@ import { TagApi } from "../api/tags.service";
  * @param remotePhotos - Array of photo objects from the API
  * @param syncMode - 'merge' (create/update)
  */
- export const syncTags = async (
+ export const syncPhotos = async (
     database: Database,
-    galleryId: string,
-    remoteTags: TagApi[]
+    remotePhotos: PhotoApi[] // Assumes PhotoApi type has `photoTags: { id: string, tagId: string }[]`
   ) => {
-    const tagsCollection = database.collections.get<Tag>('tags');
-  
-    // 1. Fetch all local tags for this gallery ONCE
-    const localTags = await tagsCollection.query(Q.where('gallery_id', galleryId)).fetch();
-    const localTagMap = new Map(localTags.map(t => [t.id, t]));
-    const remoteTagIdSet = new Set(remoteTags.map(t => t.id));
-  
+    const photosCollection = database.collections.get<Photo>('photos');
+    const photoTagsCollection = database.collections.get<PhotoTag>('photo_tags');
     const operations: any[] = [];
+    let createCount = 0;
+    let updateCount = 0;
+    let tagsAdded = 0;
+    let tagsRemoved = 0;
   
-    // 2. Loop and find create/update operations
-    for (const remoteTag of remoteTags) {
-      const local = localTagMap.get(remoteTag.id);
+    console.log(`[Sync][Photos] start, remote count=${remotePhotos.length}`);
+  
+    // --- 1. Batch-fetch all local data first (No N+1 queries) ---
+    const photoIds = remotePhotos.map(p => p.id);
+    const localPhotos = await photosCollection.query(Q.where('id', Q.oneOf(photoIds))).fetch();
+    const localPhotoTags = await photoTagsCollection.query(Q.where('photo_id', Q.oneOf(photoIds))).fetch();
+  
+    // Create Maps for fast lookup
+    const localPhotoMap = new Map(localPhotos.map(p => [p.id, p]));
+    const localPhotoTagMap = new Map<string, Set<string>>(); // e.g., { 'photo-123': Set('tag-abc', 'tag-def') }
+
+    for (const pt of localPhotoTags) {
+      if (!localPhotoTagMap.has(pt.photoId)) {
+        localPhotoTagMap.set(pt.photoId, new Set());
+      }
+      localPhotoTagMap.get(pt.photoId)!.add(pt.tagId);
+    }
+  
+    // --- 2. Process all remote photos ---
+    for (const remotePhoto of remotePhotos) {
+      const local = localPhotoMap.get(remotePhoto.id);
+  
+      // A) Prepare Photo Upsert
       if (local) {
-        // It exists, check for update
-        if (local.name !== remoteTag.name || local.color !== remoteTag.color) {
+        // Update if any relevant field changed
+        const needsUpdate =
+          local.s3Url !== remotePhoto.s3Url ||
+          local.s3Key !== remotePhoto.s3Key ||
+          local.thumbnailUri !== (remotePhoto as any).thumbnailUrl;
+        if (needsUpdate) {
           operations.push(
             local.prepareUpdate(record => {
-              record.name = remoteTag.name;
-              record.color = remoteTag.color;
+              record.s3Url = remotePhoto.s3Url;
+              record.s3Key = remotePhoto.s3Key;
+              // Map API field 'thumbnailUrl' to local column 'thumbnail_uri'
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              record.thumbnailUri = (remotePhoto as any).thumbnailUrl;
             })
           );
+          updateCount += 1;
         }
       } else {
-        // It doesn't exist, create it
+        // Create
         operations.push(
-          tagsCollection.prepareCreate(record => {
-            record._raw.id = remoteTag.id;
-            record.name = remoteTag.name;
-            record.color = remoteTag.color;
-            record.galleryId = galleryId;
+          photosCollection.prepareCreate(record => {
+            record._raw.id = remotePhoto.id;
+            record.galleryId = remotePhoto.galleryId;
+            record.uploaderId = remotePhoto.uploaderId;
+            record.s3Key = remotePhoto.s3Key;
+            record.s3Url = remotePhoto.s3Url; 
+            // Map API field 'thumbnailUrl' to local column 'thumbnail_uri'
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            record.thumbnailUri = (remotePhoto as any).thumbnailUrl;
+            record.status = 'synced';
+            // WatermelonDB _raw typing doesn't include custom columns; cast to any
+            (record as any)._raw.created_at = new Date(remotePhoto.createdAt).getTime();
           })
         );
+        createCount += 1;
+      }
+  
+      // B) Reconcile PhotoTags for this photo
+      const remotePhotoTags = (((remotePhoto as any).photoTags || []) as { tagId: string }[]);
+      const remoteTagIdSet = new Set(remotePhotoTags.map((pt: { tagId: string }) => pt.tagId));
+      const localTagIdSet = localPhotoTagMap.get(remotePhoto.id) || new Set();
+  
+      // Find tags to add
+      for (const remoteTagId of remoteTagIdSet) {
+        if (!localTagIdSet.has(remoteTagId)) {
+          operations.push(
+            photoTagsCollection.prepareCreate(record => {
+              record.photoId = remotePhoto.id;
+              record.tagId = remoteTagId;
+            })
+          );
+          tagsAdded += 1;
+        }
+      }
+  
+      // Find tags to delete
+      // We must find the specific join table record to delete it
+      for (const localTag of localPhotoTags.filter(pt => pt.photoId === remotePhoto.id)) {
+        if (!remoteTagIdSet.has(localTag.tagId)) {
+          operations.push(localTag.prepareDestroyPermanently());
+          tagsRemoved += 1;
+        }
       }
     }
   
-    // 3. Find delete operations
-    for (const localTag of localTags) {
-      if (!remoteTagIdSet.has(localTag.id)) {
-        operations.push(localTag.prepareDestroyPermanently());
-      }
-    }
-  
-    // 4. Batch write
+    // --- 3. Execute all operations in a single batch ---
     if (operations.length > 0) {
       await database.write(async () => {
         await database.batch(...operations);
       });
-      console.log(`✅ Synced ${operations.length} tag operations for gallery ${galleryId}.`);
+      console.log(
+        `✅ [Sync][Photos] batch complete ops=${operations.length} (created=${createCount}, updated=${updateCount}, tags+${tagsAdded}, tags-${tagsRemoved})`
+      );
+    } else {
+      console.log('👍 [Sync][Photos] up to date (no changes)');
     }
   };
 
@@ -82,7 +140,8 @@ export const reconcileDeletedPhotos = async (
   ) => {
     const photosCollection = database.collections.get<Photo>('photos');
     const localPhotos = await photosCollection.query(
-      Q.where('gallery_id', galleryId)
+      Q.where('gallery_id', galleryId),
+      Q.where('status', 'synced')
     ).fetch();
     
     const remoteIdSet = new Set(remotePhotoIds);
@@ -115,10 +174,16 @@ export const updateOptimisticPhoto = async (
     finalPhoto: PhotoApi
   ) => {
     const photosCollection = database.collections.get<Photo>('photos');
+    const photoTagsCollection = database.collections.get<PhotoTag>('photo_tags');
     
     await database.write(async () => {
       try {
         const tempRecord = await photosCollection.find(temporaryId);
+        console.log(`[Sync][Optimistic] replace temp -> final (temp=${temporaryId} final=${finalPhoto.id})`);
+        // Find all optimistic photo_tag rows pointing to the temporary photo id
+        const tempPhotoTags = await photoTagsCollection
+          .query(Q.where('photo_id', temporaryId))
+          .fetch();
         
         // We must re-create the record with the permanent ID,
         // as WatermelonDB IDs are immutable.
@@ -128,14 +193,26 @@ export const updateOptimisticPhoto = async (
           record.uploaderId = finalPhoto.uploaderId;
           record.s3Key = finalPhoto.s3Key;
           record.s3Url = finalPhoto.s3Url;
+          record.thumbnailUri = (finalPhoto as any).thumbnailUrl;
           record.status = 'synced';
-          record.createdAt = new Date(finalPhoto.createdAt).getTime();
-          // local_uri is no longer needed
+        //   record.createdAt = new Date(finalPhoto.createdAt).getTime(); // i think i need to change it so that created_at is no longer
+
         });
         
         const deleteOp = tempRecord.prepareDestroyPermanently();
-        
-        await database.batch(newRecord, deleteOp);
+
+        // Re-point existing optimistic photo_tags from temp id to the final id
+        const tagUpdates = tempPhotoTags.map(pt =>
+          pt.prepareUpdate(r => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (r as any)._raw.photo_id = finalPhoto.id;
+          })
+        );
+
+        await database.batch(newRecord, ...tagUpdates, deleteOp);
+        console.log(
+          `[Sync][Optimistic] completed replace (final=${finalPhoto.id}) tagUpdates=${tagUpdates.length}`
+        );
       } catch (error) {
         console.error('Error updating optimistic photo:', error);
       }

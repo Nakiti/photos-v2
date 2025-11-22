@@ -22,7 +22,9 @@
     "react-native": "0.81.4",
     "react-native-fast-image": "^8.6.3",
     "react-native-gesture-handler": "^2.28.0",
+    "react-native-get-random-values": "^2.0.0",
     "react-native-image-picker": "^8.2.1",
+    "react-native-image-resizer": "^1.4.5",
     "react-native-keychain": "^10.0.0",
     "react-native-linear-gradient": "^2.8.3",
     "react-native-pager-view": "^6.9.1",
@@ -33,6 +35,8 @@
     "react-native-vector-icons": "^10.2.0",
     "react-native-vision-camera": "^4.7.2",
     "react-native-worklets": "^0.6.0",
+    "socket.io-client": "^4.8.1",
+    "uuid": "^13.0.0",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
@@ -50,6 +54,7 @@
     "@types/jest": "^29.5.13",
     "@types/react": "^19.1.14",
     "@types/react-test-renderer": "^19.1.0",
+    "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.44.1",
     "@typescript-eslint/parser": "^8.44.1",
     "eslint": "^8.57.1",

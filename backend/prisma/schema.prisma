@@ -107,7 +107,8 @@ model Photo {
   uploaderId  String
   s3Key       String   @unique
   s3Url       String
-  thumbnailUrl String
+  thumbnailUrl String?
+  thumbnailKey String?
   createdAt   DateTime @default(now())
 
   gallery  Gallery    @relation(fields: [galleryId], references: [id], onDelete: Cascade) // Cascade delete if gallery is deleted

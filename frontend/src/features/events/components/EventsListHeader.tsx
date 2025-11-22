@@ -8,9 +8,24 @@ const EventsHeader = ({}) => {
    return (
       <View style={styles.header}>
          <Text style={styles.title}>Events</Text>
-         <TouchableOpacity style={styles.addButton} onPress={() => navigation.navigate("CreateEventDetails")}>
-            <Ionicons name="add" size={20} color="black" />
-         </TouchableOpacity>    
+         <View style={styles.actionsRow}>
+            <TouchableOpacity
+               style={[styles.actionButton, styles.joinButton]}
+               onPress={() => (navigation as any).navigate("JoinEvent")}
+               accessibilityRole="button"
+               accessibilityLabel="Join event with QR"
+            >
+               <Ionicons name="qr-code" size={20} color="black" />
+            </TouchableOpacity>
+            <TouchableOpacity
+               style={[styles.actionButton, styles.addButton]}
+               onPress={() => (navigation as any).navigate("CreateEventDetails")}
+               accessibilityRole="button"
+               accessibilityLabel="Create event"
+            >
+               <Ionicons name="add" size={20} color="black" />
+            </TouchableOpacity>
+         </View>    
       </View>
    );
 };
@@ -34,7 +49,12 @@ const styles = StyleSheet.create({
       fontWeight: "600",
       color: "#111",
    },
-   addButton: {
+   actionsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+   },
+   actionButton: {
       backgroundColor: "#f4f4f4",
       borderRadius: 8,
       padding: 4,
@@ -43,6 +63,10 @@ const styles = StyleSheet.create({
       shadowOpacity: 0.05,
       shadowRadius: 2,
       elevation: 1,
+   },
+   addButton: {},
+   joinButton: {
+      marginRight: 8,
    },
 });
 
