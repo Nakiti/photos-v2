@@ -11,7 +11,7 @@ type ImagesDisplayProps = {
 };
 
 const ImagesDisplay = ({ images, onPressImage }: ImagesDisplayProps) => {
-   const { width } = useWindowDimensions();
+   const { width, height } = useWindowDimensions();
    const numColumns = 5;
    const gap = 2;
    const imageSize = (width - gap * (numColumns - 1)) / numColumns;
@@ -31,6 +31,15 @@ const ImagesDisplay = ({ images, onPressImage }: ImagesDisplayProps) => {
 
    const rows = chunkArray(reversedImages, numColumns);
 
+   // Determine if content fills the screen height. If not, start below header.
+   // Keep this in sync with GalleryHeader gradient height.
+   const HEADER_OVERLAY_HEIGHT = 120;
+   const rowsCount = rows.length;
+   const totalContentHeight = rowsCount > 0
+      ? rowsCount * imageSize + Math.max(0, rowsCount - 1) * gap
+      : 0;
+   const needsPaddingBelowHeader = totalContentHeight < height;
+
    // Step 3: Flat version for index lookup
    const getIndex = (rowIndex: number, colIndex: number) => rowIndex * numColumns + colIndex;
 
@@ -42,7 +51,11 @@ const ImagesDisplay = ({ images, onPressImage }: ImagesDisplayProps) => {
    }, [images]);
 
    return (
-      <ScrollView style={styles.container} ref={scrollViewRef}>
+      <ScrollView
+         style={styles.container}
+         ref={scrollViewRef}
+         contentContainerStyle={{ paddingTop: needsPaddingBelowHeader ? HEADER_OVERLAY_HEIGHT : 0 }}
+      >
          {rows.map((row: GalleryImage[], rowIndex: number) => (
             <View key={rowIndex} style={[styles.imageRow, { gap }]}>
                {row.map((item: GalleryImage, colIndex: number) => (

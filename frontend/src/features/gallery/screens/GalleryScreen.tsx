@@ -62,7 +62,7 @@ const GalleryScreen = () => {
     return (photos || [])
       .map((p: any) => ({
         fullsize: p.s3Url || '',
-        thumbnail: p.thumbnailUrl || '',
+        thumbnail: p.thumbnailUrl || p.thumbnailUri || '',
         is_uploaded: p.status === 'synced' ? 1 : 0,
       }))
       .filter(img => !!img.fullsize);

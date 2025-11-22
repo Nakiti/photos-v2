@@ -58,8 +58,15 @@ const SingleImage = ({ imageSize, images, item, index, onPress }: SingleImagePro
 
    return (
       <TouchableOpacity style={[styles.imageContainer, { width: imageSize, height: imageSize }]} onPress={handlePress}>
-         <FastImage source={{uri: item.thumbnailUri || item.localThumbnailUri}}/>
-         {/* <Text>{item.is_uploaded}</Text> */}
+         <FastImage 
+            style={styles.image} 
+            source={{
+               uri: item.thumbnail,
+               priority: FastImage.priority.normal
+            }}
+            resizeMode={FastImage.resizeMode.cover}
+         />
+         {/* <Text>{item.thumbnail}</Text> */}
          
          {/* Render the status icon */}
          {renderUploadStatusIcon()}
@@ -79,10 +86,10 @@ const styles = StyleSheet.create({
       overflow: 'hidden',
    },
    image: {
-      flex: 1,
+      flex: 1, 
       width: '100%',
       height: '100%',
-      resizeMode: 'cover',
+      resizeMode: 'cover', 
    },
    iconOverlay: {
       position: "absolute",

@@ -19,6 +19,8 @@ export async function getPhotosForGallery(req: Request, res: Response) {
     const parsed = getPhotosQuerySchema.parse({ query: req.query });
     const { page, limit, tagId } = parsed.query as { page: number; limit: number; tagId?: string };
     const result = await photosService.listPhotos(galleryId, page, limit, tagId);
+
+    console.log("photos result ", result)
     return res.status(200).json(result);
   } catch (error) {
     if (error instanceof z.ZodError) {
