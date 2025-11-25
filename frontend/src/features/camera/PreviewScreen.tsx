@@ -11,7 +11,7 @@ import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator, Ale
 const PreviewScreen = () => {
     const navigation = useNavigation()
     const route = useRoute()
-    const { photoUri, galleryId } = route.params as { photoUri: string; galleryId: string };
+    const { photoUri, galleryId, photoId } = route.params as { photoUri: string; galleryId: string, photoId: string };
 
     const { mutate: createOptimisticPhoto, isPending } = useCreateOptimisticPhoto()
     const { tags, isLoading: tagsLoading } = useGalleryTags(galleryId)

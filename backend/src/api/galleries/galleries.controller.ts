@@ -2,6 +2,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as galleriesService from './galleries.service.js';
+import * as communitiesService from '../communities/communities.service.js';
 import {
   createGallerySchema,
   updateGallerySchema,
@@ -26,6 +27,13 @@ export async function createGallery(req: Request, res: Response) {
     // 1. Validate the request body
     const parsed = createGallerySchema.parse({ body: req.body });
     const galleryData = parsed.body as CreateGalleryDto;
+
+    if (galleryData.communityId) {
+      const community = await communitiesService.getCommunityDetails(ownerId, galleryData.communityId);
+      if (!community) {
+        return res.status(404).json({ message: 'Community not found or inaccessible' });
+      }
+    }
 
     // 2. Call the service with the full data object
     //    This now correctly passes 'wantsIconUpload' and permission fields.
@@ -150,6 +158,24 @@ export async function reconcileGalleryPhotos(req: Request, res: Response) {
   if (!access) return res.status(403).json({ message: 'Forbidden' });
   const photoIds = await galleriesService.getPhotoIdsForGallery(galleryId);
   return res.status(200).json({ photoIds });
+}
+
+/**
+ * GET /api/v1/galleries/community/:communityId
+ * List galleries that belong to a specific community (accessible to members).
+ */
+export async function getGalleriesByCommunity(req: Request, res: Response) {
+  const userId = (req as any).user?.id as string | undefined;
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+  const { communityId } = req.params as { communityId: string };
+
+  const community = await communitiesService.getCommunityDetails(userId, communityId);
+  if (!community) {
+    return res.status(404).json({ message: 'Community not found' });
+  }
+
+  const galleries = await galleriesService.getGalleriesByCommunityId(communityId);
+  return res.status(200).json(galleries);
 }
 
 

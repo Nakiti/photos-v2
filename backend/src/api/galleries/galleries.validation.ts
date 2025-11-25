@@ -10,6 +10,7 @@ export const createGallerySchema = z.object({
     startDate: z.string().datetime().optional(),
     endDate: z.string().datetime().optional(),
     location: z.string().optional(),
+    communityId: z.string().uuid('Invalid community id').optional(),
   }),
 });
 

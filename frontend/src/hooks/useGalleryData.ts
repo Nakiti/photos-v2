@@ -25,7 +25,10 @@ import { CreateGalleryRequest } from '../services/api/gallery.service';
  * @param type - The type of galleries to fetch ('GROUP' or 'EVENT').
  * @param searchQuery - Optional search term to filter galleries by name (case-insensitive partial match).
  */
-export const useGalleries = (type: 'GROUP' | 'EVENT', searchQuery?: string) => {
+export const useGalleries = (
+  type?: 'GROUP' | 'EVENT',
+  searchQuery?: string
+) => {
   const database = useDatabase();
   const [galleries, setGalleries] = useState<Gallery[]>([]);
 
@@ -35,7 +38,10 @@ export const useGalleries = (type: 'GROUP' | 'EVENT', searchQuery?: string) => {
     const galleriesCollection = database.collections.get<Gallery>('galleries');
     
     // Build query conditions
-    const conditions = [Q.where('type', type)];
+    const conditions: any[] = [];
+    if (type) {
+      conditions.push(Q.where('type', type));
+    }
     
     // Add search filter if searchQuery is provided
     if (searchQuery && searchQuery.trim() !== '') {
@@ -52,7 +58,7 @@ export const useGalleries = (type: 'GROUP' | 'EVENT', searchQuery?: string) => {
 
   // 2. FETCH & SYNC REMOTE DATA:
   const { isLoading, isError, error, isFetching } = useQuery({
-    queryKey: ['galleries', type], // A unique key for this query
+    queryKey: ['galleries', type], // If type is undefined, works for all
     queryFn: async () => {
       const remoteGalleries = await fetchMyGalleries();
       await syncGalleries(database, remoteGalleries);
@@ -79,10 +85,11 @@ export const useGalleries = (type: 'GROUP' | 'EVENT', searchQuery?: string) => {
  *
  * @param galleryId The ID of the gallery to fetch.
  */
-export const useGallery = (galleryId: string | null) => {
+export const useGallery = (galleryId: string | null, options?: { tagId?: string | null }) => {
   const database = useDatabase();
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
+  const selectedTagId = options?.tagId ?? null;
 
   useEffect(() => {
     if (!galleryId) {
@@ -96,22 +103,28 @@ export const useGallery = (galleryId: string | null) => {
 
     const gallerySubscription = galleryObservable.subscribe(setGallery);
 
-    const photosSubscription = galleryObservable
-      .pipe(
-        switchMap(g =>
-          g ? g.photos.observe(Q.sortBy('created_at', Q.desc)) : of([])
-        )
-      )
-      .subscribe((list) => {
-        setPhotos(list as unknown as Photo[]);
-        console.log(`[Local][Gallery ${galleryId}] observed ${(list as any).length} photos`);
-      });
+    // Observe photos for this gallery, optionally filtered by tag (local-first)
+    const photosCollection = database.collections.get<Photo>('photos');
+    const conditions = [Q.where('gallery_id', galleryId)] as any[];
+    if (selectedTagId) {
+      conditions.push(Q.on('photo_tags', 'tag_id', selectedTagId));
+    }
+    const photosQuery = photosCollection.query(
+      ...conditions,
+      Q.sortBy('created_at', Q.desc)
+    );
+    const photosSubscription = photosQuery.observe().subscribe((list) => {
+      setPhotos(list as unknown as Photo[]);
+      console.log(
+        `[Local][Gallery ${galleryId}] observed ${(list as any).length} photos (tag=${selectedTagId ?? 'all'})`
+      );
+    });
 
     return () => {
       gallerySubscription.unsubscribe();
       photosSubscription.unsubscribe();
     };
-  }, [database, galleryId]);
+  }, [database, galleryId, selectedTagId]);
 
 
   // 2. FETCH & SYNC REMOTE DATA ("Inbox" and "Deletion" Sync)
@@ -186,15 +199,17 @@ export const useCreateGallery = () => {
       }
 
       // --- Flow 2: Icon is selected ---
-      const { gallery, uploadInfo } = await createGallery({
+      const result = await createGallery({
         ...galleryData,
         wantsIconUpload: true, 
       });
 
-      if (!uploadInfo) {
+      if (!('uploadInfo' in result)) {
         // This should never happen if wantsIconUpload is true
         throw new Error('Server did not return upload info.');
       }
+
+      const { gallery, uploadInfo } = result;
 
       // 2. Get the image blob from the device
       const imageFetchResponse = await fetch(imageUri);

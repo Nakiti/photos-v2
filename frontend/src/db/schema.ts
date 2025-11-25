@@ -1,8 +1,8 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const mySchema = appSchema({
-  // Ensure version matches the latest changes (added tags/friendships)
-  version: 9,
+  // Ensure version matches the latest changes (added community_name to galleries)
+  version: 13,
   tables: [
     tableSchema({
       name: 'users',
@@ -21,6 +21,8 @@ export const mySchema = appSchema({
         { name: 'name', type: 'string' },
         { name: 'default_tag_id', type: 'string'},
         { name: 'owner_id', type: 'string', isIndexed: true },
+        { name: 'community_id', type: 'string', isOptional: true, isIndexed: true },
+        { name: 'community_name', type: 'string', isOptional: true },
         { name: 'icon_url', type: 'string', isOptional: true },
         { name: 'type', type: 'string' }, // 'GROUP' or 'EVENT'
         { name: 'start_date', type: 'number', isOptional: true },
@@ -83,6 +85,26 @@ export const mySchema = appSchema({
       columns: [
         { name: 'photo_id', type: 'string', isIndexed: true },
         { name: 'tag_id', type: 'string', isIndexed: true },
+      ],
+    }),
+    tableSchema({
+      name: 'communities',
+      columns: [
+        { name: 'name', type: 'string' },
+        { name: 'description', type: 'string', isOptional: true },
+        { name: 'icon_url', type: 'string', isOptional: true },
+        { name: 'owner_id', type: 'string', isIndexed: true },
+        { name: 'created_at', type: 'number' },
+        { name: 'updated_at', type: 'number' },
+      ],
+    }),
+    tableSchema({
+      name: 'community_memberships',
+      columns: [
+        { name: 'user_id', type: 'string', isIndexed: true },
+        { name: 'community_id', type: 'string', isIndexed: true },
+        { name: 'role', type: 'string' },
+        { name: 'joined_at', type: 'number' },
       ],
     }),
   ],

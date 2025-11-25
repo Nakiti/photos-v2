@@ -3,6 +3,7 @@ import GroupsListScreen from "../features/groups/screens/GroupsListScreen";
 import CreateGroupDetailsScreen from "../features/groups/screens/CreateGroupDetailsScreen";
 import AddGroupMembersScreen from "../features/groups/screens/AddGroupMembersScreen";
 import AddGroupTagsScreen from "../features/groups/screens/AddGroupTagsScreen";
+import CreateGalleryChoiceScreen from "../features/groups/screens/CreateGalleryChoiceScreen";
 import DefaultHeader from "../components/DefaultHeader";
 import DefaultNoBackHeader from "../components/DefaultNoBackHeader";
 
@@ -29,6 +30,13 @@ const GroupsStack = () => {
                 component={GroupsListScreen} 
                 options={{ 
                     headerShown: false
+                }}
+            />
+            <Stack.Screen 
+                name="CreateGalleryChoice" 
+                component={CreateGalleryChoiceScreen} 
+                options={{
+                    header: () => <DefaultHeader title="Create" />
                 }}
             />
             <Stack.Screen 

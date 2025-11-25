@@ -15,7 +15,7 @@ const MembersListHeader = ({galleryId}: {galleryId: string}) => {
                 <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
                     <Ionicons name="chevron-back" size={24}  />
                 </TouchableOpacity>
-                <Text style={styles.title}>Add Members</Text>
+                <Text style={styles.title}>Members</Text>
             </View>
             <TouchableOpacity style={styles.addButton} onPress={() => navigation.navigate("AddGalleryMembers", {galleryId})}>
                 <Ionicons name="add" size={20} color="black" />

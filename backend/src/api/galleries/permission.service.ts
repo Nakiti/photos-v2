@@ -17,7 +17,7 @@ const prisma = new PrismaClient();
 function hasPermission(
     userRole: UserRole, 
     requiredPermission: PermissionLevel
-  ): boolean {
+  ): boolean { 
     const userLevel = roleLevels[userRole] ?? 0;
     const requiredLevel = roleLevels[requiredPermission] ?? 0;
   

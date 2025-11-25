@@ -206,3 +206,21 @@ export const uploadNewGalleryIcon = async (
   console.log('6. Gallery icon upload complete.');
   return updatedGallery;
 }
+
+/**
+ * Get all galleries that belong to a specific community.
+ *
+ * @param communityId The community id
+ * @returns Promise resolving to an array of galleries in the community
+ */
+export const getGalleriesByCommunityId = async (
+  communityId: string
+): Promise<GalleryApiResponse[]> => {
+  try {
+    const response = await apiClient.get(`/api/v1/galleries/community/${communityId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Failed to fetch galleries by community:', error);
+    return [];
+  }
+};

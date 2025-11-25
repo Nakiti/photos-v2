@@ -19,7 +19,7 @@ const EventsHeader = ({}) => {
             </TouchableOpacity>
             <TouchableOpacity
                style={[styles.actionButton, styles.addButton]}
-               onPress={() => (navigation as any).navigate("CreateEventDetails")}
+               onPress={() => (navigation as any).navigate("ShareEvent")}
                accessibilityRole="button"
                accessibilityLabel="Create event"
             >

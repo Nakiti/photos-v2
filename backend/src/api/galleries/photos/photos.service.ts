@@ -2,11 +2,12 @@ import { PrismaClient } from '@prisma/client';
 import AWS from 'aws-sdk';
 import config from '../../../../config/config.js';
 import { socketManager } from '../../../../libs/socket.manager.js';
-import { photoNotificationQueue } from '../../../../libs/photoNotification.queue.js';
+import { photoQueue } from '../../../../libs/queue.js';
 import {v4 as uuidv4} from "uuid"
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { thumbnailQueue } from '../../../../libs/thumbnail.queue.js';
+import { smartThrottleNewPhoto } from '../../notifications/notifications.service.js';
 
 const prisma = new PrismaClient();
 
@@ -201,6 +202,7 @@ export async function confirmUploadedPhoto(
   const socketPayload = {
     id: created.id,
     s3Url: created.s3Url,
+    thumbnailUrl: created.thumbnailUrl,
     createdAt: created.createdAt,
     galleryId: created.galleryId,
     uploader: uploader,
@@ -209,17 +211,15 @@ export async function confirmUploadedPhoto(
 
   const uploaderName = (uploader?.name || uploader?.handle || 'A user') as string;
   const galleryName = (gallery?.name || '') as string;
-  await photoNotificationQueue.add('send-notification', {
+  await smartThrottleNewPhoto(
     galleryId,
     uploaderId,
-    photo: {
-      id: created.id,
-      uploaderName,
-      galleryName,
-    },
-  });
+    uploaderName,
+    galleryName,
+    created.id
+  );
 
-  return socketPayload;
+  return created; // includes s3Key and thumbnailUrl
 }
 
 export async function deletePhoto(requesterId: string, galleryId: string, photoId: string) {

@@ -37,6 +37,7 @@ export async function createGallery(
     joinRequiresApproval?: boolean; // ⚠️ Typo: 'Aproval'
     wantsIconUpload?: boolean;
     defaultTagId?: string;
+    communityId?: string;
   }
 ) {
   // --- FIX 2 (Start): Destructure ALL fields ---
@@ -51,6 +52,7 @@ export async function createGallery(
     addPermission,
     deletePermission,
     joinRequiresApproval, // ⚠️ Typo: 'Aproval'
+    communityId,
   } = data;
   
   const shareableLink = type === 'EVENT' ? randomUUID() : null;
@@ -68,6 +70,7 @@ export async function createGallery(
         location: location ?? null,
         ownerId,
         shareableLink,
+        communityId: communityId ?? null,
 
         addPermission: (addPermission as any) ?? undefined,
         deletePermission: (deletePermission as any) ?? undefined,
@@ -83,12 +86,18 @@ export async function createGallery(
         location: true,
         shareableLink: true,
         ownerId: true,
+        communityId: true,
         addPermission: true,
         deletePermission: true,
         joinRequiresApproval: true,
         defaultTagId: true,
         createdAt: true,
         updatedAt: true,
+        community: {
+          select: {
+            name: true,
+          },
+        },
       }
     });
 
@@ -114,13 +123,23 @@ export async function createGallery(
 
     // Return both the gallery and the upload info
     return {
-      gallery: newGallery,
+      gallery: {
+        ...newGallery,
+        communityName: newGallery.community?.name ?? null,
+        community: undefined, // Remove nested community object
+      },
       uploadInfo: { presignedUrl, finalUrl },
     };
   }
 
-  // If no upload was requested, just return the gallery
-  return { gallery: newGallery };
+  // If no upload was requested, just return the gallery with communityName
+  return { 
+    gallery: {
+      ...newGallery,
+      communityName: newGallery.community?.name ?? null,
+      community: undefined, // Remove nested community object
+    }
+  };
 }
 
 /**
@@ -146,15 +165,28 @@ export async function getMyGalleries(userId: string) {
       location: true,
       shareableLink: true,
       ownerId: true,
+      communityId: true,
       addPermission: true,
       deletePermission: true,
       joinRequiresApproval: true,
       defaultTagId: true,
       createdAt: true,
       updatedAt: true,
+      community: {
+        select: {
+          name: true,
+        },
+      },
     },
   });
-  return galleries;
+
+  console.log("user galleries ", galleries)
+  // Map to include communityName
+  return galleries.map(gallery => ({
+    ...gallery,
+    communityName: gallery.community?.name ?? null,
+    community: undefined, // Remove nested community object
+  }));
 }
 
 /**
@@ -184,6 +216,7 @@ export async function getGalleryDetails(userId: string, galleryId: string) {
       location: true,
       shareableLink: true,
       ownerId: true,
+      communityId: true,
       addPermission: true,
       deletePermission: true,
       joinRequiresApproval: true,
@@ -191,7 +224,14 @@ export async function getGalleryDetails(userId: string, galleryId: string) {
       createdAt: true,
       updatedAt: true,
       
-      // 2. User's specific membership (will always find one)
+      // 2. Community information
+      community: {
+        select: {
+          name: true,
+        },
+      },
+      
+      // 3. User's specific membership (will always find one)
       memberships: {
         where: { userId: userId },
         select: {
@@ -202,7 +242,7 @@ export async function getGalleryDetails(userId: string, galleryId: string) {
         },
       },
       
-      // 3. Total member count (now always accurate)
+      // 4. Total member count (now always accurate)
       _count: {
         select: {
           memberships: true,
@@ -216,7 +256,7 @@ export async function getGalleryDetails(userId: string, galleryId: string) {
   }
 
   // Deconstruct the results
-  const { memberships, _count, ...galleryDetails } = galleryData;
+  const { memberships, _count, community, ...galleryDetails } = galleryData;
   
   // No conditional logic needed
   const myMembership = memberships[0]; 
@@ -225,6 +265,7 @@ export async function getGalleryDetails(userId: string, galleryId: string) {
   // Return the clean, combined object
   return {
     ...galleryDetails,
+    communityName: community?.name ?? null,
     myMembership: myMembership,
     memberCount: memberCount,
   };
@@ -282,12 +323,18 @@ export async function updateGallery(
       location: true,
       shareableLink: true,
       ownerId: true,
+      communityId: true,
       addPermission: true,
       deletePermission: true,
       joinRequiresApproval: true,
       defaultTagId: true,
       createdAt: true,
       updatedAt: true,
+      community: {
+        select: {
+          name: true,
+        },
+      },
     },
   });
   // Enforce ownership check after update via verify ownerId
@@ -295,7 +342,11 @@ export async function updateGallery(
     // Revert is complex; instead, pre-check ownership
     // Prefer pre-check for ownership before update
   }
-  return updated;
+  return {
+    ...updated,
+    communityName: updated.community?.name ?? null,
+    community: undefined, // Remove nested community object
+  };
 }
 
 /**
@@ -344,7 +395,7 @@ export async function joinGalleryByLink(userId: string, shareableLink: string) {
     update: {},
     create: { userId, galleryId: gallery.id },
   });
-  return await prisma.gallery.findUnique({
+  const joinedGallery = await prisma.gallery.findUnique({
     where: { id: gallery.id },
     select: {
       id: true,
@@ -360,10 +411,24 @@ export async function joinGalleryByLink(userId: string, shareableLink: string) {
       joinRequiresApproval: true,
       defaultTagId: true,
       ownerId: true,
+      communityId: true,
       createdAt: true,
       updatedAt: true,
+      community: {
+        select: {
+          name: true,
+        },
+      },
     },
   });
+  
+  if (!joinedGallery) return null;
+  
+  return {
+    ...joinedGallery,
+    communityName: joinedGallery.community?.name ?? null,
+    community: undefined, // Remove nested community object
+  };
 }
 
 /**
@@ -377,6 +442,48 @@ export async function getPhotoIdsForGallery(galleryId: string) {
   return photos.map((p) => p.id);
 }
 
+
+/**
+ * Get all galleries tied to a specific community.
+ */
+export async function getGalleriesByCommunityId(communityId: string) {
+  const galleries = await prisma.gallery.findMany({
+    where: { communityId },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      iconUrl: true,
+      startDate: true,
+      endDate: true,
+      location: true,
+      shareableLink: true,
+      ownerId: true,
+      communityId: true,
+      addPermission: true,
+      deletePermission: true,
+      joinRequiresApproval: true,
+      defaultTagId: true,
+      createdAt: true,
+      updatedAt: true,
+      community: {
+        select: {
+          name: true,
+        },
+      },
+      _count: {
+        select: { memberships: true },
+      },
+    },
+  });
+
+  return galleries.map(({ _count, community, ...gallery }) => ({
+    ...gallery,
+    communityName: community?.name ?? null,
+    memberCount: _count.memberships,
+  }));
+}
 
 /**
  * @param userId - The ID of the user requesting the upload.
@@ -491,12 +598,18 @@ export async function searchGalleries(
       location: true,
       shareableLink: true,
       ownerId: true,
+      communityId: true,
       addPermission: true,
       deletePermission: true,
       joinRequiresApproval: true,
       defaultTagId: true,
       createdAt: true,
       updatedAt: true,
+      community: {
+        select: {
+          name: true,
+        },
+      },
       _count: {
         select: {
           memberships: true,
@@ -513,7 +626,7 @@ export async function searchGalleries(
   // Get total count for pagination
   const total = await prisma.gallery.count({ where: finalWhere });
 
-  // Map to include member count
+  // Map to include member count and community name
   const galleriesWithCount = galleries.map((g) => ({
     id: g.id,
     name: g.name,
@@ -524,6 +637,8 @@ export async function searchGalleries(
     location: g.location,
     shareableLink: g.shareableLink,
     ownerId: g.ownerId,
+    communityId: g.communityId,
+    communityName: g.community?.name ?? null,
     addPermission: g.addPermission,
     deletePermission: g.deletePermission,
     joinRequiresApproval: g.joinRequiresApproval,

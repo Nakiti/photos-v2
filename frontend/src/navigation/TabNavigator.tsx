@@ -5,6 +5,7 @@ import EventsStack from "./EventsStack";
 import { StyleSheet } from "react-native";
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import SwiperNavigator from './SwiperNavigator';
+import CommunityStack from "./CommunityStack";
 
 
 const Tab = createBottomTabNavigator()
@@ -24,12 +25,21 @@ const TabNavigator = () => {
                 name="Groups" component={GroupsStack}
                 options={{
                     tabBarIcon: () => (
-                    <Ionicons name="calendar-clear-outline" size={24} color="black"/>
+                    <Ionicons name="images-outline" size={24} color="black"/>
                     ),
                     tabBarShowLabel: false
                 }}
             />
             <Tab.Screen 
+                name="Communities" component={CommunityStack}
+                options={{
+                    tabBarIcon: () => (
+                    <Ionicons name="people-outline" size={24} color="black"/>
+                    ),
+                    tabBarShowLabel: false
+                }}
+            />
+            {/* <Tab.Screen 
                 name="Events" component={EventsStack}
                 options={{
                     tabBarIcon: () => (
@@ -37,7 +47,7 @@ const TabNavigator = () => {
                     ),
                     tabBarShowLabel: false
                 }}
-            />
+            /> */}
             <Tab.Screen 
                 name="Profile" component={ProfileStack}
                 options={{

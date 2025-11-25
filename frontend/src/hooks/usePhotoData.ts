@@ -58,6 +58,8 @@ export const useCreateOptimisticPhoto = () => {
   
           // --- 3. OPTIMISTIC LOCAL CREATION ---
           const temporaryId = uuid();
+
+          console.log("local uris ", thumbnail.uri)
           
           await database.write(async () => {
             const photosCollection = database.collections.get<Photo>('photos');

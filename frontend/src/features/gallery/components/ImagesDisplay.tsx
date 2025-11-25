@@ -7,18 +7,19 @@ type GalleryImage = any;
 
 type ImagesDisplayProps = {
    images: GalleryImage[];
-   onPressImage?: (index: number, images: GalleryImage[]) => void;
+   galleryId: string;
+   selectedTagId: string;
 };
 
-const ImagesDisplay = ({ images, onPressImage }: ImagesDisplayProps) => {
+const ImagesDisplay = ({ images, galleryId, selectedTagId }: ImagesDisplayProps) => {
    const { width, height } = useWindowDimensions();
    const numColumns = 5;
    const gap = 2;
    const imageSize = (width - gap * (numColumns - 1)) / numColumns;
    const scrollViewRef = useRef<RNScrollView | null>(null);
 
-   // Step 1: Reverse so most recent comes first
-   const reversedImages = images;
+   // Step 1: Order so oldest is first, newest last (ends bottom-right)
+   const orderedImages = images.slice().reverse();
 
    // Step 2: Chunk into rows
    const chunkArray = <T,>(array: T[], size: number): T[][] => {
@@ -29,7 +30,7 @@ const ImagesDisplay = ({ images, onPressImage }: ImagesDisplayProps) => {
       return chunks;
    };
 
-   const rows = chunkArray(reversedImages, numColumns);
+   const rows = chunkArray(orderedImages, numColumns);
 
    // Determine if content fills the screen height. If not, start below header.
    // Keep this in sync with GalleryHeader gradient height.
@@ -62,10 +63,11 @@ const ImagesDisplay = ({ images, onPressImage }: ImagesDisplayProps) => {
                   <SingleImage
                      key={colIndex}
                      index={getIndex(rowIndex, colIndex)}
-                     images={reversedImages}
+                     images={orderedImages}
                      item={item}
                      imageSize={imageSize}
-                     onPress={onPressImage}
+                     galleryId={galleryId}
+                     selectedTagId={selectedTagId}
                   />
                ))}
             </View>

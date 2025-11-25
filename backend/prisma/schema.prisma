@@ -26,6 +26,8 @@ model User {
   devices        Device[]
   sentFriendRequests Friendship[] @relation("SentFriendRequests")
   receivedFriendRequests Friendship[] @relation("ReceivedFriendRequests")
+  ownedCommunities    Community[]           @relation("OwnedCommunities")
+  communityMemberships CommunityMembership[]
 }
 
 model Gallery {
@@ -42,12 +44,15 @@ model Gallery {
   location      String?
   shareableLink String?   @unique
 
-  // Settings
   joinRequiresApproval Boolean @default(false)
   addPermission        GalleryAddPermission      @default(ADMIN)
   deletePermission     GalleryDeletePermission   @default(ADMINS_AUTHORS)
 
   defaultTagId String? @unique
+
+  communityId String? 
+  community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+
 
   owner       User         @relation("OwnedGalleries", fields: [ownerId], references: [id], onDelete: Cascade) // Cascade delete if owner is deleted (adjust if needed)
   memberships Membership[]
@@ -55,6 +60,42 @@ model Gallery {
   tags        Tag[]
 
   @@index([ownerId])
+  @@index([communityId])
+}
+
+model Community {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  iconUrl     String?
+  ownerId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  joinRequiresApproval Boolean @default(false)
+  addPermission        GalleryAddPermission      @default(ADMIN)
+  deletePermission     GalleryDeletePermission   @default(ADMINS_AUTHORS)
+
+  owner       User                  @relation("OwnedCommunities", fields: [ownerId], references: [id], onDelete: Cascade)
+  memberships CommunityMembership[]
+  galleries   Gallery[]             
+
+  @@index([ownerId])
+}
+
+model CommunityMembership {
+  id          String   @id @default(uuid())
+  userId      String
+  communityId String
+  joinedAt    DateTime @default(now())
+  role        MembershipRole @default(MEMBER) 
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, communityId])
+  @@index([userId])
+  @@index([communityId])
 }
 
 enum GalleryType {

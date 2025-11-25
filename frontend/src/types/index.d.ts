@@ -14,6 +14,10 @@ export interface Gallery {
     endDate?: string;
     location?: string;
     shareableLink?: string;
+    
+    // Community fields (optional)
+    communityId?: string | null;
+    communityName?: string | null;
 }
 
 export interface User {

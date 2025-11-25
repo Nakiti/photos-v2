@@ -27,7 +27,10 @@ const GroupsListScreen = () => {
     };
   }, [query]);
   
-  const { galleries, isLoading, isSyncing, isError, error } = useGalleries('GROUP', debouncedQuery);
+  const { galleries, isLoading, isSyncing, isError, error } = useGalleries(undefined, debouncedQuery);
+
+
+  console.log("galleries ", galleries)
 
   const onRefresh = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['galleries'] });
@@ -47,6 +50,7 @@ const GroupsListScreen = () => {
       id={item.id}
       title={item.name}
       icon={item.iconUrl || ''}
+      communityName={item.communityName}
       lastUploadedBy=""
       unseenCount={0}
       lastUpdated={new Date(item.updatedAt).toISOString()}

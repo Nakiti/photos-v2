@@ -6,10 +6,10 @@ import GalleryHeader from '../components/GalleryHeader';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useGallery } from '../../../hooks/useGalleryData';
 import { useGalleryTags } from '../../../hooks/useGalleryTagData';
-import apiClient from '../../../services/apiClient';
 
 
 type GalleryImage = {
+  id?: string;
   fullsize: string;
   thumbnail: string;
   is_uploaded: number;
@@ -24,49 +24,19 @@ const GalleryScreen = () => {
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null); // null means 'All'
 
   // Photos from local DB (observed)
-  const { photos } = useGallery(galleryId);
-
-  // When filtering by a specific tag, fetch filtered photos from API
-  const [filteredImages, setFilteredImages] = useState<GalleryImage[] | null>(null);
-  useEffect(() => {
-    let active = true;
-    async function run() {
-      if (!selectedTagId) {
-        if (active) setFilteredImages(null);
-        return;
-      }
-      try {
-        const res = await apiClient.get(`/api/v1/galleries/${galleryId}/photos`, {
-          params: { tagId: selectedTagId },
-        });
-        const items = (res.data?.items ?? []) as Array<{ s3Url: string }>;
-        if (!active) return;
-        setFilteredImages(
-          items.map(p => ({
-            fullsize: p.s3Url,
-            thumbnail: p.thumbnailUrl,
-            is_uploaded: 1,
-          }))
-        );
-      } catch (e) {
-        if (active) setFilteredImages([]);
-      }
-    }
-    run();
-    return () => { active = false; };
-  }, [galleryId, selectedTagId]);
+  const { photos } = useGallery(galleryId, { tagId: selectedTagId });
 
   // Compute images to display
   const images: GalleryImage[] = useMemo(() => {
-    if (selectedTagId && filteredImages) return filteredImages;
     return (photos || [])
       .map((p: any) => ({
+        id: p.id,
         fullsize: p.s3Url || '',
-        thumbnail: p.thumbnailUrl || p.thumbnailUri || '',
+        thumbnail: p.thumbnailUrl || p.thumbnailUri || p.localThumbnailUri || '',
         is_uploaded: p.status === 'synced' ? 1 : 0,
       }))
-      .filter(img => !!img.fullsize);
-  }, [photos, filteredImages, selectedTagId]);
+      .filter(img => !!img.fullsize || !!img.thumbnail);
+  }, [photos]);
 
 
   console.log("images ", images)
@@ -81,9 +51,6 @@ const GalleryScreen = () => {
     navigation.goBack();
   }
 
-  const handlePressImage = (index: number, imgs: GalleryImage[]) => {
-    // no-op handler for presentational component
-  };
 
   const handlePressUpload = () => {
     // no-op handler for presentational component
@@ -115,7 +82,7 @@ const GalleryScreen = () => {
           </View>
         </View>
       ) : (
-        <ImagesDisplay images={images} onPressImage={handlePressImage} />
+        <ImagesDisplay images={images} galleryId={galleryId} selectedTagId={selectedTagId ?? ''}/>
       )}
       <GalleryBottomBar 
         onPressUpload={handlePressUpload} 

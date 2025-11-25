@@ -10,6 +10,8 @@ import Membership from './models/Membership';
 import Friendship from './models/Friendship';
 import Tag from './models/Tag';
 import PhotoTag from './models/PhotoTag';
+import CommunityMembership from './models/CommunityMembership';
+import Community from './models/Community';
 
 // First, create the adapter to the underlying database driver (SQLite in this case)
 const adapter = new SQLiteAdapter({
@@ -27,6 +29,8 @@ export const database = new Database({
     Membership,
     Friendship,
     Tag,
-    PhotoTag
+    PhotoTag,
+    Community,
+    CommunityMembership,
   ],
 });

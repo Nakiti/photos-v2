@@ -1,6 +1,7 @@
 import { Image, Text, TouchableOpacity, View, StyleSheet } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
 import FastImage from "react-native-fast-image";
+import { useNavigation } from "@react-navigation/native";
 
 type GalleryImage = any;
 
@@ -9,10 +10,13 @@ type SingleImageProps = {
    images: GalleryImage[];
    item: GalleryImage;
    index: number;
+   galleryId: string;
+   selectedTagId: string;
    onPress?: (index: number, images: GalleryImage[]) => void;
 };
 
-const SingleImage = ({ imageSize, images, item, index, onPress }: SingleImageProps) => {
+const SingleImage = ({ imageSize, images, item, index, galleryId, selectedTagId }: SingleImageProps) => {
+   const navigation = useNavigation()
 
     /**
      * Renders the appropriate icon based on the upload status.
@@ -22,38 +26,31 @@ const SingleImage = ({ imageSize, images, item, index, onPress }: SingleImagePro
      * - -1: Upload failed
      */
    const renderUploadStatusIcon = () => {
-   // Don't render any icon if the upload was successful
-      if (item.is_uploaded === 3) {
+      // 1 means 'synced' in your GalleryScreen logic, so we hide the icon
+      if (item.is_uploaded === 1) {
          return null;
       }
 
-      let iconComponent;
-
-      switch (item.is_uploaded) {
-      case 0: // Queued / Offline
-         iconComponent = <Icon name="cloud-offline-outline" size={10} color="#fff" />;
-         break;
-      case 1: // Uploading
-         iconComponent = <Icon name="cloud-upload-outline" size={10} color="#fff" />; // Gold color for warning
-         break;
-      case 2:
-         iconComponent = <Icon name="cloud-upload-outline" size={10} color="#fff" />; // Gold color for warning
-      default:
-         // Render nothing if the state is unhandled
-         return null;
+      // 0 means not synced (offline, pending, or uploading)
+      if (item.is_uploaded === 0) {
+          return (
+             <View style={styles.iconOverlay}>
+                {/* using cloud-upload because '0' covers both queued and uploading right now */}
+                <Icon name="cloud-upload-outline" size={10} color="#fff" />
+             </View>
+          );
       }
-
-      return (
-         <View style={styles.iconOverlay}>
-            {iconComponent}
-         </View>
-      );
+      
+      return null;
    };
 
    const handlePress = () => {
-      if (onPress) {
-         onPress(index, images);
-      }
+      navigation.navigate("SingleImage", {
+         galleryId,
+         initialPhotoId: item.id,
+         selectedTagId
+      })
+
    };
 
    return (

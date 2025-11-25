@@ -3,6 +3,7 @@ import { isAuthenticated } from '../../middleware/auth.middleware.js';
 import {
   createGallery,
   getMyGalleries,
+  getGalleriesByCommunity,
   getGalleryDetails,
   updateGallery,
   deleteGallery,
@@ -52,6 +53,13 @@ router.get('/search', isAuthenticated, searchGalleries);
  * @access Private
  */
 router.get('/', isAuthenticated, getMyGalleries);
+
+/**
+ * @route GET /api/v1/galleries/community/:communityId
+ * @summary List galleries within a community the user has access to
+ * @access Private
+ */
+router.get('/community/:communityId', isAuthenticated, getGalleriesByCommunity);
 
 /**
  * @route GET /api/v1/galleries/:galleryId

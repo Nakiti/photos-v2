@@ -33,6 +33,8 @@ export const syncGalleries = async (database: Database, remoteGalleries: Gallery
             record.addPermission = remoteGallery.addPermission,
             record.deletePermission = remoteGallery.deletePermission
             record.defaultTagId = remoteGallery.defaultTagId
+            record.communityId = remoteGallery.communityId
+            record.communityName = remoteGallery.communityName
             // map other updatable fields
           })
         );
@@ -50,6 +52,8 @@ export const syncGalleries = async (database: Database, remoteGalleries: Gallery
           record.addPermission = remoteGallery.addPermission,
           record.deletePermission = remoteGallery.deletePermission
           record.defaultTagId = remoteGallery.defaultTagId
+          record.communityId = remoteGallery.communityId
+          record.communityName = remoteGallery.communityName
         })
       );
     }
@@ -110,6 +114,8 @@ export const syncGalleryDetails = async (
     record.location = remoteGallery.location;
     record.shareableLink = remoteGallery.shareableLink;
     record.defaultTagId = remoteGallery.defaultTagId
+    record.communityId = remoteGallery.communityId
+    record.communityName = remoteGallery.communityName
   };
 
   // --- 3. Prepare the correct operation (Update or Create) ---

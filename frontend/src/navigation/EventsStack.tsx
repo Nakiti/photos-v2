@@ -32,14 +32,26 @@ const EventsStack = () => {
                     header: () => <DefaultHeader title="Create Event" />
                 }}
             />
-            <Stack.Screen name="CreateEventSettings" component={CreateEventSettingsScreen} />
-            <Stack.Screen name="ShareEvent" component={ShareEventScreen} />
+            <Stack.Screen 
+                name="CreateEventSettings" 
+                component={CreateEventSettingsScreen} 
+                options={{
+                    header: () => <DefaultHeader title="Event Settings" />
+                }}
+            />
+            <Stack.Screen 
+                name="ShareEvent" 
+                component={ShareEventScreen} 
+                options={{
+                    header: () => <DefaultHeader title="Share Your Event" />
+                }}    
+            />
             <Stack.Screen 
                 name="JoinEvent" 
                 component={JoinEventScreen} 
                 options={{
                     headerShown: true,
-                    header: () => <DefaultHeader title="Join Event" />
+                    header: () => <DefaultHeader title="Join an Event" />
                 }}
             />
         </Stack.Navigator>
