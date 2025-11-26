@@ -3,6 +3,7 @@ import { Database } from '@nozbe/watermelondb';
 import SQLiteAdapter from '@nozbe/watermelondb/adapters/sqlite';
 
 import { mySchema } from './schema';
+import migrations from './migrations';
 import Gallery from './models/Gallery';
 import Photo from './models/Photo';
 import User from './models/User';
@@ -16,6 +17,7 @@ import Community from './models/Community';
 // First, create the adapter to the underlying database driver (SQLite in this case)
 const adapter = new SQLiteAdapter({
   schema: mySchema,
+  migrations
   // (You might want to add `jsi: true` here for performance enhancement)
 });
 

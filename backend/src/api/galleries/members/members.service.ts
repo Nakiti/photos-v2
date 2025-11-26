@@ -207,3 +207,78 @@ export async function updateMyMembership(
     data: ({ isMuted: data.isMuted } as unknown) as any,
   });
 }
+
+/**
+ * Add all members from a community to a gallery.
+ * This is a bulk operation that efficiently adds multiple members at once.
+ *
+ * @param galleryId ID of the gallery
+ * @param communityId ID of the community to add members from
+ * @returns Object with count of added members and any errors
+ */
+export async function addCommunityMembersToGallery(
+  galleryId: string,
+  communityId: string
+) {
+  // 1. Fetch all community members
+  const communityMemberships = await prisma.communityMembership.findMany({
+    where: { communityId },
+    select: { userId: true },
+  });
+
+  if (communityMemberships.length === 0) {
+    return { addedCount: 0, errors: [] };
+  }
+
+  const userIds = communityMemberships.map((m) => m.userId);
+
+  // 2. Check which members already exist in the gallery
+  const existingMemberships = await prisma.membership.findMany({
+    where: {
+      galleryId,
+      userId: { in: userIds },
+    },
+    select: { userId: true },
+  });
+
+  const existingUserIds = new Set(existingMemberships.map((m) => m.userId));
+  const newUserIds = userIds.filter((id) => !existingUserIds.has(id));
+
+  if (newUserIds.length === 0) {
+    return { addedCount: 0, errors: [] };
+  }
+
+  // 3. Use createMany for efficient batch insert
+  // Note: If your Prisma version doesn't support skipDuplicates, we can use a transaction instead
+  try {
+    await prisma.membership.createMany({
+      data: newUserIds.map((userId) => ({
+        userId,
+        galleryId,
+        status: 'ACCEPTED',
+        role: 'MEMBER',
+      }) as any),
+      skipDuplicates: true,
+    });
+
+    return { addedCount: newUserIds.length, errors: [] };
+  } catch (error: any) {
+    // Fallback to individual upserts if createMany fails
+    const results = await Promise.allSettled(
+      newUserIds.map((userId) =>
+        prisma.membership.upsert({
+          where: { userId_galleryId: { userId, galleryId } },
+          update: {},
+          create: { userId, galleryId } as any,
+        })
+      )
+    );
+
+    const addedCount = results.filter((r) => r.status === 'fulfilled').length;
+    const errors = results
+      .filter((r) => r.status === 'rejected')
+      .map((r) => (r as PromiseRejectedResult).reason);
+
+    return { addedCount, errors };
+  }
+}

@@ -92,29 +92,31 @@ const CreateEventDetailsScreen = () => {
 
    const onSave = async () => {
       setAttemptedSubmit(true);
-      if (!areRequiredFilled) {
-         Alert.alert('Missing Info', 'Please fill in all required fields.');
-         return;
-      }
-      if (!datesValid) {
-         Alert.alert('Invalid Dates', 'End date must be after Start date.');
-         return;
-      }
+      // if (!areRequiredFilled) {
+      //    Alert.alert('Missing Info', 'Please fill in all required fields.');
+      //    return;
+      // }
+      // if (!datesValid) {
+      //    Alert.alert('Invalid Dates', 'End date must be after Start date.');
+      //    return;
+      // }
       
       Keyboard.dismiss();
       try {
-         const newGallery = await createGallery({
-           galleryData: {
-             name: eventName.trim(),
-             type: 'EVENT',
-             startDate: startIso,
-             endDate: endIso,
-             location: locationName?.trim() || null,
-             communityId: communityId || null
-           },
-           imageUri: imageUri ?? null,
-         });
-         navigation.navigate('CreateEventSettings', { galleryId: newGallery.id });
+         // const newGallery = await createGallery({
+         //   galleryData: {
+         //     name: eventName.trim(),
+         //     type: 'EVENT',
+         //     startDate: startIso,
+         //     endDate: endIso,
+         //     location: locationName?.trim() || null,
+         //     communityId: communityId || null
+         //   },
+         //   imageUri: imageUri ?? null,
+         // });
+
+
+         navigation.navigate('CreateEventSettings', { galleryId: "", communityId });
       } catch (e: any) {
          Alert.alert('Error', e?.message ?? 'Failed to create event.');
       }

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { isAuthenticated } from '../../../middleware/auth.middleware.js';
-import { addMember, removeMember, reconcileGalleryMembers, getMembers, promoteMember, approveMember, updateMyMembership, getMyMembership } from './members.controller.js';
+import { addMember, removeMember, reconcileGalleryMembers, getMembers, promoteMember, approveMember, updateMyMembership, getMyMembership, addCommunityMembersToGallery } from './members.controller.js';
 
 /**
  * Members router, merged under `/api/v1/galleries/:galleryId/members`.
@@ -13,6 +13,12 @@ const router = Router({ mergeParams: true });
  * @route POST /api/v1/galleries/:galleryId/members
  */
 router.post('/', isAuthenticated, addMember);
+
+/**
+ * Bulk add all members from a community to a gallery.
+ * @route POST /api/v1/galleries/:galleryId/members/bulk
+ */
+router.post('/bulk', isAuthenticated, addCommunityMembersToGallery);
 
 /**
  * Remove a member from a gallery.

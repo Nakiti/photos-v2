@@ -49,3 +49,17 @@ export const getMyMembershipParamsSchema = z.object({
   }),
 });
 
+/**
+ * Schema for bulk adding community members to a gallery.
+ * Body must contain a valid UUID `communityId`.
+ */
+export const addCommunityMembersSchema = z.object({
+  body: z.object({
+    communityId: z.string().uuid('Invalid community id'),
+  }),
+});
+
+/**
+ * DTO inferred from `addCommunityMembersSchema` body.
+ */
+export type AddCommunityMembersDto = z.infer<typeof addCommunityMembersSchema>['body'];

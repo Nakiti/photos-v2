@@ -2,7 +2,7 @@ import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const mySchema = appSchema({
   // Ensure version matches the latest changes (added community_name to galleries)
-  version: 13,
+  version: 16,
   tables: [
     tableSchema({
       name: 'users',
@@ -94,6 +94,9 @@ export const mySchema = appSchema({
         { name: 'description', type: 'string', isOptional: true },
         { name: 'icon_url', type: 'string', isOptional: true },
         { name: 'owner_id', type: 'string', isIndexed: true },
+        { name: 'join_requires_approval', type: 'boolean', isOptional: true },
+        { name: 'add_permission', type: 'string', isOptional: true },
+        { name: 'delete_permission', type: 'string', isOptional: true },
         { name: 'created_at', type: 'number' },
         { name: 'updated_at', type: 'number' },
       ],

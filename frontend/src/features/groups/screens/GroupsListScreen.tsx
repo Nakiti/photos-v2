@@ -76,7 +76,7 @@ const GroupsListScreen = () => {
     </View>
   ), []);
 
-  if (isLoading) {
+  if (isLoading && galleries.length === 0) {
     return (
       <View style={[styles.container, styles.center]}>
         <ActivityIndicator size="large" color="#0000ff" />
@@ -84,7 +84,7 @@ const GroupsListScreen = () => {
     );
   }
 
-  if (isError) {
+  if (isError && galleries.length === 0) {
     return (
       <View style={[styles.container, styles.center]}>
         <Text style={styles.errorText}>Failed to load groups: {error?.message || 'Unknown error'}</Text>

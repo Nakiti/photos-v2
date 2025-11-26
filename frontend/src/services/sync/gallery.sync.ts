@@ -1,6 +1,7 @@
 import { Database } from '@nozbe/watermelondb';
 import Gallery from '../../db/models/Gallery'; // Your WatermelonDB Gallery model
 import { GalleryApiResponse } from '../api/gallery.service';
+import { Q } from '@nozbe/watermelondb/Query';
 
 /**
  * Reconciles a list of galleries from the server with the local WatermelonDB.
@@ -134,4 +135,128 @@ export const syncGalleryDetails = async (
   });
 
   console.log(`✅ Synced details for gallery ${remoteGallery.id}`);
+};
+
+export const syncCommunityGalleries = async (
+  database: Database, 
+  remoteGalleries: GalleryApiResponse[],
+  communityId: string
+) => {
+  const galleriesCollection = database.collections.get<Gallery>('galleries');
+
+  // Only fetch local galleries for this community (much faster!)
+  const localGalleries = await galleriesCollection
+    .query(Q.where('community_id', communityId))
+    .fetch();
+  
+  const localGalleryMap = new Map(localGalleries.map(g => [g.id, g]));
+  const remoteGalleryIds = new Set(remoteGalleries.map(g => g.id));
+
+  const operations: any[] = [];
+
+  // --- Identify records to create or update ---
+  for (const remoteGallery of remoteGalleries) {
+    const local = localGalleryMap.get(remoteGallery.id);
+    if (local) {
+      // Record exists, check if it needs an update
+      // Compare more fields to catch all changes
+      const needsUpdate = 
+        local.name !== remoteGallery.name || 
+        local.iconUrl !== remoteGallery.iconUrl || 
+        local.joinRequiresApproval !== remoteGallery.joinRequiresApproval || 
+        local.addPermission !== remoteGallery.addPermission || 
+        local.deletePermission !== remoteGallery.deletePermission ||
+        local.type !== remoteGallery.type ||
+        local.ownerId !== remoteGallery.ownerId ||
+        local.location !== remoteGallery.location ||
+        local.shareableLink !== remoteGallery.shareableLink ||
+        local.defaultTagId !== remoteGallery.defaultTagId ||
+        local.communityId !== remoteGallery.communityId ||
+        local.communityName !== remoteGallery.communityName ||
+        // Check dates (convert remote to timestamp for comparison)
+        local.startDate !== (remoteGallery.startDate ? new Date(remoteGallery.startDate).getTime() : null) ||
+        local.endDate !== (remoteGallery.endDate ? new Date(remoteGallery.endDate).getTime() : null);
+
+      if (needsUpdate) {
+        operations.push(
+          local.prepareUpdate(record => {
+            record.name = remoteGallery.name;
+            record.iconUrl = remoteGallery.iconUrl;
+            record.joinRequiresApproval = remoteGallery.joinRequiresApproval;
+            record.addPermission = remoteGallery.addPermission;
+            record.deletePermission = remoteGallery.deletePermission;
+            record.type = remoteGallery.type;
+            record.ownerId = remoteGallery.ownerId;
+            record.location = remoteGallery.location ?? null;
+            record.shareableLink = remoteGallery.shareableLink ?? null;
+            record.startDate = remoteGallery.startDate
+              ? new Date(remoteGallery.startDate).getTime()
+              : null;
+            record.endDate = remoteGallery.endDate
+              ? new Date(remoteGallery.endDate).getTime()
+              : null;
+            record.defaultTagId = remoteGallery.defaultTagId;
+            record.communityId = remoteGallery.communityId ?? null;
+            record.communityName = remoteGallery.communityName ?? null;
+            // Update timestamps
+            if ('created_at' in (record as any)._raw && remoteGallery.createdAt) {
+              (record as any)._raw.created_at = new Date(remoteGallery.createdAt).getTime();
+            }
+            if ('updated_at' in (record as any)._raw && remoteGallery.updatedAt) {
+              (record as any)._raw.updated_at = new Date(remoteGallery.updatedAt).getTime();
+            }
+          })
+        );
+      }
+    } else {
+      // Record does not exist, prepare to create it
+      operations.push(
+        galleriesCollection.prepareCreate(record => {
+          record._raw.id = remoteGallery.id;
+          record.name = remoteGallery.name;
+          record.type = remoteGallery.type;
+          record.iconUrl = remoteGallery.iconUrl;
+          record.ownerId = remoteGallery.ownerId;
+          record.joinRequiresApproval = remoteGallery.joinRequiresApproval;
+          record.addPermission = remoteGallery.addPermission;
+          record.deletePermission = remoteGallery.deletePermission;
+          record.location = remoteGallery.location ?? null;
+          record.shareableLink = remoteGallery.shareableLink ?? null;
+          record.startDate = remoteGallery.startDate
+            ? new Date(remoteGallery.startDate).getTime()
+            : null;
+          record.endDate = remoteGallery.endDate
+            ? new Date(remoteGallery.endDate).getTime()
+            : null;
+          record.defaultTagId = remoteGallery.defaultTagId;
+          record.communityId = remoteGallery.communityId ?? null;
+          record.communityName = remoteGallery.communityName ?? null;
+          // Set timestamps
+          if (remoteGallery.createdAt) {
+            (record as any)._raw.created_at = new Date(remoteGallery.createdAt).getTime();
+          }
+          if (remoteGallery.updatedAt) {
+            (record as any)._raw.updated_at = new Date(remoteGallery.updatedAt).getTime();
+          }
+        })
+      );
+    }
+  }
+
+  // --- Identify records to delete (only for this community) ---
+  for (const localGallery of localGalleries) {
+    if (!remoteGalleryIds.has(localGallery.id)) {
+      operations.push(localGallery.prepareDestroyPermanently());
+    }
+  }
+
+  // --- Execute all operations in a single batch transaction ---
+  if (operations.length > 0) {
+    await database.write(async () => {
+      await database.batch(...operations);
+    });
+    console.log(`✅ Synced ${operations.length} community gallery operations.`);
+  } else {
+    console.log('👍 Community galleries are already up to date.');
+  }
 };

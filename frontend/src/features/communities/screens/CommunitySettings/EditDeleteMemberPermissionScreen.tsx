@@ -1,51 +1,50 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { useRoute } from "@react-navigation/native";
-import { useGallery, useUpdateGallery } from "../../../../hooks/useGalleryData";
-import { useMyMembership } from "../../../../hooks/useMembershipData";
+import { useCommunity, useUpdateCommunity } from "../../../../hooks/useCommunityData";
+import { useMyCommunityMembership } from "../../../../hooks/useCommunityMembershipData";
 import { ActivityIndicator } from "react-native-paper";
 import { useQueryClient } from "@tanstack/react-query";
 
-interface EditDeletePermissionProps { galleryId: string | number }
+interface EditDeletePermissionProps { communityId: string | number }
 
 const EditDeletePermissionScreen = () => {
    const route = useRoute();
    const queryClient = useQueryClient();
-   const { galleryId } = route.params as { galleryId: string };
+   const { communityId } = route.params as { communityId: string };
 
-   // Fetch gallery data and user's membership
-   const { gallery, isLoading, isError, error } = useGallery(galleryId);
-   const { data: myMembership } = useMyMembership(galleryId);
-   const { mutate: updateGallery, isPending: isUpdating } = useUpdateGallery();
+   // Fetch community data and user's membership
+   const { community, isLoading, isError, error } = useCommunity(communityId);
+   const { data: myMembership } = useMyCommunityMembership(communityId);
+   const { mutate: updateCommunity, isPending: isUpdating } = useUpdateCommunity();
 
-   const [selectedOption, setSelectedOption] = useState<'ADMINS_AUTHORS' | 'ADMINS_AUTHORS'>('ADMINS_AUTHORS');
+   const [selectedOption, setSelectedOption] = useState<'ADMINS_AUTHORS' | 'ADMIN'>('ADMINS_AUTHORS');
 
    const options = [
       { id: "1", value: "ADMINS_AUTHORS" as const, title: "Admins and Authors", subtitle: "Admins and photo authors can delete pictures" },
       { id: "2", value: "ADMIN" as const, title: "Admins", subtitle: "Only admins can delete pictures" },
    ];
 
-   // Set initial value when gallery loads
+   // Set initial value when community loads
    useEffect(() => {
-      if (gallery?.deletePermission) {
-         console.log("delete permission ", gallery.deletePermission)
-         setSelectedOption(gallery.deletePermission);
+      if (community?.deletePermission) {
+         setSelectedOption(community.deletePermission);
       }
-   }, [gallery]);
+   }, [community]);
 
    const isDirty = useMemo(() => {
-      return gallery?.deletePermission !== selectedOption;
-   }, [gallery?.deletePermission, selectedOption]);
+      return community?.deletePermission !== selectedOption;
+   }, [community?.deletePermission, selectedOption]);
 
    const handleSave = () => {
       if (!isDirty || isUpdating) return;
 
-      updateGallery(
-         { galleryId, data: { deletePermission: selectedOption } },
+      updateCommunity(
+         { communityId, data: { deletePermission: selectedOption } },
          {
             onSuccess: () => {
                Alert.alert('Success', 'Delete permission updated!');
-               queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });
+               queryClient.invalidateQueries({ queryKey: ['community', communityId] });
             },
             onError: () => {
                Alert.alert('Error', 'Failed to update permission.');
@@ -65,13 +64,13 @@ const EditDeletePermissionScreen = () => {
    if (isError) {
       return (
          <View style={[styles.container, styles.center]}>
-            <Text style={styles.errorText}>Failed to load gallery: {error?.message || 'Unknown error'}</Text>
+            <Text style={styles.errorText}>Failed to load community: {error?.message || 'Unknown error'}</Text>
          </View>
       );
    }
 
    const userRole = myMembership?.role;
-   const canEdit = userRole === 'ADMIN' || gallery?.ownerId === myMembership?.userId;
+   const canEdit = userRole === 'ADMIN' || community?.ownerId === myMembership?.userId;
 
    return (
       <View style={styles.container}>

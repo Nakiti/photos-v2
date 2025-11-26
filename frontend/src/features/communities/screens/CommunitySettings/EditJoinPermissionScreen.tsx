@@ -1,24 +1,22 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { useRoute } from "@react-navigation/native";
-import { useGallery, useUpdateGallery } from "../../../../hooks/useGalleryData";
-import { useMyMembership } from "../../../../hooks/useMembershipData";
+import { useCommunity, useUpdateCommunity } from "../../../../hooks/useCommunityData";
+import { useMyCommunityMembership } from "../../../../hooks/useCommunityMembershipData";
 import { ActivityIndicator } from "react-native-paper";
 import { useQueryClient } from "@tanstack/react-query";
 
-interface EditJoinPermissionProps { galleryId: string | number }
+interface EditJoinPermissionProps { communityId: string | number }
 
 const EditJoinPermissionScreen = () => {
    const route = useRoute();
    const queryClient = useQueryClient();
-   const { galleryId } = route.params as { galleryId: string };
+   const { communityId } = route.params as { communityId: string };
 
-   // Fetch gallery data and user's membership
-   const { gallery, isLoading, isError, error } = useGallery(galleryId);
-   const { data: myMembership } = useMyMembership(galleryId);
-   const { mutate: updateGallery, isPending: isUpdating } = useUpdateGallery();
-
-   console.log("Gallery ", gallery)
+   // Fetch community data and user's membership
+   const { community, isLoading, isError, error } = useCommunity(communityId);
+   const { data: myMembership } = useMyCommunityMembership(communityId);
+   const { mutate: updateCommunity, isPending: isUpdating } = useUpdateCommunity();
 
    // Local state: false = anyone can join, true = requires approval
    const [requiresApproval, setRequiresApproval] = useState(false);
@@ -28,28 +26,26 @@ const EditJoinPermissionScreen = () => {
       { id: "2", value: true, title: "Require Admin Approval", subtitle: "Requests must be approved by an admin" },
    ];
 
-   // Set initial value when gallery loads
+   // Set initial value when community loads
    useEffect(() => {
-      if (gallery?.joinRequiresApproval) {
-         // Map frontend "all" | "admin_approval" to boolean
-         setRequiresApproval(gallery.joinRequiresApproval === 'admin_approval');
+      if (community?.joinRequiresApproval !== undefined) {
+         setRequiresApproval(community.joinRequiresApproval);
       }
-   }, [gallery]);
+   }, [community]);
 
    const isDirty = useMemo(() => {
-      const currentValue = gallery?.joinRequiresApproval === 'admin_approval';
-      return currentValue !== requiresApproval;
-   }, [gallery?.joinRequiresApproval, requiresApproval]);
+      return community?.joinRequiresApproval !== requiresApproval;
+   }, [community?.joinRequiresApproval, requiresApproval]);
 
    const handleSave = () => {
       if (!isDirty || isUpdating) return;
 
-      updateGallery(
-         { galleryId, data: { joinRequiresApproval: requiresApproval } },
+      updateCommunity(
+         { communityId, data: { joinRequiresApproval: requiresApproval } },
          {
             onSuccess: () => {
                Alert.alert('Success', 'Join permission updated!');
-               queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });
+               queryClient.invalidateQueries({ queryKey: ['community', communityId] });
             },
             onError: () => {
                Alert.alert('Error', 'Failed to update permission.');
@@ -69,13 +65,13 @@ const EditJoinPermissionScreen = () => {
    if (isError) {
       return (
          <View style={[styles.container, styles.center]}>
-            <Text style={styles.errorText}>Failed to load gallery: {error?.message || 'Unknown error'}</Text>
+            <Text style={styles.errorText}>Failed to load community: {error?.message || 'Unknown error'}</Text>
          </View>
       );
    }
 
    const userRole = myMembership?.role;
-   const canEdit = userRole === 'ADMIN' || gallery?.ownerId === myMembership?.userId;
+   const canEdit = userRole === 'ADMIN' || community?.ownerId === myMembership?.userId;
 
    return (
       <View style={styles.container}>

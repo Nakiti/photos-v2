@@ -113,7 +113,7 @@ const CommunitySettingsScreen = () => {
          privacySection.items.push({
             label: 'Require Admin Approval to Join',
             value: c.joinRequiresApproval ?? false,
-            onPress: () => (navigation as any).navigate("CreateCommunitySettings", { communityId: community.id })
+            onPress: () => (navigation as any).navigate("EditJoinPermission", { communityId: community.id })
          });
 
          // Note: Pending requests functionality would need to be implemented
@@ -138,13 +138,13 @@ const CommunitySettingsScreen = () => {
          permissionsSection.items.push({
             label: 'Who can add photos?',
             value: c.addPermission === 'ANYONE' ? 'Anyone' : 'Admins', 
-            onPress: () => (navigation as any).navigate("CreateCommunitySettings", { communityId: community.id })
+            onPress: () => (navigation as any).navigate("EditAddPermission", { communityId: community.id })
          });
 
          permissionsSection.items.push({
             label: 'Who can delete photos?',
             value: c.deletePermission === 'ADMINS_AUTHORS' ? 'Admins & Authors' : 'Admins Only',
-            onPress: () => (navigation as any).navigate("CreateCommunitySettings", { communityId: community.id }),
+            onPress: () => (navigation as any).navigate("EditDeletePermission", { communityId: community.id }),
             bottom: true
          });
       } else {
