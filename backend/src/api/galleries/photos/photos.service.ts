@@ -156,8 +156,8 @@ export async function confirmUploadedPhoto(
         uploaderId,
         s3Key,
         s3Url: resolvedS3Url,
-        thumbnailUrl,
-        thumbnailKey
+        thumbnailUrl: thumbnailUrl ?? null,
+        thumbnailKey: thumbnailKey ?? null
       },
       select: {
         id: true,
@@ -242,6 +242,10 @@ export async function deletePhoto(requesterId: string, galleryId: string, photoI
   }
 
   await prisma.photo.delete({ where: { id: photoId } });
+  
+  // Broadcast photo deletion to gallery room
+  socketManager.broadcastPhotoDeleted(galleryId, photoId);
+  
   return true;
 }
 

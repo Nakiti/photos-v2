@@ -1,4 +1,5 @@
 import { PrismaClient, Prisma } from '@prisma/client';
+import { socketManager } from '../../../../../../libs/socket.manager.js';
 
 const prisma = new PrismaClient();
 
@@ -35,6 +36,10 @@ export async function applyTagToPhoto(
         tagId,
       },
     });
+    
+    // Broadcast tag addition to gallery room
+    socketManager.broadcastPhotoTagged(galleryId, photoId, tagId, 'added');
+    
     return 'OK';
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -66,6 +71,10 @@ export async function removeTagFromPhoto(
     await prisma.photoTag.delete({
       where: { photoId_tagId: { photoId, tagId } },
     });
+    
+    // Broadcast tag removal to gallery room
+    socketManager.broadcastPhotoTagged(galleryId, photoId, tagId, 'removed');
+    
     return true;
   } catch {
     // If it doesn't exist, treat as not found

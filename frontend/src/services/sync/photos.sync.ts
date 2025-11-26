@@ -42,6 +42,30 @@ import { TagApi } from "../api/tags.service";
       }
       localPhotoTagMap.get(pt.photoId)!.add(pt.tagId);
     }
+
+    // --- 1.5. Fetch optimistic photos for conflict resolution ---
+    // Get all unique galleryIds and uploaderIds from remote photos
+    const galleryIds = Array.from(new Set(remotePhotos.map(p => p.galleryId)));
+    const uploaderIds = Array.from(new Set(remotePhotos.map(p => p.uploaderId)));
+    
+    // Fetch optimistic photos that might match
+    const optimisticPhotos = await photosCollection
+      .query(
+        Q.where('gallery_id', Q.oneOf(galleryIds)),
+        Q.where('uploader_id', Q.oneOf(uploaderIds)),
+        Q.where('status', Q.oneOf(['queued', 'uploading']))
+      )
+      .fetch();
+    
+    // Create a map of optimistic photos by galleryId and uploaderId for quick lookup
+    const optimisticMap = new Map<string, Photo[]>();
+    for (const optPhoto of optimisticPhotos) {
+      const key = `${optPhoto.galleryId}:${optPhoto.uploaderId}`;
+      if (!optimisticMap.has(key)) {
+        optimisticMap.set(key, []);
+      }
+      optimisticMap.get(key)!.push(optPhoto);
+    }
   
     // --- 2. Process all remote photos ---
     for (const remotePhoto of remotePhotos) {
@@ -49,6 +73,17 @@ import { TagApi } from "../api/tags.service";
   
       // A) Prepare Photo Upsert
       if (local) {
+        // --- CONFLICT RESOLUTION: Don't update if photo is being uploaded ---
+        // If the local photo is queued or uploading, it means the user is currently
+        // uploading it. The upload queue will handle updating it when complete.
+        if (local.status === 'queued' || local.status === 'uploading') {
+          console.log(
+            `[Conflict][Sync] Skipping update for photo being uploaded: ` +
+            `photoId=${remotePhoto.id} status=${local.status}`
+          );
+          continue; // Skip this photo, let upload queue handle it
+        }
+
         // Update if any relevant field changed
         const needsUpdate =
           local.s3Url !== remotePhoto.s3Url ||
@@ -62,28 +97,61 @@ import { TagApi } from "../api/tags.service";
               // Map API field 'thumbnailUrl' to local column 'thumbnail_uri'
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               record.thumbnailUri = (remotePhoto as any).thumbnailUrl;
+              // Ensure status is synced after update
+              record.status = 'synced';
             })
           );
           updateCount += 1;
         }
       } else {
-        // Create
-        operations.push(
-          photosCollection.prepareCreate(record => {
-            record._raw.id = remotePhoto.id;
-            record.galleryId = remotePhoto.galleryId;
-            record.uploaderId = remotePhoto.uploaderId;
-            record.s3Key = remotePhoto.s3Key;
-            record.s3Url = remotePhoto.s3Url; 
-            // Map API field 'thumbnailUrl' to local column 'thumbnail_uri'
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            record.thumbnailUri = (remotePhoto as any).thumbnailUrl;
-            record.status = 'synced';
-            // WatermelonDB _raw typing doesn't include custom columns; cast to any
-            (record as any)._raw.created_at = new Date(remotePhoto.createdAt).getTime();
-          })
-        );
-        createCount += 1;
+        // Create - but first check if there's an optimistic photo that matches
+        // This handles the case where socket event arrives before upload completes
+        const optimisticKey = `${remotePhoto.galleryId}:${remotePhoto.uploaderId}`;
+        const optimisticMatches = optimisticMap.get(optimisticKey) || [];
+
+        // Check if any optimistic photo could be this one (by timestamp proximity)
+        const photoCreatedAt = new Date(remotePhoto.createdAt).getTime();
+        const now = Date.now();
+        const timeWindow = 5 * 60 * 1000; // 5 minutes
+
+        let matchedOptimistic = false;
+        for (const optimisticPhoto of optimisticMatches) {
+          const optimisticCreatedAt = optimisticPhoto.createdAt;
+          // Compare absolute difference between timestamps
+          const optimisticAge = now - optimisticCreatedAt;
+          const photoAge = now - photoCreatedAt;
+          const timeDiff = Math.abs(optimisticAge - photoAge);
+          
+          if (timeDiff < timeWindow) {
+            console.log(
+              `[Conflict][Sync] Matched remote photo to optimistic photo: ` +
+              `optimistic=${optimisticPhoto.id} remote=${remotePhoto.id}`
+            );
+            // Don't create duplicate - the upload queue will update the optimistic photo
+            matchedOptimistic = true;
+            break;
+          }
+        }
+
+        if (!matchedOptimistic) {
+          // Create new photo (from another user, or no optimistic match)
+          operations.push(
+            photosCollection.prepareCreate(record => {
+              record._raw.id = remotePhoto.id;
+              record.galleryId = remotePhoto.galleryId;
+              record.uploaderId = remotePhoto.uploaderId;
+              record.s3Key = remotePhoto.s3Key;
+              record.s3Url = remotePhoto.s3Url; 
+              // Map API field 'thumbnailUrl' to local column 'thumbnail_uri'
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              record.thumbnailUri = (remotePhoto as any).thumbnailUrl;
+              record.status = 'synced';
+              // WatermelonDB _raw typing doesn't include custom columns; cast to any
+              (record as any)._raw.created_at = new Date(remotePhoto.createdAt).getTime();
+            })
+          );
+          createCount += 1;
+        }
       }
   
       // B) Reconcile PhotoTags for this photo

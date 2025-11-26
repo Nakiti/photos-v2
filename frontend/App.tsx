@@ -13,6 +13,7 @@ import { database } from './src/db';
 import RootStack from './src/navigation/RootStack';
 import { useAuth } from './src/hooks/useAuth';
 import { usePhotoUploadQueue } from './src/hooks/usePhotoData';
+import { useSocketEvents } from './src/hooks/useSocketEvents';
 
 // --- CRITICAL FIX ---
 // Create the QueryClient *outside* the component so it persists.
@@ -45,6 +46,10 @@ function AppContent() {
   const [isLoading, setIsLoading] = useState(true);
   const { checkAuthStatus } = useAuth();
 
+  // Global socket event handlers - must be mounted for live updates
+  useSocketEvents();
+  
+  // Photo upload queue processor
   usePhotoUploadQueue()
 
   useEffect(() => {

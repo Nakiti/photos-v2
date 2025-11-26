@@ -8,6 +8,7 @@ import { useDatabase } from '@nozbe/watermelondb/react';
 import { getMyProfile } from '../services/api/userService';
 import User from '../db/models/User';
 import { AxiosError } from 'axios';
+import { socket } from '../services/socketClient';
 
 // This hook provides an easy-to-use interface for authentication logic
 export const useAuth = () => {
@@ -24,9 +25,18 @@ export const useAuth = () => {
         await Keychain.setGenericPassword('userToken', newToken);
         // 2. Update the API client header
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-        // 3. Update the global state
-        setUser(newUser);
+        // 3. Fetch full user profile (includes handle, avatarUrl, etc.)
+        const userProfile = await getMyProfile();
+        // 4. Update the global state with full profile
+        setUser(userProfile);
         setToken(newToken);
+        // 5. Sync user to local database
+        await syncCurrentUser(database, userProfile);
+        // 6. Connect socket for real-time updates
+        if (!socket.connected) {
+          socket.connect();
+          console.log('[Auth] Socket connection initiated after registration');
+        }
       },
       onError: (error) => {
         console.error('Registration failed:', error);
@@ -41,10 +51,18 @@ export const useAuth = () => {
         const { user: loggedInUser, token: newToken } = data;
         await Keychain.setGenericPassword('userToken', newToken);
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-        setUser(loggedInUser);
+        // Fetch full user profile (includes handle, avatarUrl, etc.)
+        const userProfile = await getMyProfile();
+        setUser(userProfile);
         setToken(newToken);
 
-        await syncCurrentUser(database, loggedInUser)
+        await syncCurrentUser(database, userProfile);
+        
+        // Connect socket for real-time updates
+        if (!socket.connected) {
+          socket.connect();
+          console.log('[Auth] Socket connection initiated after login');
+        }
       },
       onError: (error) => {
         console.error('Login failed:', error);
@@ -53,6 +71,12 @@ export const useAuth = () => {
   
     const logout = async () => {
       try {
+        // Disconnect socket before clearing auth state
+        if (socket.connected) {
+          socket.disconnect();
+          console.log('[Auth] Socket disconnected on logout');
+        }
+        
         await Keychain.resetGenericPassword();
         delete apiClient.defaults.headers.common['Authorization'];
         storeLogout();
@@ -72,7 +96,6 @@ export const useAuth = () => {
           const storedToken = credentials.password;
           apiClient.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
           setToken(storedToken);
-
           // --- 1. LOCAL FIRST STRATEGY ---
           // Try to load user from local DB immediately so we don't block the UI
           let foundLocalUser = false;
@@ -111,6 +134,12 @@ export const useAuth = () => {
               setUser(userProfile);
               await syncCurrentUser(database, userProfile);
               console.log('[Auth] Server verification success');
+
+              // Connect socket if user is authenticated
+              if (!socket.connected) {
+                socket.connect();
+                console.log('[Auth] Socket connection initiated on app load');
+              }
             } catch (error) {
               const axiosError = error as AxiosError;
               const isAuthError = axiosError.response?.status === 401;

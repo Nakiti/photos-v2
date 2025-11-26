@@ -6,6 +6,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import config from '../../../config/config.js';
 import {v4 as uuidv4} from "uuid"
 import { checkGalleryPermission } from './permission.service.js';
+import { socketManager } from '../../../libs/socket.manager.js';
 
 const prisma = new PrismaClient();
 
@@ -294,7 +295,7 @@ export async function getGalleryById(galleryId: string) {
 export async function updateGallery(
   ownerId: string,
   galleryId: string,
-  data: Partial<{ name: string; iconUrl: string | null; startDate: string | null; endDate: string | null; location: string | null }> & {
+  data: Partial<{ name: string; iconUrl: string | null; startDate: string | null; endDate: string | null; location: string | null; defaultTagId?: string | null }> & {
     addPermission?: any;
     deletePermission?: any;
     joinRequiresApproval?: boolean;
@@ -342,11 +343,16 @@ export async function updateGallery(
     // Revert is complex; instead, pre-check ownership
     // Prefer pre-check for ownership before update
   }
-  return {
+  const result = {
     ...updated,
     communityName: updated.community?.name ?? null,
     community: undefined, // Remove nested community object
   };
+  
+  // Broadcast gallery update to gallery room
+  socketManager.broadcastGalleryUpdated(galleryId, result);
+  
+  return result;
 }
 
 /**

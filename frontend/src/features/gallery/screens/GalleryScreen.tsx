@@ -8,7 +8,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { useGallery } from '../../../hooks/useGalleryData';
 import { useGalleryTags } from '../../../hooks/useGalleryTagData';
 import { useCreateOptimisticPhotos } from '../../../hooks/usePhotoData';
-
+import { useGallerySocket } from '../../../hooks/useGallerySocket';
 
 type GalleryImage = {
   id?: string;
@@ -27,9 +27,10 @@ const GalleryScreen = () => {
 
   // Photos from local DB (observed)
   const { photos } = useGallery(galleryId, { tagId: selectedTagId });
-
   // Batch photo upload hook
-  const { mutate: createOptimisticPhotos, isPending: isUploadingPhotos } = useCreateOptimisticPhotos();
+  const { mutate: createOptimisticPhotos } = useCreateOptimisticPhotos();
+  // Join gallery room for real-time updates
+  useGallerySocket(galleryId);
 
   // Compute images to display
   const images: GalleryImage[] = useMemo(() => {
