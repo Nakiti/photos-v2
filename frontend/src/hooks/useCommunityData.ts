@@ -73,7 +73,7 @@ export const useCommunity = (communityId: string | null) => {
     return () => sub.unsubscribe();
   }, [database, communityId]);
 
-  const { isLoading, isError, error, isFetching } = useQuery({
+  const { isLoading, isError, error, isFetching, refetch } = useQuery({
     queryKey: ['community', communityId],
     enabled: !!communityId,
     queryFn: async () => {
@@ -92,6 +92,7 @@ export const useCommunity = (communityId: string | null) => {
     isSyncing: isFetching,
     isError,
     error,
+    refetch
   };
 };
 

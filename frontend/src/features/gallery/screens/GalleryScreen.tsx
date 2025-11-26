@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, FlatList, TouchableOpacity, Text } from 'react-native';
+import { View, StyleSheet, FlatList, TouchableOpacity, Text, Alert } from 'react-native';
+import { launchImageLibrary, ImagePickerResponse } from 'react-native-image-picker';
 import ImagesDisplay from '../components/ImagesDisplay';
 import GalleryBottomBar from '../components/GalleryBottomBar';
 import GalleryHeader from '../components/GalleryHeader';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useGallery } from '../../../hooks/useGalleryData';
 import { useGalleryTags } from '../../../hooks/useGalleryTagData';
+import { useCreateOptimisticPhotos } from '../../../hooks/usePhotoData';
 
 
 type GalleryImage = {
@@ -25,6 +27,9 @@ const GalleryScreen = () => {
 
   // Photos from local DB (observed)
   const { photos } = useGallery(galleryId, { tagId: selectedTagId });
+
+  // Batch photo upload hook
+  const { mutate: createOptimisticPhotos, isPending: isUploadingPhotos } = useCreateOptimisticPhotos();
 
   // Compute images to display
   const images: GalleryImage[] = useMemo(() => {
@@ -53,7 +58,54 @@ const GalleryScreen = () => {
 
 
   const handlePressUpload = () => {
-    // no-op handler for presentational component
+    launchImageLibrary(
+      { 
+        mediaType: 'photo', 
+        quality: 1.0, // Full quality since we resize anyway
+        selectionLimit: 0, // 0 = unlimited selection
+        includeBase64: false, // Not needed since we use URIs
+      }, 
+      async (response: ImagePickerResponse) => {
+        if (response.didCancel) {
+          return;
+        }
+        
+        if (response.errorCode) {
+          Alert.alert('Error', response.errorMessage || 'Failed to pick images');
+          return;
+        }
+
+        const assets = response.assets || [];
+        
+        if (assets.length === 0) {
+          return;
+        }
+
+        // Extract URIs from selected assets
+        const uris = assets
+          .map(asset => asset.uri)
+          .filter((uri): uri is string => !!uri);
+
+        if (uris.length > 0) {
+          createOptimisticPhotos(
+            { 
+              galleryId, 
+              localUris: uris, 
+              tagIds: [] // Can add tag selection UI later if needed
+            },
+            {
+              onSuccess: (result) => {
+                console.log(`Successfully queued ${result.count} photos for upload`);
+              },
+              onError: (error) => {
+                console.error("Failed to create photos:", error);
+                Alert.alert("Error", "Failed to add photos. Please try again.");
+              }
+            }
+          );
+        }
+      }
+    );
   };
 
   const handlePressCamera = () => {

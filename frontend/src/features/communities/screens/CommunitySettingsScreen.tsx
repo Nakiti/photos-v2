@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import SettingsItem from '../../gallery/components/SettingsItem';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useDeleteCommunity, useCommunity, useLeaveCommunity } from '../../../hooks/useCommunityData';
 import { useAuth } from '../../../hooks/useAuth';
 
@@ -26,7 +26,14 @@ const CommunitySettingsScreen = () => {
    const route = useRoute();
    const { communityId } = route.params as { communityId: string }
 
-   const { community, isLoading } = useCommunity(communityId)
+   const { community, isLoading, refetch } = useCommunity(communityId)
+
+   useFocusEffect(
+      useCallback(() => {
+         // This runs when screen is focused (initial load + navigating back)
+         refetch();
+      }, [refetch])
+   );
 
    console.log("communityId ", communityId)
    console.log("community ", community)

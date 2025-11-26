@@ -101,6 +101,103 @@ export const useCreateOptimisticPhoto = () => {
   };
 
   /**
+   * Hook for creating multiple photos in a single batch operation.
+   * More efficient than calling useCreateOptimisticPhoto multiple times.
+   * Resizes all images in parallel and executes a single database batch write.
+   */
+  export const useCreateOptimisticPhotos = () => {
+    const database = useDatabase();
+    const { user } = useAuth();
+  
+    return useMutation({
+      mutationFn: async (variables: { 
+        galleryId: string; 
+        localUris: string[]; 
+        tagIds: string[] 
+      }) => {
+        const { galleryId, localUris, tagIds } = variables;
+        if (!user) throw new Error('User not authenticated');
+        if (localUris.length === 0) return { count: 0 };
+
+        try {
+          // --- 1. RESIZE ALL IMAGES IN PARALLEL ---
+          const resizePromises = localUris.map(localUri => 
+            Promise.all([
+              ImageResizer.createResizedImage(
+                localUri,
+                FULL_IMAGE_WIDTH,
+                FULL_IMAGE_WIDTH,
+                IMAGE_FORMAT,
+                FULL_IMAGE_QUALITY,
+                0,
+                undefined
+              ),
+              ImageResizer.createResizedImage(
+                localUri,
+                THUMB_IMAGE_WIDTH,
+                THUMB_IMAGE_WIDTH,
+                IMAGE_FORMAT,
+                THUMB_IMAGE_QUALITY,
+                0,
+                undefined
+              )
+            ])
+          );
+
+          const resizeResults = await Promise.all(resizePromises);
+          // resizeResults is an array of [fullImage, thumbnail] pairs
+
+          // --- 2. PREPARE ALL DATABASE OPERATIONS ---
+          const photosCollection = database.collections.get<Photo>('photos');
+          const photoTagsCollection = database.collections.get<PhotoTag>('photo_tags');
+          const operations: any[] = [];
+
+          for (let i = 0; i < resizeResults.length; i++) {
+            const [fullImage, thumbnail] = resizeResults[i];
+            const temporaryId = uuid();
+
+            // Prepare photo creation
+            const newPhotoOp = photosCollection.prepareCreate(record => {
+              record._raw.id = temporaryId;
+              record.galleryId = galleryId;
+              record.uploaderId = user.id;
+              record.localUri = fullImage.uri;
+              record.localThumbnailUri = thumbnail.uri;
+              record.status = 'queued';
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (record as any)._raw.created_at = Date.now();
+            });
+            operations.push(newPhotoOp);
+
+            // Prepare tag operations for this photo
+            const tagOperations = tagIds.map(tagId =>
+              photoTagsCollection.prepareCreate(record => {
+                record.photoId = temporaryId;
+                record.tagId = tagId;
+              })
+            );
+            operations.push(...tagOperations);
+          }
+
+          // --- 3. EXECUTE SINGLE BATCH OPERATION ---
+          await database.write(async () => {
+            await database.batch(...operations);
+          });
+
+          console.log(`[Batch] Created ${resizeResults.length} optimistic photos`);
+          return { count: resizeResults.length };
+        } catch (error) {
+          console.error("Failed to create optimistic photos:", error);
+          throw error;
+        }
+      },
+      onError: (error) => {
+        console.error("Failed to create optimistic photos:", error);
+      },
+    });
+  };
+
+  /**
  * Hook to manage the actual upload queue.
  * This hook should be called from a high-level component (like GalleryScreen or App).
  * It will find queued photos and attempt to upload them.

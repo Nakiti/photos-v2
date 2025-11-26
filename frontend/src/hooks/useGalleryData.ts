@@ -1,7 +1,7 @@
 import { useDatabase } from '@nozbe/watermelondb/react';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { Q } from '@nozbe/watermelondb';
+import { Q, Database } from '@nozbe/watermelondb';
 import Gallery from '../db/models/Gallery';
 import { deleteGallery, fetchMyGalleries, updateGallery } from '../services/api/gallery.service';
 import { uploadNewGalleryIcon } from '../services/api/gallery.service';
@@ -50,7 +50,35 @@ export const useGalleries = (
     }
     
     const query = galleriesCollection.query(...conditions);
-    const subscription = query.observe().subscribe(setGalleries);
+    const subscription = query.observe().subscribe(async (galleriesList) => {
+      setGalleries(galleriesList);
+      
+      // Dump local galleries for debugging
+      console.log('=== LOCAL GALLERIES DUMP ===');
+      console.log(`Found ${galleriesList.length} galleries in local DB (type=${type ?? 'all'}, search="${searchQuery ?? ''}")`);
+      for (const gallery of galleriesList) {
+        const galleryData = {
+          id: gallery.id,
+          name: gallery.name,
+          type: gallery.type,
+          ownerId: gallery.ownerId,
+          communityId: gallery.communityId,
+          communityName: gallery.communityName,
+          iconUrl: gallery.iconUrl,
+          startDate: gallery.startDate,
+          endDate: gallery.endDate,
+          location: gallery.location,
+          shareableLink: gallery.shareableLink,
+          joinRequiresApproval: gallery.joinRequiresApproval,
+          addPermission: gallery.addPermission,
+          deletePermission: gallery.deletePermission,
+          createdAt: gallery.createdAt,
+          updatedAt: gallery.updatedAt,
+        };
+        console.log(`Gallery:`, JSON.stringify(galleryData, null, 2));
+      }
+      console.log('=== END GALLERIES DUMP ===');
+    });
 
     return () => subscription.unsubscribe();
   }, [database, type, searchQuery]);
@@ -66,6 +94,10 @@ export const useGalleries = (
       return remoteGalleries;
     },
     refetchOnWindowFocus: true,
+    // Don't retry on network errors - we have local data to show
+    retry: false,
+    // Don't retry when component remounts if we already have local data
+    retryOnMount: false,
   });
 
 
@@ -168,7 +200,11 @@ export const useGallery = (galleryId: string | null, options?: { tagId?: string 
     },
     enabled: !!galleryId,
     refetchOnWindowFocus: true, 
-    staleTime: 60 * 1000, 
+    staleTime: 60 * 1000,
+    // Don't retry on network errors - we have local data to show
+    retry: false,
+    // Don't retry when component remounts if we already have local data
+    retryOnMount: false,
   });
 
   return {
@@ -291,4 +327,48 @@ export const useUpdateGalleryIcon = (galleryId: string | null) => {
       console.error('Failed to update gallery icon:', error);
     },
   });
+};
+
+/**
+ * Utility function to dump all galleries from the local database.
+ * Useful for debugging offline scenarios.
+ */
+export const dumpLocalGalleries = async (database: Database) => {
+  try {
+    const galleriesCollection = database.collections.get<Gallery>('galleries');
+    const allGalleries = await galleriesCollection.query().fetch();
+    
+    console.log('=== COMPLETE LOCAL GALLERIES DUMP ===');
+    console.log(`Total galleries in local DB: ${allGalleries.length}`);
+    console.log('');
+    
+    for (const gallery of allGalleries) {
+      const galleryData = {
+        id: gallery.id,
+        name: gallery.name,
+        type: gallery.type,
+        ownerId: gallery.ownerId,
+        communityId: gallery.communityId,
+        communityName: gallery.communityName,
+        iconUrl: gallery.iconUrl,
+        startDate: gallery.startDate,
+        endDate: gallery.endDate,
+        location: gallery.location,
+        shareableLink: gallery.shareableLink,
+        joinRequiresApproval: gallery.joinRequiresApproval,
+        addPermission: gallery.addPermission,
+        deletePermission: gallery.deletePermission,
+        createdAt: gallery.createdAt,
+        updatedAt: gallery.updatedAt,
+      };
+      console.log(`Gallery [${gallery.id}]:`, JSON.stringify(galleryData, null, 2));
+      console.log('---');
+    }
+    
+    console.log('=== END COMPLETE DUMP ===');
+    return allGalleries;
+  } catch (error) {
+    console.error('Error dumping local galleries:', error);
+    throw error;
+  }
 };
