@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import * as galleriesService from '../galleries.service.js';
 import * as membersService from './members.service.js';
-import { addMemberSchema, type AddMemberDto, inviteMemberSchema, type InviteMemberDto, updateMyMembershipSchema, type UpdateMyMembershipDto } from './members.validation.js';
+import { addMemberSchema, type AddMemberDto, inviteMemberSchema, type InviteMemberDto, updateMyMembershipSchema, type UpdateMyMembershipDto, addCommunityMembersSchema, type AddCommunityMembersDto } from './members.validation.js';
 
 /**
  * Controller handlers for gallery members.
@@ -249,5 +249,48 @@ export async function getMyMembership(req: Request, res: Response) {
   const membership = await membersService.getMembership(userId, galleryId);
   if (!membership) return res.status(404).json({ message: 'Membership not found' });
   return res.status(200).json(membership);
+}
+
+/**
+ * POST /api/v1/galleries/:galleryId/members/bulk (Admin/Owner Only)
+ * Bulk add all members from a community to a gallery.
+ * @route POST /api/v1/galleries/:galleryId/members/bulk
+ * @param req Express Request containing `params.galleryId` and body `{ communityId }`.
+ * @param res Express Response.
+ * @returns 201 with the result containing addedCount and errors, or an error status.
+ */
+export async function addCommunityMembersToGallery(req: Request, res: Response) {
+  const requesterId = (req as any).user?.id as string | undefined;
+  if (!requesterId) return res.status(401).json({ message: 'Unauthorized' });
+  const { galleryId } = req.params as { galleryId: string };
+  
+  try {
+    // Validate request body
+    const parsed = addCommunityMembersSchema.parse({ body: req.body });
+    const { communityId } = parsed.body as AddCommunityMembersDto;
+    
+    // Check that requester is admin or owner of the gallery
+    const isAdmin = await membersService.isAdminOrOwner(requesterId, galleryId);
+    if (!isAdmin) return res.status(403).json({ message: 'Forbidden' });
+    
+    // Verify gallery exists and requester has access
+    const access = await galleriesService.getGalleryDetails(requesterId, galleryId);
+    if (!access) return res.status(404).json({ message: 'Gallery not found' });
+    
+    // Add all community members to the gallery
+    const result = await membersService.addCommunityMembersToGallery(galleryId, communityId);
+    
+    return res.status(201).json({
+      addedCount: result.addedCount,
+      errors: result.errors,
+      message: `Successfully added ${result.addedCount} member(s) to the gallery`,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
+    }
+    console.error('Failed to add community members to gallery:', error);
+    return res.status(500).json({ message: 'Failed to add community members' });
+  }
 }
 

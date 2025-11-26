@@ -1,22 +1,22 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
 import { useRoute } from "@react-navigation/native";
-import { useGallery, useUpdateGallery } from "../../../../hooks/useGalleryData";
-import { useMyMembership } from "../../../../hooks/useMembershipData";
+import { useCommunity, useUpdateCommunity } from "../../../../hooks/useCommunityData";
+import { useMyCommunityMembership } from "../../../../hooks/useCommunityMembershipData";
 import { ActivityIndicator } from "react-native-paper";
 import { useQueryClient } from "@tanstack/react-query";
 
-interface EditAddMembersPermissionProps { galleryId: string | number }
+interface EditAddMembersPermissionProps { communityId: string | number }
 
-const EditAddMembersPermissionScreen = () => {
+const EditAddPermissionScreen = () => {
    const route = useRoute();
    const queryClient = useQueryClient();
-   const { galleryId } = route.params as { galleryId: string };
+   const { communityId } = route.params as { communityId: string };
 
-   // Fetch gallery data and user's membership
-   const { gallery, isLoading, isError, error } = useGallery(galleryId);
-   const { data: myMembership } = useMyMembership(galleryId);
-   const { mutate: updateGallery, isPending: isUpdating } = useUpdateGallery();
+   // Fetch community data and user's membership
+   const { community, isLoading, isError, error } = useCommunity(communityId);
+   const { data: myMembership } = useMyCommunityMembership(communityId);
+   const { mutate: updateCommunity, isPending: isUpdating } = useUpdateCommunity();
 
    const [selectedOption, setSelectedOption] = useState<'all' | 'admin'>('admin');
 
@@ -25,28 +25,30 @@ const EditAddMembersPermissionScreen = () => {
       { id: "2", value: "admin" as const, title: "Admin", subtitle: "Only admins can add new members" },
    ];
 
-   // Set initial value when gallery loads
+   // Set initial value when community loads
    useEffect(() => {
-      if (gallery?.addPermission) {
-         setSelectedOption(gallery.addPermission);
+      if (community?.addPermission) {
+         // Map backend enum to frontend value
+         setSelectedOption(community.addPermission === 'ANYONE' ? 'all' : 'admin');
       }
-   }, [gallery]);
+   }, [community]);
 
    const isDirty = useMemo(() => {
-      return gallery?.addPermission !== selectedOption;
-   }, [gallery?.addPermission, selectedOption]);
+      const currentValue = community?.addPermission === 'ANYONE' ? 'all' : 'admin';
+      return currentValue !== selectedOption;
+   }, [community?.addPermission, selectedOption]);
 
    const handleSave = () => {
       if (!isDirty || isUpdating) return;
 
       // Map frontend values to backend enum values
       const backendValue = selectedOption === 'all' ? 'ANYONE' : 'ADMIN';
-      updateGallery(
-         { galleryId, data: { addPermission: backendValue } },
+      updateCommunity(
+         { communityId, data: { addPermission: backendValue } },
          {
             onSuccess: () => {
                Alert.alert('Success', 'Add members permission updated!');
-               queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });
+               queryClient.invalidateQueries({ queryKey: ['community', communityId] });
             },
             onError: () => {
                Alert.alert('Error', 'Failed to update permission.');
@@ -66,13 +68,13 @@ const EditAddMembersPermissionScreen = () => {
    if (isError) {
       return (
          <View style={[styles.container, styles.center]}>
-            <Text style={styles.errorText}>Failed to load gallery: {error?.message || 'Unknown error'}</Text>
+            <Text style={styles.errorText}>Failed to load community: {error?.message || 'Unknown error'}</Text>
          </View>
       );
    }
 
    const userRole = myMembership?.role;
-   const canEdit = userRole === 'ADMIN' || gallery?.ownerId === myMembership?.userId;
+   const canEdit = userRole === 'ADMIN' || community?.ownerId === myMembership?.userId;
 
    return (
       <View style={styles.container}>
@@ -109,7 +111,7 @@ const EditAddMembersPermissionScreen = () => {
    );
 };
 
-export default EditAddMembersPermissionScreen;
+export default EditAddPermissionScreen;
 
 const styles = StyleSheet.create({
    container: {

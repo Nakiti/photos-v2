@@ -7,12 +7,12 @@ import {
 } from "react-native";
 import FastImage from "react-native-fast-image";
 import { launchImageLibrary, ImagePickerResponse } from "react-native-image-picker";
-import { useGallery, useUpdateGallery, useUpdateGalleryIcon } from "../../../../hooks/useGalleryData";
+import { useCommunity, useUpdateCommunity, useUpdateCommunityIcon } from "../../../../hooks/useCommunityData";
 import { ActivityIndicator } from "react-native-paper";
 import { useQueryClient } from "@tanstack/react-query";
-// Image upload handled via `useUpdateGalleryIcon`
+// Image upload handled via `useUpdateCommunityIcon`
 
-interface EditGalleryDetailsProps { galleryId: string | number }
+interface EditCommunityDetailsProps { communityId: string | number }
 
 const EditCommunityDetailsScreen = () => {
    const route = useRoute();
@@ -20,11 +20,11 @@ const EditCommunityDetailsScreen = () => {
    const { communityId } = route.params as { communityId: string };
 
    // --- Data Fetching ---
-   const { gallery, isError, isLoading, error } = useGallery(galleryId);
+   const { community, isError, isLoading, error } = useCommunity(communityId);
 
    // --- Mutations ---
-   const { mutate: updateGallery, isPending: isUpdating } = useUpdateGallery();
-   const { mutate: updateGalleryIcon, isPending: isUploadingIcon } = useUpdateGalleryIcon(galleryId);
+   const { mutate: updateCommunity, isPending: isUpdating } = useUpdateCommunity();
+   const { mutate: updateCommunityIcon, isPending: isUploadingIcon } = useUpdateCommunityIcon(communityId);
 
    // --- Local State for Editing ---
    const [name, setName] = useState<string>('');
@@ -32,16 +32,15 @@ const EditCommunityDetailsScreen = () => {
    const [localImageUri, setLocalImageUri] = useState<string | null>(null);
    const [initial, setInitial] = useState<{ name: string; description: string; iconUrl: string | null }>({ name: '', description: '', iconUrl: null });
 
-   // Populate local state once gallery data is loaded
+   // Populate local state once community data is loaded
    useEffect(() => {
-      if (gallery) {
-         setName(gallery.name || '');
-         // Description is not part of the Gallery model yet; keep local-only for now
-         setDescription('');
+      if (community) {
+         setName(community.name || '');
+         setDescription(community.description || '');
          setLocalImageUri(null);
-         setInitial({ name: gallery.name || '', description: '', iconUrl: gallery.iconUrl || null });
+         setInitial({ name: community.name || '', description: community.description || '', iconUrl: community.iconUrl || null });
       }
-   }, [galleryId, gallery]);
+   }, [communityId, community]);
 
    // Dirty tracking (similar to profile screen)
    const isDirty = useMemo(() => {
@@ -66,10 +65,10 @@ const EditCommunityDetailsScreen = () => {
            const uri = response.assets[0].uri;
            setLocalImageUri(uri); // Local preview
            // Upload immediately and sync
-           updateGalleryIcon(uri, {
+           updateCommunityIcon(uri, {
              onSuccess: () => {
                setLocalImageUri(null);
-               queryClient.invalidateQueries({queryKey: ['gallery', galleryId]})
+               queryClient.invalidateQueries({queryKey: ['community', communityId]})
              },
              onError: (err) => {
                Alert.alert('Upload Failed', (err as Error)?.message || 'Unable to update image');
@@ -82,20 +81,19 @@ const EditCommunityDetailsScreen = () => {
    const handleSave = () => {
       if (!isDirty || isUpdating) return;
 
-      // Only update fields supported today (name). Image upload will be added later via TODO hook.
-      updateGallery(
-         { galleryId, data: { name: name.trim() || initial.name } },
+      updateCommunity(
+         { communityId, data: { name: name.trim() || initial.name, description: description.trim() || null } },
          {
             onSuccess: () => {
-               Alert.alert('Success', 'Gallery updated!');
-               queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });
-               queryClient.invalidateQueries({ queryKey: ['galleries'] });
-               // Reset local state to reflect saved data (description kept local-only for now)
-               setInitial((prev) => ({ ...prev, name: name.trim() || prev.name, description }));
+               Alert.alert('Success', 'Community updated!');
+               queryClient.invalidateQueries({ queryKey: ['community', communityId] });
+               queryClient.invalidateQueries({ queryKey: ['communities'] });
+               // Reset local state to reflect saved data
+               setInitial((prev) => ({ ...prev, name: name.trim() || prev.name, description: description.trim() || prev.description }));
                setLocalImageUri(null);
             },
             onError: () => {
-               Alert.alert('Error', 'Failed to update gallery.');
+               Alert.alert('Error', 'Failed to update community.');
             },
          }
       );
@@ -112,7 +110,7 @@ const EditCommunityDetailsScreen = () => {
    if (isError) {
       return (
         <View style={[styles.container, styles.center]}>
-          <Text style={styles.errorText}>Failed to load groups: {error?.message || 'Unknown error'}</Text>
+          <Text style={styles.errorText}>Failed to load community: {error?.message || 'Unknown error'}</Text>
         </View>
       );
     }
@@ -148,7 +146,7 @@ const EditCommunityDetailsScreen = () => {
 
             {/* Name Input */}
             <View style={styles.infoContainer}>
-               <Text style={styles.label}>Group Name</Text>
+               <Text style={styles.label}>Community Name</Text>
                <TextInput
                   style={styles.input}
                   value={name}

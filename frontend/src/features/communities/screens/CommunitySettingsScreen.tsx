@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import SettingsItem from '../../gallery/components/SettingsItem';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useDeleteCommunity, useCommunity, useLeaveCommunity } from '../../../hooks/useCommunityData';
 import { useAuth } from '../../../hooks/useAuth';
 
@@ -26,7 +26,14 @@ const CommunitySettingsScreen = () => {
    const route = useRoute();
    const { communityId } = route.params as { communityId: string }
 
-   const { community, isLoading } = useCommunity(communityId)
+   const { community, isLoading, refetch } = useCommunity(communityId)
+
+   useFocusEffect(
+      useCallback(() => {
+         // This runs when screen is focused (initial load + navigating back)
+         refetch();
+      }, [refetch])
+   );
 
    console.log("communityId ", communityId)
    console.log("community ", community)
@@ -113,7 +120,7 @@ const CommunitySettingsScreen = () => {
          privacySection.items.push({
             label: 'Require Admin Approval to Join',
             value: c.joinRequiresApproval ?? false,
-            onPress: () => (navigation as any).navigate("CreateCommunitySettings", { communityId: community.id })
+            onPress: () => (navigation as any).navigate("EditJoinPermission", { communityId: community.id })
          });
 
          // Note: Pending requests functionality would need to be implemented
@@ -138,13 +145,13 @@ const CommunitySettingsScreen = () => {
          permissionsSection.items.push({
             label: 'Who can add photos?',
             value: c.addPermission === 'ANYONE' ? 'Anyone' : 'Admins', 
-            onPress: () => (navigation as any).navigate("CreateCommunitySettings", { communityId: community.id })
+            onPress: () => (navigation as any).navigate("EditAddPermission", { communityId: community.id })
          });
 
          permissionsSection.items.push({
             label: 'Who can delete photos?',
             value: c.deletePermission === 'ADMINS_AUTHORS' ? 'Admins & Authors' : 'Admins Only',
-            onPress: () => (navigation as any).navigate("CreateCommunitySettings", { communityId: community.id }),
+            onPress: () => (navigation as any).navigate("EditDeletePermission", { communityId: community.id }),
             bottom: true
          });
       } else {

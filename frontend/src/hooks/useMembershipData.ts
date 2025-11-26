@@ -16,7 +16,8 @@ import {
   promoteMember,
   approveMember,
   updateMyMembership,
-  getMyMembership
+  getMyMembership,
+  addCommunityMembersToGallery,
 
 } from "../services/api/memberships.service"; // Assuming a dedicated memberService
 import { syncMembers, removeMembershipLocally } from "../services/sync/memberships.sync";
@@ -224,6 +225,19 @@ export const useLeaveGallery = () => {
 // --- ADMIN-FACING MUTATIONS ---
 
 /**
+ * Hook for an Admin to add a member directly to a gallery.
+ */
+export const useAddGalleryMember = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ galleryId, userId }: { galleryId: string; userId: string }) => addMember(galleryId, userId),
+    onSuccess: (data, { galleryId }) => {
+      queryClient.invalidateQueries({ queryKey: ['memberships', galleryId] });
+    },
+  });
+};
+
+/**
  * Hook for an Admin to invite a user to a gallery.
  */
 export const useInviteMember = () => {
@@ -375,6 +389,21 @@ export const useMyMembership = (galleryId: string | null) => {
     enabled: !!galleryId,
     queryFn: () => getMyMembership(galleryId as string),
     staleTime: 5 * 60 * 1000,
+  });
+};
+
+/**
+ * Hook to bulk add all members from a community to a gallery.
+ * This is more efficient than adding members one by one.
+ */
+export const useAddCommunityMembersToGallery = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ galleryId, communityId }: { galleryId: string; communityId: string }) =>
+      addCommunityMembersToGallery(galleryId, communityId),
+    onSuccess: (data, { galleryId }) => {
+      queryClient.invalidateQueries({ queryKey: ['memberships', galleryId] });
+    },
   });
 };
 

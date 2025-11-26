@@ -2,7 +2,7 @@ import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useRoute } from '@react-navigation/native';
-import { useMemberships, useInviteMember, useDenyOrRemoveMember } from '../../../hooks/useMembershipData';
+import { useCommunityMembers, useAddCommunityMember, useRemoveCommunityMember } from '../../../hooks/useCommunityMembershipData';
 import { useSearchUsers } from '../../../hooks/useUser';
 import AddMemberListItem from '../../groups/components/AddMemberListItem';
 
@@ -15,50 +15,33 @@ type DisplayUser = {
 
 const AddCommunityMembersScreen = () => {
   const route = useRoute();
-  const { galleryId } = route.params as { galleryId: string };
+  const { communityId } = route.params as { communityId: string };
 
   const [value, setValue] = useState('');
   const [showMembers, setShowMembers] = useState(true);
-  const [showPending, setShowPending] = useState(true);
   const [showSearchResults, setShowSearchResults] = useState(false);
 
-  const { acceptedMembers, pendingMembers } = useMemberships(galleryId);
-  const { mutate: inviteMember, isPending: isInviting } = useInviteMember();
-  const { mutate: denyOrRemove, isPending: isRemoving } = useDenyOrRemoveMember();
-    console.log("pending members ", pendingMembers)
+  const { members } = useCommunityMembers(communityId);
+  const { mutate: addMember, isPending: isInviting } = useAddCommunityMember();
+  const { mutate: removeMember, isPending: isRemoving } = useRemoveCommunityMember();
 
   // Search users hook (manual trigger)
   const { users: searchResults, isLoading: isSearching, search, pagination } = useSearchUsers({}, false);
 
-  const acceptedMemberIds = useMemo(
-    () => new Set(acceptedMembers.map((m) => m.user.id)),
-    [acceptedMembers]
-  );
-  const pendingMemberIds = useMemo(
-    () => new Set(pendingMembers.map((m) => m.user.id)),
-    [pendingMembers]
+  const memberIds = useMemo(
+    () => new Set(members.map((m) => m.user.id)),
+    [members]
   );
 
-  const members: DisplayUser[] = useMemo(
+  const displayMembers: DisplayUser[] = useMemo(
     () =>
-      acceptedMembers.map(({ user }) => ({
+      members.map(({ user }) => ({
         id: user.id,
         name: user.name || user.handle,
         handle: user.handle,
         avatar: user.avatarUrl || undefined,
       })),
-    [acceptedMembers]
-  );
-
-  const pending: DisplayUser[] = useMemo(
-    () =>
-      pendingMembers.map(({ user }) => ({
-        id: user.id,
-        name: user.name || user.handle,
-        handle: user.handle,
-        avatar: user.avatarUrl || undefined,
-      })),
-    [pendingMembers]
+    [members]
   );
 
   const handleSearch = useCallback(async () => {
@@ -76,23 +59,22 @@ const AddCommunityMembersScreen = () => {
   const handleInvite = useCallback(
     (user: any) => {
       const userId = user.id;
-      inviteMember(
-        { galleryId, userId, user },
+      addMember(
+        { communityId, userId },
         {
           onSuccess: () => {
             // No-op; queries invalidate in hook
           },
           onError: () => {
-            Alert.alert('Error', 'Failed to send invite.');
+            Alert.alert('Error', 'Failed to add member.');
           },
         }
       );
     },
-    [inviteMember, galleryId]
+    [addMember, communityId]
   );
 
   const toggleMembers = useCallback(() => setShowMembers((s) => !s), []);
-  const togglePending = useCallback(() => setShowPending((s) => !s), []);
 
   return (
     <View style={styles.container}>
@@ -152,11 +134,7 @@ const AddCommunityMembersScreen = () => {
               <Text style={styles.emptyRow}>No users found</Text>
             ) : (
               searchResults.map((user) => {
-                const status = acceptedMemberIds.has(user.id)
-                  ? 'member'
-                  : pendingMemberIds.has(user.id)
-                  ? 'pending'
-                  : 'can_add';
+                const status = memberIds.has(user.id) ? 'member' : 'can_add';
                 return (
                   <AddMemberListItem
                     key={user.id}
@@ -171,33 +149,33 @@ const AddCommunityMembersScreen = () => {
           </View>
         )}
 
-        {/* Pending */}
+        {/* Members */}
         <View style={styles.section}>
-          <TouchableOpacity style={styles.sectionHeader} onPress={togglePending}>
-            <Text style={styles.sectionTitle}>Pending</Text>
+          <TouchableOpacity style={styles.sectionHeader} onPress={toggleMembers}>
+            <Text style={styles.sectionTitle}>Members</Text>
             <Ionicons
-              name={showPending ? 'chevron-down-outline' : 'chevron-forward-outline'}
+              name={showMembers ? 'chevron-down-outline' : 'chevron-forward-outline'}
               size={16}
             />
           </TouchableOpacity>
-          {showPending &&
-            (pending.length === 0 ? (
-              <Text style={styles.emptyRow}>No pending requests</Text>
+          {showMembers &&
+            (displayMembers.length === 0 ? (
+              <Text style={styles.emptyRow}>No members</Text>
             ) : (
-              pending.map((p) => (
+              displayMembers.map((m) => (
                 <AddMemberListItem
-                  key={p.id}
+                  key={m.id}
                   user={
                     {
-                      id: p.id,
-                      name: p.name,
-                      handle: p.handle,
-                      avatarUrl: p.avatar,
+                      id: m.id,
+                      name: m.name,
+                      handle: m.handle,
+                      avatarUrl: m.avatar,
                     } as any
                   }
-                  status="pending"
+                  status="member"
                   onInvite={() => {}}
-                  onRemove={() => denyOrRemove({ galleryId, userId: p.id })}
+                  onRemove={() => removeMember({ communityId, userId: m.id })}
                   isInviting={isRemoving}
                 />
               ))

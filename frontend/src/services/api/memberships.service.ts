@@ -80,3 +80,25 @@ export const getMyMembership = async (galleryId: string): Promise<MyMembership> 
   const response = await apiClient.get(`/api/v1/galleries/${galleryId}/members/me`);
   return response.data;
 };
+
+export interface AddCommunityMembersResponse {
+  addedCount: number;
+  errors: any[];
+  message: string;
+}
+
+/**
+ * Bulk add all members from a community to a gallery.
+ * @param galleryId The gallery id
+ * @param communityId The community id
+ * @returns Promise resolving to the result with addedCount and errors
+ */
+export const addCommunityMembersToGallery = async (
+  galleryId: string,
+  communityId: string
+): Promise<AddCommunityMembersResponse> => {
+  const response = await apiClient.post(`/api/v1/galleries/${galleryId}/members/bulk`, {
+    communityId,
+  });
+  return response.data;
+};

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Q } from '@nozbe/watermelondb';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Community from "../db/models/Community"
+import Gallery from '../db/models/Gallery';
 
 
 import {
@@ -18,6 +19,7 @@ import {
 } from '../services/api/communities.service';
 import { syncCommunities, syncCommunityDetails } from '../services/sync/communities.sync';
 import { getGalleriesByCommunityId, type GalleryApiResponse } from '../services/api/gallery.service';
+import { syncGalleries, syncCommunityGalleries } from '../services/sync/gallery.sync';
 
 export const useCommunities = (searchQuery?: string) => {
   const database = useDatabase();
@@ -71,7 +73,7 @@ export const useCommunity = (communityId: string | null) => {
     return () => sub.unsubscribe();
   }, [database, communityId]);
 
-  const { isLoading, isError, error, isFetching } = useQuery({
+  const { isLoading, isError, error, isFetching, refetch } = useQuery({
     queryKey: ['community', communityId],
     enabled: !!communityId,
     queryFn: async () => {
@@ -90,33 +92,50 @@ export const useCommunity = (communityId: string | null) => {
     isSyncing: isFetching,
     isError,
     error,
+    refetch
   };
 };
 
 export const useCommunityGalleries = (communityId: string | null) => {
-  const {
-    data,
-    isLoading,
-    isError,
-    error,
-    isFetching,
-  } = useQuery<GalleryApiResponse[]>({
+  const database = useDatabase();
+  const [galleries, setGalleries] = useState<Gallery[]>([]);
+
+  // 1. OBSERVE LOCAL DATA FIRST (instant UI)
+  useEffect(() => {
+    if (!communityId) {
+      setGalleries([]);
+      return;
+    }
+    const galleriesCollection = database.collections.get<Gallery>('galleries');
+    const query = galleriesCollection.query(
+      Q.where('community_id', communityId),
+      Q.sortBy('created_at', Q.desc)
+    );
+    const subscription = query.observe().subscribe(setGalleries);
+    return () => subscription.unsubscribe();
+  }, [database, communityId]);
+
+  // 2. FETCH & SYNC REMOTE DATA (background)
+  const { isLoading, isError, error, isFetching } = useQuery<GalleryApiResponse[]>({
     queryKey: ['community-galleries', communityId],
     enabled: !!communityId,
     queryFn: async () => {
       if (!communityId) return [];
-      return getGalleriesByCommunityId(communityId);
+      const remoteGalleries = await getGalleriesByCommunityId(communityId);
+      // Use the optimized sync function that only touches this community's galleries
+      await syncCommunityGalleries(database, remoteGalleries, communityId);
+      return remoteGalleries;
     },
     staleTime: 60 * 1000,
     refetchOnWindowFocus: true,
   });
 
-  const hasGalleries = Boolean(data?.length);
+  const hasGalleries = Boolean(galleries.length);
 
   return {
-    galleries: data ?? [],
-    isLoading: isLoading && !hasGalleries,
-    isSyncing: isFetching,
+    galleries, // Local data (instant)
+    isLoading: isLoading && !hasGalleries, // Only show loading if no local data
+    isSyncing: isFetching, // Background sync indicator
     isError,
     error,
   };

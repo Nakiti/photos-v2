@@ -9,6 +9,11 @@ import CreateCommunitySettingsScreen from "../features/communities/screens/Creat
 import ShareCommunityScreen from "../features/communities/screens/ShareCommunityScreen";
 import DefaultHeader from "../components/DefaultHeader";
 import DefaultNoBackHeader from "../components/DefaultNoBackHeader";
+import AddCommunityMembersScreen from "../features/communities/screens/AddCommunityMembersScreen";
+import EditCommunityDetailsScreen from "../features/communities/screens/CommunitySettings/EditCommunityDetailsScreen";
+import EditDeletePermissionScreen from "../features/communities/screens/CommunitySettings/EditDeleteMemberPermissionScreen";
+import EditJoinPermissionScreen from "../features/communities/screens/CommunitySettings/EditJoinPermissionScreen";
+import EditAddPermissionScreen from "../features/communities/screens/CommunitySettings/EditAddPermissionScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -70,6 +75,41 @@ const CommunityStack = () => {
         component={ShareCommunityScreen}
         options={{
           header: () => <DefaultHeader title="Share" />,
+        }}
+      />
+      <Stack.Screen
+        name="AddCommunityMembers"
+        component={AddCommunityMembersScreen}
+        options={{
+          header: () => <DefaultHeader title="Add Members" />,
+        }}
+      />
+      <Stack.Screen 
+        name="EditAddPermission"
+        component={EditAddPermissionScreen}
+        options={{
+          header: () => <DefaultHeader title="Edit Add Permission"/>
+        }}
+      />
+      <Stack.Screen 
+        name="EditJoinPermission"
+        component={EditJoinPermissionScreen}
+        options={{
+          header: () => <DefaultHeader title="Edit Add Permission"/>
+        }}
+      />
+      <Stack.Screen 
+        name="EditDeletePermission"
+        component={EditDeletePermissionScreen}
+        options={{
+          header: () => <DefaultHeader title="Edit Add Permission"/>
+        }}
+      />
+      <Stack.Screen 
+        name="EditCommunityDetails"
+        component={EditCommunityDetailsScreen}
+        options={{
+          header: () => <DefaultHeader title="Edit Add Permission"/>
         }}
       />
     </Stack.Navigator>

@@ -25,14 +25,8 @@ export interface CreateGalleryRequest {
  * @returns Promise resolving to an array of galleries the user can access
  */
 export const fetchMyGalleries = async (): Promise<GalleryApiResponse[]> => {
-  try {
-    const response = await apiClient.get('/api/v1/galleries');
-    return response.data;
-  } catch (error) {
-    console.error('Failed to fetch galleries:', error);
-    // You might want to handle errors more gracefully
-    return [];
-  }
+  const response = await apiClient.get('/api/v1/galleries');
+  return response.data;
 };
 
 /**
