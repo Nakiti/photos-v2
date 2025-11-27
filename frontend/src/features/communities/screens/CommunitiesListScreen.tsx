@@ -1,16 +1,19 @@
 // list of communities that the user is in
 // similar to groups list screen; presentational only with dummy data
-import React, { useMemo, useState } from 'react';
-import { View, FlatList, StyleSheet, TextInput, Text, TouchableOpacity } from 'react-native';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import { View, FlatList, StyleSheet, TextInput, Text, TouchableOpacity, RefreshControl } from 'react-native';
 import CommunityCard from '../components/CommunityCard';
 import { useNavigation } from '@react-navigation/native';
 import { useCommunities } from '../../../hooks/useCommunityData';
 import CommunityListHeader from '../components/CommunityListHeader';
 import SearchBar from '../../../components/SearchBar';
+import { useQueryClient } from '@tanstack/react-query';
 
 const CommunitiesListScreen = () => {
   const navigation = useNavigation<any>();
   const [search, setSearch] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const queryClient = useQueryClient();
   const { communities, isLoading, isSyncing } = useCommunities(search);
 
   console.log(communities)
@@ -19,6 +22,21 @@ const CommunitiesListScreen = () => {
     // useCommunities already filters by search; return as-is
     return communities;
   }, [communities]);
+
+  // Track when sync completes after a manual refresh
+  const prevIsSyncing = useRef(isSyncing);
+  useEffect(() => {
+    // When sync completes (transitions from true to false) and we're refreshing
+    if (refreshing && prevIsSyncing.current && !isSyncing) {
+      setRefreshing(false);
+    }
+    prevIsSyncing.current = isSyncing;
+  }, [refreshing, isSyncing]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    queryClient.invalidateQueries({ queryKey: ['communities'] });
+  }, [queryClient]);
 
   const renderItem = ({ item }: any) => (
     <CommunityCard
@@ -32,12 +50,20 @@ const CommunitiesListScreen = () => {
   return (
     <View style={styles.container}>
         <CommunityListHeader />
-        <SearchBar placeholder='Search Communities'/>
+        <SearchBar value={search} onChangeText={setSearch} placeholder='Search Communities'/>
         <FlatList
             data={filtered}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
             renderItem={renderItem}
+            refreshControl={
+              <RefreshControl 
+                refreshing={refreshing} 
+                onRefresh={onRefresh}
+                tintColor="#007AFF"
+                colors={['#007AFF']}
+              />
+            }
             ListEmptyComponent={
             <View style={{ padding: 24 }}>
                 <Text style={{ color: '#666', textAlign: 'center' }}>
@@ -86,7 +112,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#111',
   },
-  listContent: { padding: 16 },
+  listContent: { padding: 0 },
 });
 
 export default CommunitiesListScreen;

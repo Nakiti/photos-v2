@@ -1,5 +1,5 @@
 import { PrismaClient, Prisma } from '@prisma/client';
-import { socketManager } from '../../../../../../libs/socket.manager.js';
+import { socketManager } from '../../../../../libs/socket.manager.js';
 
 const prisma = new PrismaClient();
 

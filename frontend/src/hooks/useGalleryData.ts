@@ -49,9 +49,23 @@ export const useGalleries = (
       conditions.push(Q.where('name', Q.like(`%${sanitizedQuery}%`)));
     }
     
-    const query = galleriesCollection.query(...conditions);
+    const query = galleriesCollection.query(
+      ...conditions,
+      Q.sortBy('last_photo_at', Q.desc),
+      Q.sortBy('created_at', Q.desc)
+    );
     const subscription = query.observe().subscribe(async (galleriesList) => {
-      setGalleries(galleriesList);
+      // Sort by lastPhotoAt (descending), then by createdAt (descending) for null lastPhotoAt
+      const sorted = [...galleriesList].sort((a, b) => {
+        const aTime = a.lastPhotoAt ?? 0;
+        const bTime = b.lastPhotoAt ?? 0;
+        if (aTime !== bTime) {
+          return bTime - aTime; // Descending
+        }
+        // If lastPhotoAt is the same (or both null), sort by createdAt
+        return (b.createdAt || 0) - (a.createdAt || 0);
+      });
+      setGalleries(sorted);
       
       // Dump local galleries for debugging
       console.log('=== LOCAL GALLERIES DUMP ===');

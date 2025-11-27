@@ -1,8 +1,8 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const mySchema = appSchema({
-  // Ensure version matches the latest changes (added community_name to galleries)
-  version: 16,
+  // Ensure version matches the latest changes (added last_photo_at to galleries)
+  version: 19,
   tables: [
     tableSchema({
       name: 'users',
@@ -33,6 +33,7 @@ export const mySchema = appSchema({
         { name: 'join_requires_approval', type: 'boolean', isOptional: true }, // true | false
         { name: 'add_permission', type: 'string', isOptional: true },  // 'all' | 'admin'
         { name: 'delete_permission', type: 'string', isOptional: true }, // 'admins_authors' | 'admin'
+        { name: 'last_photo_at', type: 'number', isOptional: true },
         { name: 'created_at', type: 'number' },
         { name: 'updated_at', type: 'number' },
       ],

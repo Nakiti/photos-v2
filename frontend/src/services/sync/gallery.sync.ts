@@ -1,7 +1,6 @@
-import { Database } from '@nozbe/watermelondb';
+import { Database, Q } from '@nozbe/watermelondb';
 import Gallery from '../../db/models/Gallery'; // Your WatermelonDB Gallery model
 import { GalleryApiResponse } from '../api/gallery.service';
-import { Q } from '@nozbe/watermelondb/Query';
 
 /**
  * Reconciles a list of galleries from the server with the local WatermelonDB.
@@ -25,7 +24,8 @@ export const syncGalleries = async (database: Database, remoteGalleries: Gallery
     if (local) {
       // Record exists, check if it needs an update
       // A more advanced sync would compare a `updated_at` timestamp
-      if (local.name !== remoteGallery.name || local.iconUrl !== remoteGallery.iconUrl || local.joinRequiresApproval !== remoteGallery.joinRequiresApproval || local.addPermission !== remoteGallery.addPermission || local.deletePermission !== remoteGallery.deletePermission) {
+      const remoteLastPhotoAt = remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : null;
+      if (local.name !== remoteGallery.name || local.iconUrl !== remoteGallery.iconUrl || local.joinRequiresApproval !== remoteGallery.joinRequiresApproval || local.addPermission !== remoteGallery.addPermission || local.deletePermission !== remoteGallery.deletePermission || local.lastPhotoAt !== remoteLastPhotoAt) {
         operations.push(
           local.prepareUpdate(record => {
             record.name = remoteGallery.name;
@@ -36,6 +36,7 @@ export const syncGalleries = async (database: Database, remoteGalleries: Gallery
             record.defaultTagId = remoteGallery.defaultTagId
             record.communityId = remoteGallery.communityId
             record.communityName = remoteGallery.communityName
+            record.lastPhotoAt = remoteLastPhotoAt ?? undefined
             // map other updatable fields
           })
         );
@@ -55,6 +56,7 @@ export const syncGalleries = async (database: Database, remoteGalleries: Gallery
           record.defaultTagId = remoteGallery.defaultTagId
           record.communityId = remoteGallery.communityId
           record.communityName = remoteGallery.communityName
+          record.lastPhotoAt = remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : undefined
         })
       );
     }
@@ -117,6 +119,7 @@ export const syncGalleryDetails = async (
     record.defaultTagId = remoteGallery.defaultTagId
     record.communityId = remoteGallery.communityId
     record.communityName = remoteGallery.communityName
+    record.lastPhotoAt = remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : undefined
   };
 
   // --- 3. Prepare the correct operation (Update or Create) ---
@@ -175,7 +178,8 @@ export const syncCommunityGalleries = async (
         local.communityName !== remoteGallery.communityName ||
         // Check dates (convert remote to timestamp for comparison)
         local.startDate !== (remoteGallery.startDate ? new Date(remoteGallery.startDate).getTime() : null) ||
-        local.endDate !== (remoteGallery.endDate ? new Date(remoteGallery.endDate).getTime() : null);
+        local.endDate !== (remoteGallery.endDate ? new Date(remoteGallery.endDate).getTime() : null) ||
+        local.lastPhotoAt !== (remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : null);
 
       if (needsUpdate) {
         operations.push(
@@ -187,17 +191,18 @@ export const syncCommunityGalleries = async (
             record.deletePermission = remoteGallery.deletePermission;
             record.type = remoteGallery.type;
             record.ownerId = remoteGallery.ownerId;
-            record.location = remoteGallery.location ?? null;
-            record.shareableLink = remoteGallery.shareableLink ?? null;
+            record.location = remoteGallery.location ?? undefined;
+            record.shareableLink = remoteGallery.shareableLink ?? undefined;
             record.startDate = remoteGallery.startDate
               ? new Date(remoteGallery.startDate).getTime()
-              : null;
+              : undefined;
             record.endDate = remoteGallery.endDate
               ? new Date(remoteGallery.endDate).getTime()
-              : null;
-            record.defaultTagId = remoteGallery.defaultTagId;
-            record.communityId = remoteGallery.communityId ?? null;
-            record.communityName = remoteGallery.communityName ?? null;
+              : undefined;
+            record.defaultTagId = remoteGallery.defaultTagId ?? undefined;
+            record.communityId = remoteGallery.communityId ?? undefined;
+            record.communityName = remoteGallery.communityName ?? undefined;
+            record.lastPhotoAt = remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : undefined;
             // Update timestamps
             if ('created_at' in (record as any)._raw && remoteGallery.createdAt) {
               (record as any)._raw.created_at = new Date(remoteGallery.createdAt).getTime();
@@ -220,17 +225,18 @@ export const syncCommunityGalleries = async (
           record.joinRequiresApproval = remoteGallery.joinRequiresApproval;
           record.addPermission = remoteGallery.addPermission;
           record.deletePermission = remoteGallery.deletePermission;
-          record.location = remoteGallery.location ?? null;
-          record.shareableLink = remoteGallery.shareableLink ?? null;
+          record.location = remoteGallery.location ?? undefined;
+          record.shareableLink = remoteGallery.shareableLink ?? undefined;
           record.startDate = remoteGallery.startDate
             ? new Date(remoteGallery.startDate).getTime()
-            : null;
+            : undefined;
           record.endDate = remoteGallery.endDate
             ? new Date(remoteGallery.endDate).getTime()
-            : null;
-          record.defaultTagId = remoteGallery.defaultTagId;
-          record.communityId = remoteGallery.communityId ?? null;
-          record.communityName = remoteGallery.communityName ?? null;
+            : undefined;
+          record.defaultTagId = remoteGallery.defaultTagId ?? undefined;
+          record.communityId = remoteGallery.communityId ?? undefined;
+          record.communityName = remoteGallery.communityName ?? undefined;
+          record.lastPhotoAt = remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : undefined;
           // Set timestamps
           if (remoteGallery.createdAt) {
             (record as any)._raw.created_at = new Date(remoteGallery.createdAt).getTime();

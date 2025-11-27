@@ -92,6 +92,7 @@ export async function createGallery(
         deletePermission: true,
         joinRequiresApproval: true,
         defaultTagId: true,
+        lastPhotoAt: true,
         createdAt: true,
         updatedAt: true,
         community: {
@@ -155,7 +156,10 @@ export async function getMyGalleries(userId: string) {
         { memberships: { some: { userId } } },
       ],
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [
+      { lastPhotoAt: 'desc' },
+      { createdAt: 'desc' },
+    ],
     select: {
       id: true,
       name: true,
@@ -171,6 +175,7 @@ export async function getMyGalleries(userId: string) {
       deletePermission: true,
       joinRequiresApproval: true,
       defaultTagId: true,
+      lastPhotoAt: true,
       createdAt: true,
       updatedAt: true,
       community: {
@@ -222,6 +227,7 @@ export async function getGalleryDetails(userId: string, galleryId: string) {
       deletePermission: true,
       joinRequiresApproval: true,
       defaultTagId: true,
+      lastPhotoAt: true,
       createdAt: true,
       updatedAt: true,
       
@@ -329,6 +335,7 @@ export async function updateGallery(
       deletePermission: true,
       joinRequiresApproval: true,
       defaultTagId: true,
+      lastPhotoAt: true,
       createdAt: true,
       updatedAt: true,
       community: {
@@ -418,6 +425,7 @@ export async function joinGalleryByLink(userId: string, shareableLink: string) {
       defaultTagId: true,
       ownerId: true,
       communityId: true,
+      lastPhotoAt: true,
       createdAt: true,
       updatedAt: true,
       community: {
@@ -455,7 +463,10 @@ export async function getPhotoIdsForGallery(galleryId: string) {
 export async function getGalleriesByCommunityId(communityId: string) {
   const galleries = await prisma.gallery.findMany({
     where: { communityId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [
+      { lastPhotoAt: 'desc' },
+      { createdAt: 'desc' },
+    ],
     select: {
       id: true,
       name: true,
@@ -471,6 +482,7 @@ export async function getGalleriesByCommunityId(communityId: string) {
       deletePermission: true,
       joinRequiresApproval: true,
       defaultTagId: true,
+      lastPhotoAt: true,
       createdAt: true,
       updatedAt: true,
       community: {
@@ -625,6 +637,7 @@ export async function searchGalleries(
     take: limit,
     skip: offset,
     orderBy: [
+      { lastPhotoAt: 'desc' },
       { createdAt: 'desc' },
     ],
   });
@@ -645,13 +658,14 @@ export async function searchGalleries(
     ownerId: g.ownerId,
     communityId: g.communityId,
     communityName: g.community?.name ?? null,
-    addPermission: g.addPermission,
-    deletePermission: g.deletePermission,
-    joinRequiresApproval: g.joinRequiresApproval,
-    defaultTagId: g.defaultTagId,
-    createdAt: g.createdAt,
-    updatedAt: g.updatedAt,
-    memberCount: g._count.memberships,
+      addPermission: g.addPermission,
+      deletePermission: g.deletePermission,
+      joinRequiresApproval: g.joinRequiresApproval,
+      defaultTagId: g.defaultTagId,
+      lastPhotoAt: g.lastPhotoAt,
+      createdAt: g.createdAt,
+      updatedAt: g.updatedAt,
+      memberCount: g._count.memberships,
   }));
 
   return {

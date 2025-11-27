@@ -1,8 +1,17 @@
 import { Server, Socket } from 'socket.io';
 import http from 'http';
+import jwt from 'jsonwebtoken';
+import config from '../config/config.js';
+import { Redis } from 'ioredis';
+import { redisConnection } from './queue.js';
 
 class SocketManager {
-  public io: Server;
+  public io!: Server; // Initialized in initialize() method
+  private redis: Redis;
+
+  constructor() {
+    this.redis = new Redis(redisConnection);
+  }
 
   initialize(httpServer: http.Server) {
     this.io = new Server(httpServer, {
@@ -14,22 +23,64 @@ class SocketManager {
 
     console.log('🔌 WebSocket server initialized'); 
 
+    // Socket authentication middleware
+    this.io.use(async (socket: Socket, next) => {
+      try {
+        const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.replace('Bearer ', '');
+        
+        if (!token) {
+          console.log(`⚠️ Socket connection rejected: No token provided (${socket.id})`);
+          return next(new Error('Authentication error: No token provided'));
+        }
+
+        // Verify JWT token
+        const decoded = jwt.verify(token, config.jwtSecret) as { userId: string };
+        (socket as any).userId = decoded.userId;
+        console.log(`✅ Socket authenticated: ${socket.id} -> User ${decoded.userId}`);
+        next();
+      } catch (error) {
+        console.log(`⚠️ Socket authentication failed: ${socket.id}`, error);
+        next(new Error('Authentication error: Invalid token'));
+      }
+    });
+
     // Add your authentication and connection logic here
-    this.io.on('connection', (socket: Socket) => {
-      console.log(`✅ User connected: ${socket.id}`);
+    this.io.on('connection', async (socket: Socket) => {
+      const userId = (socket as any).userId;
+      console.log(`✅ User connected: ${socket.id} (User: ${userId})`);
 
-      socket.on('join_gallery', (galleryId: string) => {
-        console.log(`User ${socket.id} joining gallery room: ${galleryId}`);
+      socket.on('join_gallery', async (galleryId: string) => {
+        console.log(`User ${userId} (${socket.id}) joining gallery room: ${galleryId}`);
         socket.join(galleryId);
+        
+        // Track user in Redis set for this gallery room
+        const roomKey = `gallery:${galleryId}:users`;
+        await this.redis.sadd(roomKey, userId);
+        // Set expiry to 1 hour (users should rejoin periodically)
+        await this.redis.expire(roomKey, 3600);
       });
 
-      socket.on('leave_gallery', (galleryId: string) => {
-        console.log(`User ${socket.id} leaving gallery room: ${galleryId}`);
+      socket.on('leave_gallery', async (galleryId: string) => {
+        console.log(`User ${userId} (${socket.id}) leaving gallery room: ${galleryId}`);
         socket.leave(galleryId);
+        
+        // Remove user from Redis set
+        const roomKey = `gallery:${galleryId}:users`;
+        await this.redis.srem(roomKey, userId);
       });
 
-      socket.on('disconnect', () => {
-        console.log(`❌ User disconnected: ${socket.id}`);
+      socket.on('disconnect', async () => {
+        console.log(`❌ User disconnected: ${socket.id} (User: ${userId})`);
+        
+        // Clean up: Remove user from all gallery rooms they were in
+        // Get all rooms this socket was in (excluding the socket's own room)
+        const rooms = Array.from(socket.rooms).filter(room => room !== socket.id);
+        for (const galleryId of rooms) {
+          // All rooms except socket.id are gallery rooms
+          const roomKey = `gallery:${galleryId}:users`;
+          await this.redis.srem(roomKey, userId);
+          console.log(`🧹 Cleaned up user ${userId} from gallery room: ${galleryId}`);
+        }
       });
     });
   }

@@ -19,6 +19,12 @@ export const worker = new Worker('photo-notifications', async (job) => {
             // Reset buffer first to avoid double sends
             await redis.del(bufferKey);
 
+            // Get users currently in the gallery room (should not receive push notifications)
+            const roomKey = `gallery:${galleryId}:users`;
+            const activeUserIds = await redis.smembers(roomKey);
+            const activeUserIdsSet = new Set(activeUserIds);
+            console.log(`[Notification] ${activeUserIds.length} users currently viewing gallery ${galleryId}, excluding from push notifications`);
+
             const memberships = await prisma.membership.findMany({
                 where: {
                 galleryId,
@@ -29,7 +35,11 @@ export const worker = new Worker('photo-notifications', async (job) => {
                 include: { user: { include: { devices: true } } }
             });
 
-            const tokens = memberships.flatMap(m => m.user.devices).map(d => d.token);
+            // Filter out members who are currently viewing the gallery
+            const membersToNotify = memberships.filter(m => !activeUserIdsSet.has(m.userId));
+            console.log(`[Notification] Filtered ${memberships.length} members to ${membersToNotify.length} (excluding ${activeUserIds.length} active viewers)`);
+
+            const tokens = membersToNotify.flatMap(m => m.user.devices).map(d => d.token);
             if (tokens.length === 0) return;
 
             const deadTokens = await sendPushNotifications(
@@ -51,7 +61,13 @@ export const worker = new Worker('photo-notifications', async (job) => {
     // Default immediate processing for 'process-new-photo'
     const { galleryId, uploaderId, photo } = job.data;
 
-    // 1. Find who to notify
+    // 1. Get users currently in the gallery room (should not receive push notifications)
+    const roomKey = `gallery:${galleryId}:users`;
+    const activeUserIds = await redis.smembers(roomKey);
+    const activeUserIdsSet = new Set(activeUserIds);
+    console.log(`[Notification] ${activeUserIds.length} users currently viewing gallery ${galleryId}, excluding from push notifications`);
+
+    // 2. Find who to notify
     const members = await prisma.membership.findMany({
         where: { 
         galleryId,
@@ -62,14 +78,18 @@ export const worker = new Worker('photo-notifications', async (job) => {
         include: { user: { include: { devices: true } } }
     });
 
-    // 2. Extract tokens
-    const tokens = members
+    // 3. Filter out members who are currently viewing the gallery
+    const membersToNotify = members.filter(m => !activeUserIdsSet.has(m.userId));
+    console.log(`[Notification] Filtered ${members.length} members to ${membersToNotify.length} (excluding ${activeUserIds.length} active viewers)`);
+
+    // 4. Extract tokens
+    const tokens = membersToNotify
         .flatMap(m => m.user.devices)
         .map(d => d.token);
 
     if (tokens.length === 0) return;
 
-  // 3. Send Push (The expensive network call)
+  // 5. Send Push (The expensive network call)
     console.log(`Sending push to ${tokens.length} devices...`);
     const deadTokens = await sendPushNotifications(
         tokens, 
@@ -78,7 +98,7 @@ export const worker = new Worker('photo-notifications', async (job) => {
         { galleryId, photoId: photo.id }
     );
     
-    // 4. Cleanup (Maintenance)
+    // 6. Cleanup (Maintenance)
     if (deadTokens.length > 0) {
         console.log(`Removing ${deadTokens.length} dead tokens...`);
         await prisma.device.deleteMany({

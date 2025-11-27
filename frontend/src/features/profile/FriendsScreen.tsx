@@ -1,11 +1,10 @@
-import React, { useCallback, useState, useMemo } from 'react';
+import React, { useCallback, useState, useMemo, useEffect, useRef } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl, Text, ActivityIndicator } from 'react-native';
 import FriendsListItem from './components/FriendsListItem';
 import FriendsListHeader from './components/FriendsListHeader';
 import SearchBar from '../../components/SearchBar';
 import { useFriendships, useRemoveFriend } from '../../hooks/useFriendshipData';
 import { useQueryClient } from '@tanstack/react-query';
-import FastImage from 'react-native-fast-image';
 
 type Friend = {
   id: string;
@@ -19,8 +18,18 @@ const FriendsScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
 
   const queryClient = useQueryClient();
-  const { friends, isError, isLoading, error } = useFriendships();
+  const { friends, isError, isLoading, error, isSyncing } = useFriendships();
   const { mutate: removeFriendMutate } = useRemoveFriend();
+
+  // Track when sync completes after a manual refresh
+  const prevIsSyncing = useRef(isSyncing);
+  useEffect(() => {
+    // When sync completes (transitions from true to false) and we're refreshing
+    if (refreshing && prevIsSyncing.current && !isSyncing) {
+      setRefreshing(false);
+    }
+    prevIsSyncing.current = isSyncing;
+  }, [refreshing, isSyncing]);
 
   const displayFriends: Friend[] = useMemo(() => {
     return friends.map(({ friendProfile }) => ({
@@ -42,17 +51,7 @@ const FriendsScreen = () => {
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     queryClient.invalidateQueries({ queryKey: ['friendships'] });
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 500);
   }, [queryClient]);
-
-  const ListHeader = useCallback(() => (
-    <View>
-      <FriendsListHeader />
-      <SearchBar onSearch={setQuery} placeholder="Search Friends" />
-    </View>
-  ), []);
 
   const ListEmpty = useCallback(() => (
     <View style={styles.emptyContainer}>
@@ -96,15 +95,23 @@ const FriendsScreen = () => {
 
   return (
     <View style={styles.container}>
+      <FriendsListHeader />
+      <SearchBar value={query} onChangeText={setQuery} placeholder="Search Friends" />
       <FlatList
         data={filteredFriends}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
-        ListHeaderComponent={ListHeader}
         ListEmptyComponent={ListEmpty}
-        contentContainerStyle={styles.container}
+        contentContainerStyle={styles.listContent}
         keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh}
+            tintColor="#007AFF"
+            colors={['#007AFF']}
+          />
+        }
       />
     </View>
   );
@@ -121,6 +128,9 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: '#d00',
+  },
+  listContent: {
+    paddingBottom: 24,
   },
   emptyContainer: {
     flex: 1,

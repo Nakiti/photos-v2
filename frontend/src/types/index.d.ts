@@ -6,6 +6,7 @@ export interface Gallery {
     ownerId: string;
     iconUrl?: string;
     type: 'GROUP' | 'EVENT';
+    lastPhotoAt?: string | null; // ISO date string from the API
     createdAt: string; // Comes as an ISO date string from the API
     updatedAt: string;
   
@@ -18,6 +19,12 @@ export interface Gallery {
     // Community fields (optional)
     communityId?: string | null;
     communityName?: string | null;
+    
+    // Permission and settings fields (optional)
+    joinRequiresApproval?: boolean;
+    addPermission?: string;
+    deletePermission?: string;
+    defaultTagId?: string | null;
 }
 
 export interface User {

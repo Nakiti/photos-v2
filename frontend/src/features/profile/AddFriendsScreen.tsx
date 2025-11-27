@@ -1,9 +1,10 @@
-import React, { useMemo, useState, useCallback, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import FriendsListItem from './components/FriendsListItem';
 import { useFriendships, useRejectFriendRequest, useSendFriendRequest } from '../../hooks/useFriendshipData';
 import { useSearchUsers } from '../../hooks/useUser';
+import { useQueryClient } from '@tanstack/react-query';
 
 type Friend = {
   id: string;
@@ -17,13 +18,30 @@ const AddFriendsScreen = () => {
   const [showOutgoing, setShowOutgoing] = useState(true);
   const [showIncoming, setShowIncoming] = useState(true);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const { pendingIncoming, pendingOutgoing, isLoading: friendshipsLoading, isError, error } = useFriendships();
+  const queryClient = useQueryClient();
+  const { pendingIncoming, pendingOutgoing, isLoading: friendshipsLoading, isError, error, isSyncing } = useFriendships();
   const { mutate: rejectOrCancel } = useRejectFriendRequest();
   const { mutate: sendRequest, isPending: isSendingRequest } = useSendFriendRequest();
   
   // Search users hook (manual trigger)
   const { users: searchResults, isLoading: isSearching, search, pagination } = useSearchUsers({}, false);
+
+  // Track when sync completes after a manual refresh
+  const prevIsSyncing = useRef(isSyncing);
+  useEffect(() => {
+    // When sync completes (transitions from true to false) and we're refreshing
+    if (refreshing && prevIsSyncing.current && !isSyncing) {
+      setRefreshing(false);
+    }
+    prevIsSyncing.current = isSyncing;
+  }, [refreshing, isSyncing]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    queryClient.invalidateQueries({ queryKey: ['friendships'] });
+  }, [queryClient]);
 
   // Map hook data to presentational shape
   const outgoingRequests: Friend[] = useMemo(() => (
@@ -85,7 +103,16 @@ const AddFriendsScreen = () => {
 
   return (
     <View style={styles.container}>
-      <ScrollView>
+      <ScrollView
+        refreshControl={
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh}
+            tintColor="#007AFF"
+            colors={['#007AFF']}
+          />
+        }
+      >
         {/* Search Bar */}
         <View style={styles.searchContainer}>
           <Ionicons name='search-outline' size={16} color="#999" style={{ marginRight: 8 }} />

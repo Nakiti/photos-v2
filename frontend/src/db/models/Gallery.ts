@@ -26,6 +26,7 @@ export default class Gallery extends Model {
   @text('join_requires_approval') joinRequiresApproval?: 'all' | 'admin_approval';
   @text('add_permission') addPermission?: 'all' | 'admin';
   @text('delete_permission') deletePermission?: 'admins_authors' | 'admin';
+  @date('last_photo_at') lastPhotoAt?: number;
   @readonly @date('created_at') createdAt!: number;
   @readonly @date('updated_at') updatedAt!: number;
 

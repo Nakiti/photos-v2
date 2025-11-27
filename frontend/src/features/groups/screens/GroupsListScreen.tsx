@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl, Text } from 'react-native';
 import GroupsListHeader from '../components/GroupsListHeader';
 import SearchBar from '../../../components/SearchBar';
@@ -32,7 +32,18 @@ const GroupsListScreen = () => {
 
   console.log("galleries ", galleries)
 
+  // Track when sync completes after a manual refresh
+  const prevIsSyncing = useRef(isSyncing);
+  useEffect(() => {
+    // When sync completes (transitions from true to false) and we're refreshing
+    if (refreshing && prevIsSyncing.current && !isSyncing) {
+      setRefreshing(false);
+    }
+    prevIsSyncing.current = isSyncing;
+  }, [refreshing, isSyncing]);
+
   const onRefresh = useCallback(() => {
+    setRefreshing(true);
     queryClient.invalidateQueries({ queryKey: ['galleries'] });
   }, [queryClient]);
 
@@ -50,22 +61,15 @@ const GroupsListScreen = () => {
       id={item.id}
       title={item.name}
       icon={item.iconUrl || ''}
-      communityName={item.communityName}
+      communityName={item.communityName ?? undefined}
       lastUploadedBy=""
       unseenCount={0}
-      lastUpdated={new Date(item.updatedAt).toISOString()}
+      lastUpdated={item.lastPhotoAt ? new Date(item.lastPhotoAt).toISOString() : new Date(item.createdAt).toISOString()}
       onPress={() => handleGroupPress(item.id)}
     />
   ), []);
 
   const keyExtractor = useCallback((item: Gallery) => item.id, []);
-
-  const ListHeaderComponent = useCallback(() => (
-    <View>
-      <GroupsListHeader />
-      <SearchBar value={query} onChangeText={setQuery} placeholder="Search groups" />
-    </View>
-  ), [query]);
 
   const ListEmptyComponent = useCallback(() => (
     <View style={styles.emptyContainer}>
@@ -94,12 +98,20 @@ const GroupsListScreen = () => {
 
   return (
     <View style={styles.container}>
+      <GroupsListHeader />
+      <SearchBar value={query} onChangeText={setQuery} placeholder="Search groups" />
       <FlatList
         data={galleries}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        ListHeaderComponent={ListHeaderComponent}
+        refreshControl={
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh}
+            tintColor="#007AFF"
+            colors={['#007AFF']}
+          />
+        }
         ListEmptyComponent={ListEmptyComponent}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         contentContainerStyle={styles.listContent}

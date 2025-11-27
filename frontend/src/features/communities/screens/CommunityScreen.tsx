@@ -82,7 +82,7 @@ const CommunityScreen = () => {
       communityName={undefined} // Already in a community, no need to show community name
       lastUploadedBy=""
       unseenCount={0}
-      lastUpdated={item.updatedAt ? new Date(item.updatedAt).toISOString() : new Date().toISOString()}
+      lastUpdated={item.lastPhotoAt ? new Date(item.lastPhotoAt).toISOString() : (item.createdAt ? new Date(item.createdAt).toISOString() : new Date().toISOString())}
       onPress={() => handleGalleryPress(item.id)}
     />
   ), [handleGalleryPress]);

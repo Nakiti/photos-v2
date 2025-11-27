@@ -171,6 +171,12 @@ export async function confirmUploadedPhoto(
       },
     });
 
+    // Update the gallery's lastPhotoAt to the current photo's createdAt
+    await tx.gallery.update({
+      where: { id: galleryId },
+      data: { lastPhotoAt: photo.createdAt },
+    });
+
     // If tagIds provided, restrict to tags belonging to this gallery and create associations
     if (tagIds && tagIds.length > 0) {
       const uniqueTagIds = Array.from(new Set(tagIds));
