@@ -15,7 +15,7 @@ const GalleryBottomBar = ({ onPressUpload, onPressCamera, tags = [], selectedTag
    const [isFiltersOpen, setIsFiltersOpen] = useState(false)
 
    const currentLabel = useMemo(() => {
-      if (!selectedTagId) return 'All';
+      if (!selectedTagId) return 'All Photos';
       const t = tags.find(t => t.id === selectedTagId);
       return t?.name || 'Filters';
    }, [selectedTagId, tags]);
@@ -30,159 +30,165 @@ const GalleryBottomBar = ({ onPressUpload, onPressCamera, tags = [], selectedTag
          {isFiltersOpen && (
             <Pressable style={styles.dismissOverlay} onPress={() => setIsFiltersOpen(false)} />
          )}
-         <View style={styles.barContainer} pointerEvents="box-none">
-         <TouchableOpacity style={styles.floatingButton} onPress={onPressUpload} activeOpacity={0.8}>
-            <Icon name="cloud-upload-outline" size={18} color="white" />
-         </TouchableOpacity>
 
-         <View style={styles.filterWrapper} pointerEvents="box-none">
-            <Pressable
-               onPress={() => setIsFiltersOpen((v) => !v)}
-               style={({pressed}) => [
-                  styles.filterBar,
-                  pressed && styles.filterBarPressed
-               ]}
-            >
-               <Icon name="options-outline" size={16} color="white" />
-               <Text style={styles.filterText} numberOfLines={1}>{currentLabel}</Text>
-               <Icon name={isFiltersOpen ? "chevron-down" : "chevron-up"} size={16} color="white" />
-            </Pressable>
-
+         <View style={styles.container} pointerEvents="box-none">
+            
+            {/* Filter Menu */}
             {isFiltersOpen && (
-               <View style={styles.filterListContainer}>
-                  {[{ id: '__all__', name: 'All' } as any, ...tags].map((t) => {
+               <View style={styles.menuContainer}>
+                  {[{ id: '__all__', name: 'All Photos' } as any, ...tags].map((t, index) => {
                      const isAll = t.id === '__all__';
                      const selected = isAll ? !selectedTagId : selectedTagId === t.id;
                      return (
-                        <Pressable
+                        <TouchableOpacity
                            key={t.id}
                            onPress={() => handleSelect(isAll ? null : t.id)}
-                           style={({pressed}) => [
-                              styles.filterItem,
-                              pressed && styles.filterItemPressed
-                           ]}
+                           style={[styles.menuItem, index !== 0 && styles.menuItemBorder]}
+                           activeOpacity={0.7}
                         >
-                           <Text style={[styles.filterItemText, selected && styles.filterItemTextSelected]}>
+                           <Text style={[styles.menuText, selected && styles.menuTextSelected]}>
                               {t.name}
                            </Text>
-                           {selected ? (
-                              <Icon name="checkmark" size={16} color="#6ee7b7" />
-                           ) : <View style={{width: 16}} />}
-                        </Pressable>
+                           {selected && <Icon name="checkmark" size={14} color="#FFF" />}
+                        </TouchableOpacity>
                      )
                   })}
                </View>
             )}
-         </View>
 
-         <TouchableOpacity style={styles.floatingButton} onPress={onPressCamera} activeOpacity={0.8}>
-            <Icon name="camera-outline" size={18} color="white" />
-         </TouchableOpacity>
+            {/* The Unified Command Bar */}
+            <View style={styles.commandBar}>
+                
+                {/* 1. Upload */}
+                <TouchableOpacity style={styles.iconSection} onPress={onPressUpload} activeOpacity={0.5}>
+                    <Icon name="add" size={22} color="#FFF" />
+                </TouchableOpacity>
+
+                {/* Divider */}
+                <View style={styles.divider} />
+
+                {/* 2. Filter / Label */}
+                <TouchableOpacity 
+                    style={styles.filterSection} 
+                    onPress={() => setIsFiltersOpen((v) => !v)}
+                    activeOpacity={0.5}
+                >
+                    <Text style={styles.filterText} numberOfLines={1}>{currentLabel}</Text>
+                    <Icon name={isFiltersOpen ? "chevron-down" : "chevron-up"} size={10} color="rgba(255,255,255,0.4)" />
+                </TouchableOpacity>
+
+                {/* Divider */}
+                <View style={styles.divider} />
+
+                {/* 3. Camera */}
+                <TouchableOpacity style={styles.iconSection} onPress={onPressCamera} activeOpacity={0.5}>
+                    <Icon name="camera-outline" size={20} color="#FFF" />
+                </TouchableOpacity>
+
+            </View>
          </View>
       </>
    )
 }
 
-export default GalleryBottomBar
-
 const styles = StyleSheet.create({
-   dismissOverlay: {
+   container: {
       position: 'absolute',
-      top: 0,
+      bottom: 40,
       left: 0,
       right: 0,
-      bottom: 0,
-      backgroundColor: 'transparent',
-      zIndex: 5,
-   },
-   barContainer: {
-      position: 'absolute',
-      bottom: 24,
-      left: 0,
-      right: 0,
-      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 10,
-      zIndex: 10,
-   },
-   floatingButton: {
-      width: 40,
-      height: 40,
-      backgroundColor: 'rgba(50, 50, 50, 0.7)',
-      borderRadius: 24,
-      alignItems: 'center',
-      justifyContent: 'center',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 4,
-      elevation: 6,
-   },
-   filterWrapper: {
-      position: 'relative',
-      alignItems: 'center',
-      justifyContent: 'center',
-   },
-   filterBar: {
-      minWidth: 160,
-      maxWidth: 200,
-      height: 34,
-      paddingHorizontal: 10,
-      borderRadius: 17,
-      backgroundColor: 'rgba(50, 50, 50, 0.7)',
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 6,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.25,
-      shadowRadius: 4,
-      elevation: 5,
-   },
-   filterBarPressed: {
-      backgroundColor: 'rgba(70, 70, 70, 0.75)',
-   },
-   filterText: {
-      color: 'white',
-      fontSize: 12,
-      fontWeight: '600',
-      maxWidth: 120,
-   },
-   filterListContainer: {
-      position: 'absolute',
-      bottom: 44,
-      alignSelf: 'center',
-      width: 200,
-      maxHeight: 240,
-      paddingVertical: 6,
-      backgroundColor: 'rgba(40, 40, 40, 0.90)',
-      borderRadius: 14,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.35,
-      shadowRadius: 8,
-      elevation: 8,
-      overflow: 'hidden',
       zIndex: 20,
    },
-   filterItem: {
-      paddingHorizontal: 12,
-      paddingVertical: 10,
+   dismissOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      zIndex: 10,
+   },
+
+   // --- The Skinny Bar ---
+   commandBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between', // Spreads items out
+      
+      // Dimensions
+      height: 44, // Skinnier (Standard iOS size)
+      minWidth: 280, // Wider base
+      paddingHorizontal: 4, 
+      
+      // Glass Look
+      backgroundColor: 'rgba(20, 20, 20, 0.75)', // More Transparent
+      borderRadius: 22, // Half of height
+      
+      // Border & Shadow
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.25,
+      shadowRadius: 20,
+   },
+   divider: {
+       width: 1,
+       height: 16, // Shorter dividers
+       backgroundColor: 'rgba(255, 255, 255, 0.1)',
+   },
+
+   // --- Sections ---
+   iconSection: {
+       width: 48, // Wide touch target
+       height: '100%',
+       alignItems: 'center',
+       justifyContent: 'center',
+   },
+   filterSection: {
+       flex: 1, // Takes up remaining space (makes it flexible)
+       flexDirection: 'row',
+       alignItems: 'center',
+       justifyContent: 'center',
+       height: '100%',
+       gap: 6,
+   },
+   filterText: {
+       color: '#FFF',
+       fontSize: 13, // Slightly smaller text
+       fontWeight: '500',
+       letterSpacing: 0.4,
+   },
+
+   // --- Menu ---
+   menuContainer: {
+      position: 'absolute',
+      bottom: 60, 
+      width: 200,
+      backgroundColor: 'rgba(20, 20, 20, 0.90)', // Matching transparency
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+      paddingVertical: 4,
+      overflow: 'hidden',
+   },
+   menuItem: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
+      paddingVertical: 12,
+      paddingHorizontal: 16,
    },
-   filterItemPressed: {
-      backgroundColor: 'rgba(255,255,255,0.06)',
+   menuItemBorder: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: 'rgba(255, 255, 255, 0.08)',
    },
-   filterItemText: {
-      color: 'white',
-      fontSize: 14,
+   menuText: {
+      color: 'rgba(255, 255, 255, 0.8)',
+      fontSize: 13,
+      fontWeight: '500',
    },
-   filterItemTextSelected: {
-      color: '#6ee7b7',
-      fontWeight: '700',
+   menuTextSelected: {
+      color: '#FFF',
+      fontWeight: '600',
    },
 })
+
+export default GalleryBottomBar

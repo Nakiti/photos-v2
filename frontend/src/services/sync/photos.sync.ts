@@ -88,7 +88,8 @@ import { TagApi } from "../api/tags.service";
         const needsUpdate =
           local.s3Url !== remotePhoto.s3Url ||
           local.s3Key !== remotePhoto.s3Key ||
-          local.thumbnailUri !== (remotePhoto as any).thumbnailUrl;
+          local.thumbnailUri !== (remotePhoto as any).thumbnailUrl ||
+          local.visible !== (remotePhoto as any).visible;
         if (needsUpdate) {
           operations.push(
             local.prepareUpdate(record => {
@@ -97,6 +98,8 @@ import { TagApi } from "../api/tags.service";
               // Map API field 'thumbnailUrl' to local column 'thumbnail_uri'
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               record.thumbnailUri = (remotePhoto as any).thumbnailUrl;
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              record.visible = (remotePhoto as any).visible;
               // Ensure status is synced after update
               record.status = 'synced';
             })
@@ -145,6 +148,8 @@ import { TagApi } from "../api/tags.service";
               // Map API field 'thumbnailUrl' to local column 'thumbnail_uri'
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               record.thumbnailUri = (remotePhoto as any).thumbnailUrl;
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              record.visible = (remotePhoto as any).visible || 'VISIBLE';
               record.status = 'synced';
               // WatermelonDB _raw typing doesn't include custom columns; cast to any
               (record as any)._raw.created_at = new Date(remotePhoto.createdAt).getTime();
@@ -262,6 +267,8 @@ export const updateOptimisticPhoto = async (
           record.s3Key = finalPhoto.s3Key;
           record.s3Url = finalPhoto.s3Url;
           record.thumbnailUri = (finalPhoto as any).thumbnailUrl;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          record.visible = (finalPhoto as any).visible || 'VISIBLE';
           record.status = 'synced';
         //   record.createdAt = new Date(finalPhoto.createdAt).getTime(); // i think i need to change it so that created_at is no longer
 

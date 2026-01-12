@@ -17,6 +17,8 @@ export default class Community extends Model {
   @field('join_requires_approval') joinRequiresApproval?: boolean;
   @text('add_permission') addPermission?: 'ANYONE' | 'ADMIN';
   @text('delete_permission') deletePermission?: 'ADMINS_AUTHORS' | 'ADMIN';
+  @field('member_count') memberCount!: number;
+  @field('gallery_count') galleryCount!: number;
   @readonly @date('created_at') createdAt!: number;
   @readonly @date('updated_at') updatedAt!: number;
 

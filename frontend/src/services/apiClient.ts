@@ -1,7 +1,7 @@
 import axios from "axios"
 
 // Avoid using process.env directly to prevent dependency on Node types in RN
-const API_URL = 'http://100.115.236.98:4000/';
+const API_URL = 'http://100.83.37.148:4000/';
 
 const apiClient = axios.create({
     baseURL: API_URL,

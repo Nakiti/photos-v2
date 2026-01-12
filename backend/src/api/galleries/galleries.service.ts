@@ -76,6 +76,8 @@ export async function createGallery(
         addPermission: (addPermission as any) ?? undefined,
         deletePermission: (deletePermission as any) ?? undefined,
         joinRequiresApproval: joinRequiresApproval ?? (type === 'GROUP'),
+        memberCount: 1, // Start at 1 because owner is added as member
+        photoCount: 0,
       },
       select: {
         id: true,
@@ -93,6 +95,8 @@ export async function createGallery(
         joinRequiresApproval: true,
         defaultTagId: true,
         lastPhotoAt: true,
+        photoCount: true,
+        memberCount: true,
         createdAt: true,
         updatedAt: true,
         community: {
@@ -112,6 +116,18 @@ export async function createGallery(
         status: 'ACCEPTED',
       },
     });
+
+    // 3. Increment galleryCount if gallery belongs to a community
+    if (communityId) {
+      await tx.community.update({
+        where: { id: communityId },
+        data: {
+          galleryCount: {
+            increment: 1,
+          },
+        },
+      });
+    }
 
     return gallery
   });
@@ -174,8 +190,11 @@ export async function getMyGalleries(userId: string) {
       addPermission: true,
       deletePermission: true,
       joinRequiresApproval: true,
+      requirePictureReview: true,
       defaultTagId: true,
       lastPhotoAt: true,
+      photoCount: true,
+      memberCount: true,
       createdAt: true,
       updatedAt: true,
       community: {
@@ -228,6 +247,8 @@ export async function getGalleryDetails(userId: string, galleryId: string) {
       joinRequiresApproval: true,
       defaultTagId: true,
       lastPhotoAt: true,
+      photoCount: true,
+      memberCount: true,
       createdAt: true,
       updatedAt: true,
       
@@ -305,6 +326,7 @@ export async function updateGallery(
     addPermission?: any;
     deletePermission?: any;
     joinRequiresApproval?: boolean;
+    requirePictureReview?: boolean;
   }
 ) {
   const updated = await prisma.gallery.update({
@@ -318,6 +340,7 @@ export async function updateGallery(
       addPermission: (data as any).addPermission,
       deletePermission: (data as any).deletePermission,
       joinRequiresApproval: data.joinRequiresApproval,
+      requirePictureReview: data.requirePictureReview,
       defaultTagId: data.defaultTagId,
     } as unknown) as any,
     select: {
@@ -334,8 +357,11 @@ export async function updateGallery(
       addPermission: true,
       deletePermission: true,
       joinRequiresApproval: true,
+      requirePictureReview: true,
       defaultTagId: true,
       lastPhotoAt: true,
+      photoCount: true,
+      memberCount: true,
       createdAt: true,
       updatedAt: true,
       community: {
@@ -369,11 +395,28 @@ export async function updateGallery(
  */
 export async function deleteGallery(ownerId: string, galleryId: string) {
   // Pre-check ownership for safety
-  const existing = await prisma.gallery.findUnique({ where: { id: galleryId }, select: { id: true, ownerId: true } });
+  const existing = await prisma.gallery.findUnique({ where: { id: galleryId }, select: { id: true, ownerId: true, communityId: true } });
   if (!existing || existing.ownerId !== ownerId) {
     return null;
   }
-  await prisma.gallery.delete({ where: { id: galleryId } });
+  
+  // Use transaction to delete gallery and decrement community count if needed
+  await prisma.$transaction(async (tx) => {
+    await tx.gallery.delete({ where: { id: galleryId } });
+    
+    // Decrement galleryCount if gallery belongs to a community
+    if (existing.communityId) {
+      await tx.community.update({
+        where: { id: existing.communityId },
+        data: {
+          galleryCount: {
+            decrement: 1,
+          },
+        },
+      });
+    }
+  });
+  
   return { success: true } as const;
 }
 
@@ -403,11 +446,29 @@ export async function joinGalleryByLink(userId: string, shareableLink: string) {
     select: { id: true },
   });
   if (!gallery) return null;
+  
+  // Check if membership already exists
+  const existing = await prisma.membership.findUnique({
+    where: { userId_galleryId: { userId, galleryId: gallery.id } },
+  });
+  
   await prisma.membership.upsert({
     where: { userId_galleryId: { userId, galleryId: gallery.id } },
     update: {},
-    create: { userId, galleryId: gallery.id },
+    create: { userId, galleryId: gallery.id, status: 'ACCEPTED' as any },
   });
+  
+  // Increment memberCount if this is a new membership
+  if (!existing) {
+    await prisma.gallery.update({
+      where: { id: gallery.id },
+      data: {
+        memberCount: {
+          increment: 1,
+        },
+      },
+    });
+  }
   const joinedGallery = await prisma.gallery.findUnique({
     where: { id: gallery.id },
     select: {
@@ -426,6 +487,8 @@ export async function joinGalleryByLink(userId: string, shareableLink: string) {
       ownerId: true,
       communityId: true,
       lastPhotoAt: true,
+      photoCount: true,
+      memberCount: true,
       createdAt: true,
       updatedAt: true,
       community: {
@@ -483,6 +546,8 @@ export async function getGalleriesByCommunityId(communityId: string) {
       joinRequiresApproval: true,
       defaultTagId: true,
       lastPhotoAt: true,
+      photoCount: true,
+      memberCount: true,
       createdAt: true,
       updatedAt: true,
       community: {
@@ -490,16 +555,12 @@ export async function getGalleriesByCommunityId(communityId: string) {
           name: true,
         },
       },
-      _count: {
-        select: { memberships: true },
-      },
     },
   });
 
-  return galleries.map(({ _count, community, ...gallery }) => ({
+  return galleries.map(({ community, ...gallery }) => ({
     ...gallery,
     communityName: community?.name ?? null,
-    memberCount: _count.memberships,
   }));
 }
 
@@ -621,6 +682,9 @@ export async function searchGalleries(
       deletePermission: true,
       joinRequiresApproval: true,
       defaultTagId: true,
+      lastPhotoAt: true,
+      photoCount: true,
+      memberCount: true,
       createdAt: true,
       updatedAt: true,
       community: {

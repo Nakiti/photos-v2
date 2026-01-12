@@ -65,6 +65,11 @@ const SingleImage = ({ imageSize, images, item, index, galleryId, selectedTagId 
          />
          {/* <Text>{item.thumbnail}</Text> */}
          
+         {/* Gray overlay for in-review photos */}
+         {item.visible === 'IN_REVIEW' && (
+            <View style={styles.reviewOverlay} />
+         )}
+         
          {/* Render the status icon */}
          {renderUploadStatusIcon()}
 
@@ -113,5 +118,13 @@ const styles = StyleSheet.create({
       color: '#fff',
       fontSize: 10,
       fontWeight: '600',
+   },
+   reviewOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(128, 128, 128, 0.5)', // Gray overlay with 50% opacity
    },
 });

@@ -68,13 +68,19 @@ export const syncCommunityMembers = async (
 
     // Upsert membership
     if (localMembership) {
-      if (localMembership.role !== membershipApi.role) {
+      const statusChanged = membershipApi.status && localMembership.status !== membershipApi.status;
+      const roleChanged = localMembership.role !== membershipApi.role;
+      const joinedAtChanged = membershipApi.joinedAt && 
+        localMembership.joinedAt !== new Date(membershipApi.joinedAt).getTime();
+      
+      if (statusChanged || roleChanged || joinedAtChanged) {
         operations.push(
           localMembership.prepareUpdate(record => {
-            record.role = membershipApi.role;
-            record.joinedAt = membershipApi.joinedAt
-              ? new Date(membershipApi.joinedAt).getTime()
-              : record.joinedAt;
+            if (roleChanged) record.role = membershipApi.role;
+            if (statusChanged && membershipApi.status) record.status = membershipApi.status;
+            if (joinedAtChanged && membershipApi.joinedAt) {
+              record.joinedAt = new Date(membershipApi.joinedAt).getTime();
+            }
           })
         );
       }
@@ -85,6 +91,7 @@ export const syncCommunityMembers = async (
           record.community.id = communityId;
           record.user.id = user.id;
           record.role = membershipApi.role;
+          record.status = membershipApi.status || 'ACCEPTED';
           record.joinedAt = membershipApi.joinedAt
             ? new Date(membershipApi.joinedAt).getTime()
             : Date.now();

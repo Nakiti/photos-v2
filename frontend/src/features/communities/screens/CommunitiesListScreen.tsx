@@ -43,7 +43,14 @@ const CommunitiesListScreen = () => {
       name={(item as any).name}
       description={(item as any).description}
       iconUrl={(item as any).iconUrl}
-      onPress={() => navigation.navigate('Community', { communityId: (item as any).id })}
+      membersCount={(item as any).memberCount}
+      galleryCount={(item as any).galleryCount}
+      onPress={() => navigation.navigate('CommunityFlow', 
+        { 
+          screen: "Community",
+          params: { communityId: (item as any).id }
+        }
+      )}
     />
   );
 

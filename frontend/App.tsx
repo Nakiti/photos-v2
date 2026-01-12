@@ -15,8 +15,6 @@ import { useAuth } from './src/hooks/useAuth';
 import { usePhotoUploadQueue } from './src/hooks/usePhotoData';
 import { useSocketEvents } from './src/hooks/useSocketEvents';
 
-// --- CRITICAL FIX ---
-// Create the QueryClient *outside* the component so it persists.
 const queryClient = new QueryClient();
 
 function App() {
@@ -47,7 +45,7 @@ function AppContent() {
   const { checkAuthStatus } = useAuth();
 
   // Global socket event handlers - must be mounted for live updates
-  useSocketEvents();
+  // useSocketEvents();
   
   // Photo upload queue processor
   usePhotoUploadQueue()

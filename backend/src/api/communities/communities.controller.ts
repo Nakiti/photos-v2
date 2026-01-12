@@ -4,8 +4,10 @@ import * as communitiesService from './communities.service.js';
 import {
 	createCommunitySchema,
 	updateCommunitySchema,
+	transferOwnershipSchema,
 	type CreateCommunityDto,
 	type UpdateCommunityDto,
+	type TransferOwnershipDto,
 } from './communities.validation.js';
 
 export async function createCommunity(req: Request, res: Response) {
@@ -81,6 +83,42 @@ export const requestIconUpload = async (req: Request, res: Response, next: NextF
 		next(error);
 	}
 };
+
+/**
+ * PUT /api/v1/communities/:communityId/transfer-ownership
+ * Transfer ownership of a community to another member (owner only).
+ */
+export async function transferOwnership(req: Request, res: Response) {
+	const currentOwnerId = (req as any).user?.id as string | undefined;
+	if (!currentOwnerId) return res.status(401).json({ message: 'Unauthorized' });
+	const { communityId } = req.params as { communityId: string };
+	
+	try {
+		const parsed = transferOwnershipSchema.parse({ body: req.body });
+		const { newOwnerId } = parsed.body as TransferOwnershipDto;
+		
+		const updated = await communitiesService.transferOwnership(currentOwnerId, communityId, newOwnerId);
+		if (!updated) {
+			return res.status(403).json({ message: 'Forbidden' });
+		}
+		
+		return res.status(200).json(updated);
+	} catch (error) {
+		if (error instanceof z.ZodError) {
+			return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
+		}
+		if ((error as any).message === 'New owner must be a member of the community') {
+			return res.status(400).json({ message: (error as any).message });
+		}
+		return res.status(500).json({ message: 'Failed to transfer ownership' });
+	}
+}
+
+
+
+
+
+
 
 
 

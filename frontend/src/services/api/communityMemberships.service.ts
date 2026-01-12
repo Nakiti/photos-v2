@@ -13,6 +13,7 @@ export interface CommunityMember {
     id: string;
     joinedAt: string;
     role: CommunityRole;
+    status?: 'PENDING' | 'ACCEPTED' | 'INVITED' | 'BLOCKED';
   };
 }
 
@@ -24,9 +25,10 @@ export interface MyCommunityMembership {
   role: CommunityRole;
 }
 
-export const getMembers = async (communityId: string): Promise<{ members: CommunityMember[] }> => {
-  const response = await apiClient.get(`/api/v1/communities/${communityId}/members`);
-  return response.data as { members: CommunityMember[] };
+export const getMembers = async (communityId: string, status?: 'PENDING' | 'ACCEPTED' | 'INVITED' | 'BLOCKED'): Promise<{ members: CommunityMember[]; pending?: CommunityMember[] }> => {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  const response = await apiClient.get(`/api/v1/communities/${communityId}/members${query}`);
+  return response.data as { members: CommunityMember[]; pending?: CommunityMember[] };
 };
 
 export const addMember = async (communityId: string, userId: string) => {
@@ -47,6 +49,11 @@ export const promoteMember = async (communityId: string, userId: string) => {
 export const getMyMembership = async (communityId: string): Promise<MyCommunityMembership> => {
   const response = await apiClient.get(`/api/v1/communities/${communityId}/members/me`);
   return response.data as MyCommunityMembership;
+};
+
+export const approveMember = async (communityId: string, userId: string) => {
+  const response = await apiClient.put(`/api/v1/communities/${communityId}/members/${userId}/approve`);
+  return response.data;
 };
 
 

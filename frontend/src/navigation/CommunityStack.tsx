@@ -1,5 +1,4 @@
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import CommunitiesListScreen from "../features/communities/screens/CommunitiesListScreen";
 import CommunityScreen from "../features/communities/screens/CommunityScreen";
 import CommunityDetailsScreen from "../features/communities/screens/CommunityDetailsScreen";
 import CommunityMemberScreen from "../features/communities/screens/CommunityMemberScreen";
@@ -14,19 +13,14 @@ import EditCommunityDetailsScreen from "../features/communities/screens/Communit
 import EditDeletePermissionScreen from "../features/communities/screens/CommunitySettings/EditDeleteMemberPermissionScreen";
 import EditJoinPermissionScreen from "../features/communities/screens/CommunitySettings/EditJoinPermissionScreen";
 import EditAddPermissionScreen from "../features/communities/screens/CommunitySettings/EditAddPermissionScreen";
+import PendingRequestsScreen from "../features/communities/screens/CommunitySettings/PendingRequestsScreen";
+import ChangeOwnershipScreen from "../features/communities/screens/CommunitySettings/ChangeOwnershipScreen";
 
 const Stack = createNativeStackNavigator();
 
 const CommunityStack = () => {
   return (
-    <Stack.Navigator initialRouteName="CommunitiesList">
-      <Stack.Screen
-        name="CommunitiesList"
-        component={CommunitiesListScreen}
-        options={{
-          headerShown: false,
-        }}
-      />
+    <Stack.Navigator>
       <Stack.Screen
         name="Community"
         component={CommunityScreen}
@@ -67,7 +61,7 @@ const CommunityStack = () => {
         name="CreateCommunitySettings"
         component={CreateCommunitySettingsScreen}
         options={{
-          header: () => <DefaultNoBackHeader title="Community Settings" />,
+          header: () => <DefaultHeader title="Community Settings" />,
         }}
       />
       <Stack.Screen
@@ -81,7 +75,7 @@ const CommunityStack = () => {
         name="AddCommunityMembers"
         component={AddCommunityMembersScreen}
         options={{
-          header: () => <DefaultHeader title="Add Members" />,
+          header: () => <DefaultNoBackHeader title="Add Members" />,
         }}
       />
       <Stack.Screen 
@@ -109,7 +103,21 @@ const CommunityStack = () => {
         name="EditCommunityDetails"
         component={EditCommunityDetailsScreen}
         options={{
-          header: () => <DefaultHeader title="Edit Add Permission"/>
+          header: () => <DefaultHeader title="Edit Community Details"/>
+        }}
+      />
+      <Stack.Screen 
+        name="PendingRequests"
+        component={PendingRequestsScreen}
+        options={{
+          header: () => <DefaultHeader title="Pending Requests"/>
+        }}
+      />
+      <Stack.Screen 
+        name="ChangeOwnership"
+        component={ChangeOwnershipScreen}
+        options={{
+          header: () => <DefaultHeader title="Change Ownership"/>
         }}
       />
     </Stack.Navigator>

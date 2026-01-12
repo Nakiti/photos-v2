@@ -1,6 +1,7 @@
 import {createNativeStackNavigator} from "@react-navigation/native-stack";
 import GroupsListScreen from "../features/groups/screens/GroupsListScreen";
 import CreateGroupDetailsScreen from "../features/groups/screens/CreateGroupDetailsScreen";
+import CreateGroupSettingsScreen from "../features/groups/screens/CreateGroupSettingsScreen";
 import AddGroupMembersScreen from "../features/groups/screens/AddGroupMembersScreen";
 import AddGroupTagsScreen from "../features/groups/screens/AddGroupTagsScreen";
 import CreateGalleryChoiceScreen from "../features/groups/screens/CreateGalleryChoiceScreen";
@@ -24,14 +25,7 @@ const defaultHeaderOptions = {
 
 const GroupsStack = () => {
     return (
-        <Stack.Navigator initialRouteName="GroupsList">
-            <Stack.Screen 
-                name="GroupsList"  
-                component={GroupsListScreen} 
-                options={{ 
-                    headerShown: false
-                }}
-            />
+        <Stack.Navigator>
             <Stack.Screen 
                 name="CreateGalleryChoice" 
                 component={CreateGalleryChoiceScreen} 
@@ -44,6 +38,13 @@ const GroupsStack = () => {
                 component={CreateGroupDetailsScreen} 
                 options={{
                     header: () => <DefaultHeader title="Create Group" />
+                }}
+            />
+            <Stack.Screen 
+                name="CreateGroupSettings" 
+                component={CreateGroupSettingsScreen} 
+                options={{
+                    header: () => <DefaultHeader title="Group Settings" />
                 }}
             />
             <Stack.Screen 

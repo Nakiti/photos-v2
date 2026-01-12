@@ -32,14 +32,14 @@ export const socket: Socket = io(API_URL, {
 
 // --- Optional: Add global logging for debugging ---
 
-socket.on('connect', () => {
-  console.log(`[Socket] Connected to server with ID: ${socket.id}`);
-});
+// socket.on('connect', () => {
+//   console.log(`[Socket] Connected to server with ID: ${socket.id}`);
+// });
 
-socket.on('disconnect', (reason) => {
-  console.log(`[Socket] Disconnected from server: ${reason}`);
-});
+// socket.on('disconnect', (reason) => {
+//   console.log(`[Socket] Disconnected from server: ${reason}`);
+// });
 
-socket.on('connect_error', (err) => {
-  console.error(`[Socket] Connection Error: ${err.message}`);
-});
+// socket.on('connect_error', (err) => {
+//   console.error(`[Socket] Connection Error: ${err.message}`);
+// });

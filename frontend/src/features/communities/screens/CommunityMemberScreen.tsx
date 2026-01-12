@@ -12,7 +12,7 @@ const CommunityMemberScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute();
   const { communityId } = (route.params as any) ?? { communityId: undefined };
-  const { members, isLoading } = useCommunityMembers(communityId);
+  const { members } = useCommunityMembers(communityId);
 
   return (
     <View style={styles.container}>
@@ -34,7 +34,7 @@ const CommunityMemberScreen = () => {
             ListEmptyComponent={
             <View style={{ padding: 24 }}>
                 <Text style={{ color: '#666', textAlign: 'center' }}>
-                {isLoading ? 'Loading…' : 'No members'}
+                {'No members'}
                 </Text>
             </View>
             }

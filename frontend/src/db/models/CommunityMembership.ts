@@ -12,6 +12,7 @@ export default class CommunityMembership extends Model {
   @field('user_id') userId!: string;
   @field('community_id') communityId!: string;
   @field('role') role!: 'ADMIN' | 'MEMBER';
+  @field('status') status!: 'PENDING' | 'ACCEPTED' | 'INVITED' | 'BLOCKED';
   @date('joined_at') joinedAt!: number;
 
   @relation('communities', 'community_id') community!: any;

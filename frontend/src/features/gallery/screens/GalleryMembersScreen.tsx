@@ -81,21 +81,21 @@ const GalleryMembersScreen = () => {
    );
 
 
-   if (isLoading) {
-      return (
-        <View style={[styles.container, styles.center]}>
-          <ActivityIndicator size="large" color="#0000ff" />
-        </View>
-      );
-    }
+   // if (isLoading) {
+   //    return (
+   //      <View style={[styles.container, styles.center]}>
+   //        <ActivityIndicator size="large" color="#0000ff" />
+   //      </View>
+   //    );
+   //  }
   
-    if (isError) {
-      return (
-        <View style={[styles.container, styles.center]}>
-          <Text style={styles.errorText}>Failed to load groups: {error.message}</Text>
-        </View>
-      );
-    }
+   //  if (isError) {
+   //    return (
+   //      <View style={[styles.container, styles.center]}>
+   //        <Text style={styles.errorText}>Failed to load groups: {error.message}</Text>
+   //      </View>
+   //    );
+   //  }
 
    return (
       <SafeAreaView style={styles.container}>

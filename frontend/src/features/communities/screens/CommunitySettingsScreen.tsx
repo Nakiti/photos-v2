@@ -104,7 +104,7 @@ const CommunitySettingsScreen = () => {
       customizationSection.items.push({
          label: 'Edit Details', 
          value: community.name, 
-         onPress: () => (navigation as any).navigate("CommunityDetails", { communityId: community.id }),
+         onPress: () => (navigation as any).navigate("EditCommunityDetails", { communityId: community.id }),
          bottom: true
       })
 
@@ -123,14 +123,13 @@ const CommunitySettingsScreen = () => {
             onPress: () => (navigation as any).navigate("EditJoinPermission", { communityId: community.id })
          });
 
-         // Note: Pending requests functionality would need to be implemented
-         // privacySection.items.push({
-         //    label: 'Pending Requests',
-         //    value: '0',
-         //    isSwitch: false,
-         //    onPress: () => { /* Logic to show pending requests */ },
-         //    bottom: true
-         // })
+         privacySection.items.push({
+            label: 'Pending Requests',
+            value: '0',
+            isSwitch: false,
+            onPress: () => (navigation as any).navigate("PendingRequests", { communityId: community.id }),
+            bottom: true
+         })
       }
 
       if (privacySection.items.length > 0) {
@@ -143,7 +142,7 @@ const CommunitySettingsScreen = () => {
 
       if (isOwner) {
          permissionsSection.items.push({
-            label: 'Who can add photos?',
+            label: 'Who can add members?',
             value: c.addPermission === 'ANYONE' ? 'Anyone' : 'Admins', 
             onPress: () => (navigation as any).navigate("EditAddPermission", { communityId: community.id })
          });
@@ -180,19 +179,18 @@ const CommunitySettingsScreen = () => {
             category: 'Admin Settings',
             items: [
                { 
+                 label: 'Change Ownership', 
+                 value: null, 
+                 isDestructive: false, 
+                 onPress: () => (navigation as any).navigate("ChangeOwnership", { communityId: community.id })
+               },
+               { 
                  label: 'Delete Community', 
                  value: null, 
                  isDestructive: true, 
-                 onPress: confirmAndDeleteCommunity 
+                 onPress: confirmAndDeleteCommunity,
+                 bottom: true
                },
-               // Note: Change Owner functionality would need to be implemented
-               // { 
-               //    label: 'Change Owner', 
-               //    value: null, 
-               //    isDestructive: true, 
-               //    onPress: () => { /* Call change owner mutation */ },
-               //    bottom: true
-               // },
             ],
          });
       }

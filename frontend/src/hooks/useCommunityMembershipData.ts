@@ -11,6 +11,7 @@ import {
   getMembers as getCommunityMembers,
   promoteMember as promoteCommunityMember,
   getMyMembership as getMyCommunityMembership,
+  approveMember as approveCommunityMember,
 } from '../services/api/communityMemberships.service';
 import { removeCommunityMembershipLocally, syncCommunityMembers } from '../services/sync/communityMemberships.sync';
 
@@ -22,6 +23,7 @@ export interface EnrichedCommunityMembership {
 export const useCommunityMembers = (communityId: string | null) => {
   const database = useDatabase();
   const [members, setMembers] = useState<EnrichedCommunityMembership[]>([]);
+  const [pendingMembers, setPendingMembers] = useState<EnrichedCommunityMembership[]>([]);
   const queryClient = useQueryClient();
   const { user } = useAuth();
 
@@ -29,15 +31,17 @@ export const useCommunityMembers = (communityId: string | null) => {
   useEffect(() => {
     if (!communityId) {
       setMembers([]);
+      setPendingMembers([]);
       return;
     }
     const membershipsCollection = database.collections.get<CommunityMembership>('community_memberships');
     const usersCollection = database.collections.get<User>('users');
 
     const query = membershipsCollection.query(Q.where('community_id', communityId));
-    const subscription = query.observeWithColumns(['user_id', 'role']).subscribe(async (memberships) => {
+    const subscription = query.observeWithColumns(['user_id', 'role', 'status']).subscribe(async (memberships) => {
       if (memberships.length === 0) {
         setMembers([]);
+        setPendingMembers([]);
         return;
       }
       try {
@@ -46,16 +50,25 @@ export const useCommunityMembers = (communityId: string | null) => {
         const userMap = new Map(users.map((u) => [u.id, u]));
 
         const enriched: EnrichedCommunityMembership[] = [];
+        const pending: EnrichedCommunityMembership[] = [];
         for (const membership of memberships) {
           const found = userMap.get(membership.userId);
           if (found) {
-            enriched.push({ membership, user: found });
+            const enrichedItem = { membership, user: found };
+            enriched.push(enrichedItem);
+            // Check if status is PENDING or INVITED (if status field exists)
+            const status = (membership as any).status;
+            if (status === 'PENDING' || status === 'INVITED') {
+              pending.push(enrichedItem);
+            }
           }
         }
         setMembers(enriched);
+        setPendingMembers(pending);
       } catch (e) {
         console.error('Error enriching community memberships:', e);
         setMembers([]);
+        setPendingMembers([]);
       }
     });
     return () => subscription.unsubscribe();
@@ -66,7 +79,7 @@ export const useCommunityMembers = (communityId: string | null) => {
     queryKey: ['community-members', communityId],
     enabled: !!communityId && !!user?.id,
     queryFn: async () => {
-      if (!communityId || !user?.id) return { members: [] };
+      if (!communityId || !user?.id) return { members: [], pending: [] };
       const remote = await getCommunityMembers(communityId);
       await syncCommunityMembers(database, communityId, remote.members, user.id);
       return remote;
@@ -76,7 +89,8 @@ export const useCommunityMembers = (communityId: string | null) => {
 
   return {
     members,
-    isLoading: isLoading && members.length === 0,
+    pendingMembers,
+    isLoading: isLoading && members.length === 0 && pendingMembers.length === 0,
     isSyncing: isFetching,
     isError,
     error,
@@ -131,6 +145,20 @@ export const useMyCommunityMembership = (communityId: string | null) => {
     enabled: !!communityId,
     queryFn: () => getMyCommunityMembership(communityId as string),
     staleTime: 5 * 60 * 1000,
+  });
+};
+
+/**
+ * Hook for an Admin to approve a pending join request.
+ */
+export const useApproveCommunityJoinRequest = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ communityId, userId }: { communityId: string; userId: string }) =>
+      approveCommunityMember(communityId, userId),
+    onSuccess: (data, { communityId }) => {
+      queryClient.invalidateQueries({ queryKey: ['community-members', communityId] });
+    },
   });
 };
 

@@ -1,8 +1,8 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const mySchema = appSchema({
-  // Ensure version matches the latest changes (added last_photo_at to galleries)
-  version: 19,
+  // Ensure version matches the latest changes (added visible to photos and requirePictureReview to galleries)
+  version: 24,
   tables: [
     tableSchema({
       name: 'users',
@@ -31,9 +31,12 @@ export const mySchema = appSchema({
         { name: 'shareable_link', type: 'string', isOptional: true },
         // Settings
         { name: 'join_requires_approval', type: 'boolean', isOptional: true }, // true | false
+        { name: 'require_picture_review', type: 'boolean', isOptional: true }, // true | false
         { name: 'add_permission', type: 'string', isOptional: true },  // 'all' | 'admin'
         { name: 'delete_permission', type: 'string', isOptional: true }, // 'admins_authors' | 'admin'
         { name: 'last_photo_at', type: 'number', isOptional: true },
+        { name: 'photo_count', type: 'number' },
+        { name: 'member_count', type: 'number' },
         { name: 'created_at', type: 'number' },
         { name: 'updated_at', type: 'number' },
       ],
@@ -59,6 +62,7 @@ export const mySchema = appSchema({
         { name: 'local_uri', type: 'string', isOptional: true },
         { name: 'local_thumbnail_uri', type: 'string', isOptional: true },
         { name: 'thumbnail_url', type: 'string', isOptional: true },
+        { name: 'visible', type: 'string' }, // 'IN_REVIEW' | 'VISIBLE'
         { name: 'status', type: 'string' }, // 'queued', 'uploading', 'upload_failed', 'synced'
         { name: 'created_at', type: 'number' },
       ],
@@ -98,6 +102,8 @@ export const mySchema = appSchema({
         { name: 'join_requires_approval', type: 'boolean', isOptional: true },
         { name: 'add_permission', type: 'string', isOptional: true },
         { name: 'delete_permission', type: 'string', isOptional: true },
+        { name: 'member_count', type: 'number' },
+        { name: 'gallery_count', type: 'number' },
         { name: 'created_at', type: 'number' },
         { name: 'updated_at', type: 'number' },
       ],
@@ -108,6 +114,7 @@ export const mySchema = appSchema({
         { name: 'user_id', type: 'string', isIndexed: true },
         { name: 'community_id', type: 'string', isIndexed: true },
         { name: 'role', type: 'string' },
+        { name: 'status', type: 'string', isIndexed: true },
         { name: 'joined_at', type: 'number' },
       ],
     }),

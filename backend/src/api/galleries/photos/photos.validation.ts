@@ -24,5 +24,11 @@ export const confirmBodySchema = z.object({
   }),
 });
 
+export const updatePhotoVisibilitySchema = z.object({
+  body: z.object({
+    visible: z.enum(['IN_REVIEW', 'VISIBLE']),
+  }),
+});
+
 
 

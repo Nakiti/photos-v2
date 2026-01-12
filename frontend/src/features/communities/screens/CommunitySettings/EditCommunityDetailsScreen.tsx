@@ -1,38 +1,36 @@
-import { useRoute } from "@react-navigation/native";
-import React, { useState, useEffect, useMemo } from "react";
+import { useRoute, useNavigation } from "@react-navigation/native";
+import React, { useState, useEffect, useMemo, useLayoutEffect } from "react";
 import { 
     View, Text, TouchableOpacity, StyleSheet, TextInput, 
     TouchableWithoutFeedback, Keyboard, 
-    Alert
+    Alert, ActivityIndicator, SafeAreaView, ScrollView, Platform, KeyboardAvoidingView
 } from "react-native";
 import FastImage from "react-native-fast-image";
 import { launchImageLibrary, ImagePickerResponse } from "react-native-image-picker";
 import { useCommunity, useUpdateCommunity, useUpdateCommunityIcon } from "../../../../hooks/useCommunityData";
-import { ActivityIndicator } from "react-native-paper";
 import { useQueryClient } from "@tanstack/react-query";
-// Image upload handled via `useUpdateCommunityIcon`
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
-interface EditCommunityDetailsProps { communityId: string | number }
+// Components
 
 const EditCommunityDetailsScreen = () => {
    const route = useRoute();
+   const navigation = useNavigation();
    const queryClient = useQueryClient();
    const { communityId } = route.params as { communityId: string };
 
-   // --- Data Fetching ---
-   const { community, isError, isLoading, error } = useCommunity(communityId);
-
-   // --- Mutations ---
+   // --- Hooks ---
+   const { community } = useCommunity(communityId);
    const { mutate: updateCommunity, isPending: isUpdating } = useUpdateCommunity();
    const { mutate: updateCommunityIcon, isPending: isUploadingIcon } = useUpdateCommunityIcon(communityId);
 
-   // --- Local State for Editing ---
+   // --- State ---
    const [name, setName] = useState<string>('');
    const [description, setDescription] = useState<string>('');
    const [localImageUri, setLocalImageUri] = useState<string | null>(null);
    const [initial, setInitial] = useState<{ name: string; description: string; iconUrl: string | null }>({ name: '', description: '', iconUrl: null });
 
-   // Populate local state once community data is loaded
+   // Populate State
    useEffect(() => {
       if (community) {
          setName(community.name || '');
@@ -40,41 +38,35 @@ const EditCommunityDetailsScreen = () => {
          setLocalImageUri(null);
          setInitial({ name: community.name || '', description: community.description || '', iconUrl: community.iconUrl || null });
       }
-   }, [communityId, community]);
+   }, [community]);
 
-   // Dirty tracking (similar to profile screen)
    const isDirty = useMemo(() => {
       return (
-         name !== initial.name ||
-         description !== initial.description ||
-         localImageUri !== null
+         name.trim() !== initial.name ||
+         description.trim() !== initial.description
       );
-   }, [name, description, localImageUri, initial]);
+   }, [name, description, initial]);
 
    // --- Handlers ---
    const handleChangeImage = () => {
-      launchImageLibrary({ mediaType: 'photo', quality: 0.7 }, (response: ImagePickerResponse) => {
-         if (response.didCancel) {
-           return;
-         }
-         if (response.errorMessage) {
-           Alert.alert('Error', response.errorMessage);
-           return;
-         }
-         if (response.assets && response.assets[0]?.uri) {
-           const uri = response.assets[0].uri;
-           setLocalImageUri(uri); // Local preview
-           // Upload immediately and sync
-           updateCommunityIcon(uri, {
+      launchImageLibrary({ mediaType: 'photo', quality: 0.8 }, (response: ImagePickerResponse) => {
+         if (response.didCancel || response.errorCode || !response.assets?.[0]?.uri) return;
+
+         const uri = response.assets[0].uri;
+         setLocalImageUri(uri); // Optimistic UI
+         
+         // Upload Immediately
+         updateCommunityIcon(uri, {
              onSuccess: () => {
-               setLocalImageUri(null);
-               queryClient.invalidateQueries({queryKey: ['community', communityId]})
+                 setLocalImageUri(null);
+                 queryClient.invalidateQueries({queryKey: ['community', communityId]})
+                 Alert.alert("Updated", "Community cover photo updated successfully.");
              },
-             onError: (err) => {
-               Alert.alert('Upload Failed', (err as Error)?.message || 'Unable to update image');
-             },
-           });
-         }
+             onError: () => {
+                 setLocalImageUri(null); // Revert
+                 Alert.alert("Error", "Failed to upload image.");
+             }
+         });
       });
    };
 
@@ -82,202 +74,224 @@ const EditCommunityDetailsScreen = () => {
       if (!isDirty || isUpdating) return;
 
       updateCommunity(
-         { communityId, data: { name: name.trim() || initial.name, description: description.trim() || null } },
+         { communityId, data: { name: name.trim(), description: description.trim() || null } },
          {
             onSuccess: () => {
-               Alert.alert('Success', 'Community updated!');
                queryClient.invalidateQueries({ queryKey: ['community', communityId] });
                queryClient.invalidateQueries({ queryKey: ['communities'] });
-               // Reset local state to reflect saved data
-               setInitial((prev) => ({ ...prev, name: name.trim() || prev.name, description: description.trim() || prev.description }));
-               setLocalImageUri(null);
+               navigation.goBack();
             },
-            onError: () => {
-               Alert.alert('Error', 'Failed to update community.');
-            },
+            onError: () => Alert.alert('Error', 'Failed to update community details.'),
          }
       );
    };
 
-   if (isLoading) {
-      return (
-        <View style={[styles.container, styles.center]}>
-          <ActivityIndicator size="large" color="#0000ff" />
-        </View>
-      );
-    }
-  
-   if (isError) {
-      return (
-        <View style={[styles.container, styles.center]}>
-          <Text style={styles.errorText}>Failed to load community: {error?.message || 'Unknown error'}</Text>
-        </View>
-      );
-    }
+   // Render Loading for Image
+   const isLoadingImage = isUploadingIcon;
 
    return (
-      <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-         <View style={styles.container}>
-            <View style={styles.avatarContainer}>
-               {(() => {
-                  const coverUri = localImageUri || initial.iconUrl || undefined;
-                  return (
-                     <TouchableOpacity onPress={handleChangeImage} disabled={isUpdating || isUploadingIcon}>
-                        {coverUri ? (
-                           <FastImage
-                              style={styles.avatar}
-                              source={{ uri: coverUri, priority: FastImage.priority.high }}
-                              resizeMode={FastImage.resizeMode.cover}
-                           />
+      <View style={styles.root}>
+         
+         <KeyboardAvoidingView 
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ flex: 1 }}
+         >
+            <ScrollView contentContainerStyle={styles.scrollContent}>
+                
+                {/* 1. Banner Image Section */}
+                <Text style={styles.sectionLabel}>COVER PHOTO</Text>
+                <TouchableOpacity 
+                    style={styles.bannerContainer} 
+                    onPress={handleChangeImage}
+                    disabled={isLoadingImage}
+                    activeOpacity={0.8}
+                >
+                    {localImageUri || initial.iconUrl || community?.iconUrl ? (
+                        <FastImage
+                            style={styles.bannerImage}
+                            source={{ uri: localImageUri || initial.iconUrl || community?.iconUrl || '' }}
+                            resizeMode={FastImage.resizeMode.cover}
+                        />
+                    ) : (
+                        <View style={styles.bannerPlaceholder}>
+                             <Ionicons name="image-outline" size={40} color="#C7C7CC" />
+                             <Text style={styles.placeholderText}>Add Cover Photo</Text>
+                        </View>
+                    )}
+
+                    {/* Overlay Icon */}
+                    <View style={styles.editIconOverlay}>
+                        {isLoadingImage ? (
+                            <ActivityIndicator size="small" color="#FFF" />
                         ) : (
-                           <View style={styles.avatarPlaceholder} />
+                            <Ionicons name="camera" size={18} color="#FFF" />
                         )}
-                     </TouchableOpacity>
-                  );
-               })()}
-               <TouchableOpacity 
-                  style={styles.changeImageButton}
-                  onPress={handleChangeImage}
-                  disabled={isUpdating || isUploadingIcon}
-               >
-                  <Text style={styles.changeImageText}>Change Image</Text>
-               </TouchableOpacity>
-            </View>
+                    </View>
+                </TouchableOpacity>
 
-            {/* Name Input */}
-            <View style={styles.infoContainer}>
-               <Text style={styles.label}>Community Name</Text>
-               <TextInput
-                  style={styles.input}
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Enter Name"
-                  placeholderTextColor="gray"
-                  editable={!isUpdating}
-               />
-            </View>
+                {/* 2. Form Fields */}
+                <View style={styles.formContainer}>
+                    
+                    {/* Name Input */}
+                    <Text style={styles.sectionLabel}>DETAILS</Text>
+                    <View style={styles.inputWrapper}>
+                        <Text style={styles.inputLabel}>Name</Text>
+                        <TextInput
+                            style={styles.textInput}
+                            value={name}
+                            onChangeText={setName}
+                            placeholder="Community Name"
+                            placeholderTextColor="#C7C7CC"
+                        />
+                    </View>
 
-            {/* Description Input */}
-            <TextInput
-               style={styles.description}
-               value={description}
-               onChangeText={setDescription}
-               placeholder="Add Description"
-               placeholderTextColor="gray"
-               numberOfLines={12}
-               multiline
-               editable={!isUpdating}
-            />
+                    {/* Description Input */}
+                    <View style={[styles.inputWrapper, styles.textAreaWrapper]}>
+                         <TextInput
+                            style={styles.textArea}
+                            value={description}
+                            onChangeText={setDescription}
+                            placeholder="Description (Optional)"
+                            placeholderTextColor="#C7C7CC"
+                            multiline
+                            textAlignVertical="top"
+                         />
+                    </View>
 
-            {/* Save Button */}
-            <TouchableOpacity 
-               style={[styles.saveButton, (!isDirty || isUpdating || isUploadingIcon) && styles.disabledButton]} 
-               onPress={handleSave}
-               disabled={!isDirty || isUpdating || isUploadingIcon}
-            >
-               <Text style={styles.saveButtonText}>Save</Text>
-            </TouchableOpacity>
-         </View>
-      </TouchableWithoutFeedback>
+                </View>
+
+            </ScrollView>
+
+            {/* 3. Sticky Save Button */}
+            <SafeAreaView style={styles.footer}>
+                <TouchableOpacity 
+                    style={[styles.saveButton, (!isDirty && !isUpdating) && styles.disabledButton]} 
+                    onPress={handleSave}
+                    disabled={!isDirty || isUpdating}
+                >
+                    {isUpdating ? (
+                        <ActivityIndicator color="#FFF" />
+                    ) : (
+                        <Text style={styles.saveButtonText}>Save Changes</Text>
+                    )}
+                </TouchableOpacity>
+            </SafeAreaView>
+
+         </KeyboardAvoidingView>
+      </View>
    );
 };
 
 export default EditCommunityDetailsScreen;
 
 const styles = StyleSheet.create({
-   container: {
+   root: {
       flex: 1,
-      backgroundColor: "#fff",
-      paddingHorizontal: 20,
+      backgroundColor: "#F2F2F7", // System Gray 6 Background for Form feel
    },
-   center: {
-      justifyContent: 'center',
-      alignItems: 'center',
+   scrollContent: {
+       paddingBottom: 100, // Space for footer
    },
-   avatarContainer: {
-      alignItems: "center",
-      marginTop: 20,
-      marginBottom: 30, // Added margin for spacing
+
+   // --- Banner Image ---
+   sectionLabel: {
+       fontSize: 12,
+       fontWeight: '600',
+       color: '#8E8E93',
+       marginTop: 24,
+       marginBottom: 8,
+       marginLeft: 16,
+       letterSpacing: 0.5,
    },
-   avatar: {
-      width: 150,
-      height: 150,
-      borderRadius: 75, // Made into a perfect circle
-      backgroundColor: "#f2f2f2",
+   bannerContainer: {
+       height: 180,
+       width: '100%',
+       backgroundColor: '#E5E5EA',
+       position: 'relative',
+       marginBottom: 8,
    },
-   avatarPlaceholder: {
-      width: 150,
-      height: 150,
-      borderRadius: 75,
-      backgroundColor: '#f2f2f2',
+   bannerImage: {
+       width: '100%',
+       height: '100%',
    },
-   changeImageButton: {
-      marginTop: 10,
-      backgroundColor: "#007bff",
-      paddingVertical: 8,
-      paddingHorizontal: 15,
-      borderRadius: 8,
-      marginBottom: 20,
-      minWidth: 140,
-      alignItems: 'center',
+   bannerPlaceholder: {
+       flex: 1,
+       alignItems: 'center',
+       justifyContent: 'center',
+       gap: 8,
    },
-   changeImageText: {
-      color: "#fff",
-      fontSize: 14,
-      fontWeight: "bold",
+   placeholderText: {
+       color: '#8E8E93',
+       fontWeight: '500',
    },
-   // Style for the camera icon overlay
-   editOverlay: {
-      position: 'absolute',
-      bottom: 5,
-      right: 5,
-      backgroundColor: 'rgba(0,0,0,0.6)',
-      padding: 8,
-      borderRadius: 20,
+   editIconOverlay: {
+       position: 'absolute',
+       bottom: 12,
+       right: 12,
+       backgroundColor: 'rgba(0,0,0,0.6)',
+       padding: 8,
+       borderRadius: 20,
    },
-   infoContainer: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      backgroundColor: "#f9f9f9",
-      padding: 15,
-      borderRadius: 10,
-      alignItems: "center",
+
+   // --- Form ---
+   formContainer: {
+       marginTop: 0,
    },
-   label: {
-      fontSize: 16,
-      fontWeight: "bold",
+   inputWrapper: {
+       backgroundColor: '#FFFFFF',
+       paddingHorizontal: 16,
+       paddingVertical: 12,
+       borderBottomWidth: StyleSheet.hairlineWidth,
+       borderBottomColor: '#C6C6C8',
+       flexDirection: 'row',
+       alignItems: 'center',
    },
-   input: {
-      fontSize: 16,
-      color: "#000",
-      flex: 1,
-      textAlign: "right", 
+   inputLabel: {
+       width: 80,
+       fontSize: 16,
+       fontWeight: '500',
+       color: '#000',
    },
-   description: {
-      backgroundColor: "#f9f9f9",
-      padding: 15,
-      borderRadius: 10,
-      marginTop: 15,
-      height: 150,
-      textAlignVertical: "top",
+   textInput: {
+       flex: 1,
+       fontSize: 16,
+       color: '#000',
+   },
+   
+   // Text Area
+   textAreaWrapper: {
+       alignItems: 'flex-start',
+       paddingVertical: 12,
+       minHeight: 120,
+   },
+   textArea: {
+       flex: 1,
+       fontSize: 16,
+       color: '#000',
+       height: '100%',
+   },
+
+   // --- Footer ---
+   footer: {
+       backgroundColor: '#FFFFFF',
+       borderTopWidth: 1,
+       borderTopColor: '#F2F2F7',
+       paddingHorizontal: 16,
+       paddingVertical: 12,
    },
    saveButton: {
-      backgroundColor: "#007bff",
-      paddingVertical: 12,
-      borderRadius: 10,
-      alignItems: "center",
-      marginTop: 30,
+       backgroundColor: '#000000',
+       height: 50,
+       borderRadius: 25,
+       alignItems: 'center',
+       justifyContent: 'center',
    },
    disabledButton: {
-      backgroundColor: "#b0c4de",
+       backgroundColor: '#C7C7CC', // Disabled Grey
    },
    saveButtonText: {
-      color: "#fff",
-      fontSize: 16,
-      fontWeight: "bold",
-   },
-   errorText: {
-      color: 'red',
+       color: '#FFFFFF',
+       fontSize: 16,
+       fontWeight: '600',
    },
 });
-

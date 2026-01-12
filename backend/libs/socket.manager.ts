@@ -110,6 +110,18 @@ class SocketManager {
   }
 
   /**
+   * Broadcasts a photo update (e.g., visibility change) to a specific gallery room.
+   * @param galleryId The room ID
+   * @param photo The updated photo object
+   */
+  broadcastPhotoUpdated(galleryId: string, photo: any) {
+    if (this.io) {
+      this.io.to(galleryId).emit('photo_updated', photo);
+      console.log(`📢 Broadcasted photo update to gallery room: ${galleryId}, photoId: ${photo.id}`);
+    }
+  }
+
+  /**
    * Broadcasts a photo tag update (added or removed) to a specific gallery room.
    * @param galleryId The room ID
    * @param photoId The ID of the photo

@@ -14,6 +14,7 @@ import {
   requestCommunityIconPresign,
   updateCommunity,
   leaveCommunity,
+  transferOwnership,
   type CreateCommunityRequest,
   type UpdateCommunityRequest,
 } from '../services/api/communities.service';
@@ -265,6 +266,21 @@ export const useUpdateCommunityIcon = (communityId: string | null) => {
     },
     onError: (error) => {
       console.error('Failed to update community icon:', error);
+    },
+  });
+};
+
+export const useTransferOwnership = () => {
+  const queryClient = useQueryClient();
+  const database = useDatabase();
+  return useMutation({
+    mutationFn: ({ communityId, newOwnerId }: { communityId: string; newOwnerId: string }) =>
+      transferOwnership(communityId, newOwnerId),
+    onSuccess: async (updated, { communityId }) => {
+      await syncCommunityDetails(database, updated);
+      queryClient.invalidateQueries({ queryKey: ['communities'] });
+      queryClient.invalidateQueries({ queryKey: ['community', communityId] });
+      queryClient.invalidateQueries({ queryKey: ['community-members', communityId] });
     },
   });
 };

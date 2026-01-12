@@ -77,21 +77,21 @@ const FriendsScreen = () => {
 
   const keyExtractor = useCallback((item: Friend) => item.id, [])
 
-  if (isLoading) {
-    return (
-      <View style={[styles.container, styles.center]}>
-        <ActivityIndicator size="large" color="#0000ff" />
-      </View>
-    );
-   }
+  // if (isLoading) {
+  //   return (
+  //     <View style={[styles.container, styles.center]}>
+  //       <ActivityIndicator size="large" color="#0000ff" />
+  //     </View>
+  //   );
+  //  }
   
-  if (isError) {
-    return (
-      <View style={[styles.container, styles.center]}>
-        <Text style={styles.errorText}>Failed to load friends: {error?.message}</Text>
-      </View>
-    );
-   }
+  // if (isError) {
+  //   return (
+  //     <View style={[styles.container, styles.center]}>
+  //       <Text style={styles.errorText}>Failed to load friends: {error?.message}</Text>
+  //     </View>
+  //   );
+  //  }
 
   return (
     <View style={styles.container}>

@@ -1,16 +1,21 @@
 import React, { useMemo } from 'react';
 import { StyleSheet, View, TouchableOpacity, Text } from 'react-native';
 import FastImage from 'react-native-fast-image';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
-// iOS Standard Colors
+// --- Theme Colors ---
 const COLORS = {
   background: '#FFFFFF',
-  textPrimary: '#000000',
-  textSecondary: '#8E8E93', // System Gray
-  separator: '#C6C6C8',
-  badgeBg: '#F2F2F7', // System Gray 6
-  tint: '#007AFF', // Apple Blue
-  unreadIndicator: '#007AFF',
+  textPrimary: '#1C1C1E', // Almost Black
+  textSecondary: '#8E8E93', // Slate Grey
+  textTertiary: '#C7C7CC', // Light Grey
+  accent: '#007AFF', // System Blue
+  separator: '#F2F2F7', // Very Light Grey
+};
+
+// --- Dummy Data Fallbacks ---
+const DUMMY_DATA = {
+    fallbackIcon: "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?q=80&w=2000&auto=format&fit=crop"
 };
 
 export type GroupListItemProps = {
@@ -20,7 +25,9 @@ export type GroupListItemProps = {
   lastUploadedBy: string;
   unseenCount: number;
   lastUpdated: string;
-  communityName?: string; // Made optional to be safe
+  communityName?: string;
+  photoCount?: number;
+  memberCount?: number;
   onPress?: (id: string) => void;
 };
 
@@ -29,16 +36,15 @@ const getTimeAgo = (dateString: string) => {
     if (!dateString) return "";
     const now = new Date();
     const uploadedDate = new Date(dateString);
-    const diffMs = now.getTime() - uploadedDate.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
+    const diffMins = Math.floor((now.getTime() - uploadedDate.getTime()) / 60000);
 
-    if (diffMins < 1) return "Now";
-    if (diffMins < 60) return `${diffMins}m`; // iOS Style compact
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m`;
     const diffHours = Math.floor(diffMins / 60);
     if (diffHours < 24) return `${diffHours}h`;
     const diffDays = Math.floor(diffHours / 24);
     if (diffDays < 7) return `${diffDays}d`;
-    return uploadedDate.toLocaleDateString(); // Fallback to date
+    return uploadedDate.toLocaleDateString();
 };
 
 const GroupListItem = ({ 
@@ -48,73 +54,95 @@ const GroupListItem = ({
   lastUploadedBy, 
   unseenCount, 
   lastUpdated, 
-  communityName, 
+  communityName,
+  photoCount,
+  memberCount,
   onPress 
 }: GroupListItemProps) => {
   
   const timeLabel = useMemo(() => getTimeAgo(lastUpdated), [lastUpdated]);
   const hasUnread = unseenCount > 0;
+  
+  // Format fallback status with actual counts
+  const formatFallbackStatus = () => {
+    const photos = photoCount ?? 0;
+    const members = memberCount ?? 0;
+    const photoText = photos === 1 ? 'photo' : 'photos';
+    const memberText = members === 1 ? 'contributor' : 'contributors';
+    return `${photos} ${photoText} • ${members} ${memberText}`;
+  };
 
   return (
     <TouchableOpacity 
       style={styles.container} 
       onPress={() => onPress && onPress(id)}
-      activeOpacity={0.7}
+      activeOpacity={0.6}
     >
-      {/* Avatar */}
-      <FastImage 
-        source={{ 
-          uri: icon || "https://www.shutterstock.com/image-vector/premium-picture-icon-logo-line-260nw-749843887.jpg",
-          priority: FastImage.priority.normal, 
-        }} 
-        style={styles.avatar} 
-        resizeMode={FastImage.resizeMode.cover}
-      />
+        {/* --- 1. Enhanced Avatar --- */}
+        <View style={styles.avatarContainer}>
+            <FastImage 
+                source={{ 
+                uri: icon || DUMMY_DATA.fallbackIcon,
+                priority: FastImage.priority.normal, 
+                }} 
+                style={styles.avatar} 
+                resizeMode={FastImage.resizeMode.cover}
+            />
+            {/* Optional: Add a tiny ring if unread to make it pop */}
+            {hasUnread && <View style={styles.avatarUnreadRing} />}
+        </View>
 
-      <View style={styles.contentContainer}>
-        {/* Top Row: Title + Badge + Time */}
-        <View style={styles.topRow}>
-          <View style={styles.titleSection}>
-            <Text style={[styles.title, hasUnread && styles.titleUnread]} numberOfLines={1}>
-              {title}
-            </Text>
+        {/* --- 2. Content Stack --- */}
+        <View style={styles.contentContainer}>
             
-            {/* Community Badge */}
-            {communityName ? (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText} numberOfLines={1}>
-                  {communityName}
+            {/* Row A: Context (Community) + Time */}
+            <View style={styles.metaRow}>
+                <Text style={styles.communityLabel} numberOfLines={1}>
+                    {communityName || "PRIVATE GALLERY"}
                 </Text>
-              </View>
-            ) : null}
-          </View>
-
-          <Text style={[styles.time, hasUnread && styles.timeUnread]}>
-            {timeLabel}
-          </Text>
-        </View>
-
-        {/* Bottom Row: Message + Unseen Indicator */}
-        <View style={styles.bottomRow}>
-          <Text style={[styles.message, hasUnread && styles.messageUnread]} numberOfLines={2}>
-            {lastUploadedBy ? (
-              <Text>
-                <Text style={styles.senderName}>{lastUploadedBy}</Text> added a photo.
-              </Text>
-            ) : "No recent activity"}
-          </Text>
-          
-          {/* Blue Dot for Unseen */}
-          {hasUnread && (
-            <View style={styles.unreadDot}>
-              <Text style={styles.unreadCountText}>{unseenCount > 99 ? '99+' : unseenCount}</Text>
+                <Text style={[styles.timeLabel, hasUnread && styles.timeLabelUnread]}>
+                    {timeLabel}
+                </Text>
             </View>
-          )}
+
+            {/* Row B: Main Title */}
+            <View style={styles.titleRow}>
+                <Text style={[styles.title, hasUnread && styles.titleUnread]} numberOfLines={1}>
+                    {title}
+                </Text>
+                
+                {/* Unread Pill (Instead of blue dot) */}
+                {hasUnread && (
+                    <View style={styles.unreadBadge}>
+                        <Text style={styles.unreadText}>{unseenCount}</Text>
+                    </View>
+                )}
+            </View>
+
+            {/* Row C: Rich Status */}
+            <View style={styles.statusRow}>
+                {lastUploadedBy ? (
+                    <>
+                        <Ionicons name="camera" size={12} color={COLORS.textSecondary} style={{marginRight: 4}} />
+                        <Text style={styles.statusText} numberOfLines={1}>
+                            <Text style={styles.senderName}>{lastUploadedBy}</Text> added a photo
+                        </Text>
+                    </>
+                ) : (
+                    <>
+                         <Ionicons name="images-outline" size={12} color={COLORS.textSecondary} style={{marginRight: 4}} />
+                         <Text style={styles.statusText} numberOfLines={1}>
+                            {formatFallbackStatus()}
+                         </Text>
+                    </>
+                )}
+            </View>
+
         </View>
-        
-        {/* Indented Separator */}
-        <View style={styles.separator} />
-      </View>
+
+        {/* --- 3. Subtle Chevron (Optional, keeps it looking like a list item) --- */}
+        <Ionicons name="chevron-forward" size={16} color="#E5E5EA" style={{ marginLeft: 8 }} />
+
     </TouchableOpacity>
   );
 };
@@ -123,125 +151,118 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: "row",
     backgroundColor: COLORS.background,
-    paddingLeft: 16, // Left padding applies to container to offset image
-    minHeight: 76,
+    paddingVertical: 14, // More breathing room
+    paddingHorizontal: 16,
     alignItems: 'center',
+    // Separator logic
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.separator,
+  },
+  
+  // --- Avatar ---
+  avatarContainer: {
+      position: 'relative',
+      marginRight: 16,
+      // Shadow for depth
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.1,
+      shadowRadius: 6,
+      elevation: 3,
   },
   avatar: {
-    width: 56, // Standard iOS large list avatar
-    height: 56,
-    borderRadius: 18, // Continuous curve smoothing look
-    backgroundColor: COLORS.badgeBg,
-    marginRight: 12,
+    width: 60, // Slightly larger than standard 56
+    height: 60,
+    borderRadius: 20, // Modern "Squircle"
+    backgroundColor: '#F2F2F7',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
   },
+  avatarUnreadRing: {
+      position: 'absolute',
+      top: -2, left: -2, right: -2, bottom: -2,
+      borderWidth: 2,
+      borderColor: COLORS.accent,
+      borderRadius: 22,
+  },
+
+  // --- Content ---
   contentContainer: {
     flex: 1,
-    paddingVertical: 12,
-    paddingRight: 16,
     justifyContent: 'center',
-   //  height: '100%',
+    gap: 3, // Modern gap spacing
   },
   
-  // Top Row Layout
-  topRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center", // Aligns text baselines roughly
-    marginBottom: 2,
+  // Row A: Meta
+  metaRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
   },
-  titleSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1, // Takes available space
-    marginRight: 8,
+  communityLabel: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: COLORS.textSecondary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.8, // Tracking makes small text readable and premium
+  },
+  timeLabel: {
+      fontSize: 12,
+      color: COLORS.textTertiary,
+      fontWeight: '500',
+  },
+  timeLabelUnread: {
+      color: COLORS.accent,
+      fontWeight: '600',
+  },
+
+  // Row B: Title
+  titleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
   },
   title: {
-    fontSize: 17,
-    fontWeight: "600",
-    color: COLORS.textPrimary,
-    flexShrink: 1, // Allows title to shrink if badge/time need space
+      fontSize: 17,
+      fontWeight: '600',
+      color: COLORS.textPrimary,
+      letterSpacing: -0.4,
+      flex: 1,
+      marginRight: 8,
   },
   titleUnread: {
-    color: COLORS.textPrimary, // Could make blacker or keep same
+      color: '#000', // Pure black when unread
+      fontWeight: '700',
   },
-  
-  // Badge Styling
-  badge: {
-    backgroundColor: COLORS.badgeBg,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    marginLeft: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    maxWidth: 100, // Max width for badge
+  unreadBadge: {
+      backgroundColor: COLORS.accent,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 10,
+      minWidth: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
   },
-  badgeText: {
-    fontSize: 11,
-    color: COLORS.textSecondary,
-    fontWeight: '600',
-    textTransform: 'uppercase', // Often looks cleaner for badges
+  unreadText: {
+      color: '#FFF',
+      fontSize: 11,
+      fontWeight: '700',
   },
 
-  // Time Styling
-  time: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    fontWeight: '400',
+  // Row C: Status
+  statusRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
   },
-  timeUnread: {
-    color: COLORS.tint, // Blue time usually indicates unread in iOS
-    fontWeight: '600',
-  },
-
-  // Bottom Row
-  bottomRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  message: {
-    fontSize: 15,
-    color: COLORS.textSecondary,
-    flex: 1,
-    lineHeight: 20,
-    marginRight: 8,
-  },
-  messageUnread: {
-    color: COLORS.textPrimary, // Darker text for unread preview
-    fontWeight: '400',
+  statusText: {
+      fontSize: 14,
+      color: COLORS.textSecondary,
+      fontWeight: '400',
   },
   senderName: {
-    fontWeight: '500',
-    color: COLORS.textPrimary,
+      color: COLORS.textPrimary, // Highlight the user name
+      fontWeight: '500',
   },
-  
-  // Unread Dot
-  unreadDot: {
-    backgroundColor: COLORS.unreadIndicator,
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-    marginTop: 2,
-  },
-  unreadCountText: {
-    color: '#FFF',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-
-  // Separator
-//   separator: {
-//     position: 'absolute',
-//     bottom: 0,
-//     right: 0,
-//     left: 0, // Starts from content start
-//     height: StyleSheet.hairlineWidth,
-//     backgroundColor: COLORS.separator,
-//   },
 });
 
 export default GroupListItem;

@@ -1,131 +1,238 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import FastImage from 'react-native-fast-image';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
-// iOS Design Colors
-const COLORS = {
-  background: '#FFFFFF',
-  textPrimary: '#000000',
-  textSecondary: '#8E8E93', // System Gray
-  separator: '#C6C6C8',
-  iconBg: '#F2F2F7', // System Gray 6
-};
-
+// --- Types ---
 type Props = {
   name: string;
-  description?: string;
-  iconUrl?: string;
+  description?: string; // Optional: displayed in body if needed
+  iconUrl?: string;     // Used as Banner Image
   membersCount?: number;
+  galleryCount?: number;
   onPress?: () => void;
 };
 
-const CommunityCard: React.FC<Props> = ({ name, description, iconUrl, membersCount, onPress }) => {
+// --- Dummy Data (Hardcoded as requested) ---
+const DUMMY_STATS = {
+  lastActive: '2h ago',
+  createdAt: 'Nov 2023',
+  members: 0, // Fallback if prop not provided
+  galleries: 0, // Fallback if prop not provided
+};
+
+const CommunityCard: React.FC<Props> = ({ name, iconUrl, membersCount, galleryCount, onPress }) => {
+  
+  // Use prop or dummy
+  const displayMembers = membersCount ?? DUMMY_STATS.members;
+  const displayGalleries = galleryCount ?? DUMMY_STATS.galleries;
+  // Use prop URL or a nice placeholder scenery for the banner
+  const bannerSource = iconUrl ? { uri: iconUrl } : { uri: 'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?q=80&w=2070&auto=format&fit=crop' };
+
   return (
     <TouchableOpacity 
-      style={styles.container} 
+      style={styles.cardContainer} 
       onPress={onPress} 
-      activeOpacity={0.7}
+      activeOpacity={0.9}
     >
-      {/* Avatar / Placeholder */}
-      <View style={styles.avatarContainer}>
-        {iconUrl ? (
-          <FastImage 
-            source={{ uri: iconUrl }} 
-            style={styles.avatar} 
+      {/* --- Top Banner Section --- */}
+      <View style={styles.bannerContainer}>
+        <FastImage 
+            source={bannerSource} 
+            style={styles.bannerImage} 
             resizeMode={FastImage.resizeMode.cover}
-          />
-        ) : (
-          <View style={[styles.avatar, styles.placeholder]}>
-            <Text style={styles.placeholderText}>{name.slice(0, 1).toUpperCase()}</Text>
-          </View>
-        )}
+        />
+        
+        {/* Dark Gradient Overlay for Text Readability */}
+        <View style={styles.bannerOverlay}>
+            <View style={styles.titleWrapper}>
+                <Text style={styles.bannerTitle} numberOfLines={2}>{name}</Text>
+                <View style={styles.badgeContainer}>
+                    <Text style={styles.badgeText}>COMMUNITY</Text>
+                </View>
+            </View>
+        </View>
       </View>
 
-      {/* Content */}
-      <View style={styles.content}>
-        <View style={styles.textContainer}>
-          <Text style={styles.title} numberOfLines={1}>{name}</Text>
-          
-          {description ? (
-            <Text style={styles.description} numberOfLines={2}>
-              {description}
-            </Text>
-          ) : null}
+      {/* --- Bottom Info Section --- */}
+      <View style={styles.infoSection}>
+        
+        {/* Row 1: Key Stats (Members & Galleries) */}
+        <View style={styles.statsRow}>
+            
+            {/* Stat Item: Members */}
+            <View style={styles.statItem}>
+                <View style={styles.iconCircle}>
+                    <Ionicons name="people" size={16} color="#000" />
+                </View>
+                <View>
+                    <Text style={styles.statValue}>{displayMembers}</Text>
+                    <Text style={styles.statLabel}>Members</Text>
+                </View>
+            </View>
 
-          {/* Optional Meta Data (Members count) */}
-          {membersCount !== undefined && (
-             <Text style={styles.meta}>
-               {membersCount} {membersCount === 1 ? 'member' : 'members'}
-             </Text>
-          )}
+            {/* Vertical Divider */}
+            <View style={styles.divider} />
+
+            {/* Stat Item: Galleries */}
+            <View style={styles.statItem}>
+                <View style={styles.iconCircle}>
+                    <Ionicons name="images" size={16} color="#000" />
+                </View>
+                <View>
+                    <Text style={styles.statValue}>{displayGalleries}</Text>
+                    <Text style={styles.statLabel}>Galleries</Text>
+                </View>
+            </View>
         </View>
 
-        {/* Separator (Indented) */}
-        <View style={styles.separator} />
+        {/* Row 2: Meta Data (Timestamps) */}
+        <View style={styles.metaRow}>
+            <View style={styles.metaItem}>
+                <Ionicons name="time-outline" size={12} color="#8E8E93" />
+                <Text style={styles.metaText}>Active {DUMMY_STATS.lastActive}</Text>
+            </View>
+            <Text style={styles.metaDot}>•</Text>
+            <View style={styles.metaItem}>
+                <Ionicons name="calendar-outline" size={12} color="#8E8E93" />
+                <Text style={styles.metaText}>Created {DUMMY_STATS.createdAt}</Text>
+            </View>
+        </View>
+
       </View>
     </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.background,
-    paddingLeft: 20, // Left padding on container for the avatar
-    alignItems: 'center',
-    minHeight: 76,
+  cardContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginVertical: 10,
+    
+    // Modern "Lifted" Card Shadow
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4, // Android
+    overflow: 'hidden', // Ensures image respects border radius
+    borderWidth: 1,
+    borderColor: '#F2F2F7',
   },
-  avatarContainer: {
-    marginRight: 16,
+
+  // --- Banner Styles ---
+  bannerContainer: {
+    height: 160,
+    width: '100%',
+    position: 'relative',
+    backgroundColor: '#E1E1E6',
   },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 14, // Continuous curve smoothing look
-  },
-  placeholder: {
-    backgroundColor: COLORS.iconBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  placeholderText: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-  },
-  content: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingRight: 20, // Right padding for text
-    justifyContent: 'center',
+  bannerImage: {
+    width: '100%',
     height: '100%',
   },
-  textContainer: {
-    gap: 2,
+  bannerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)', // Darken image slightly
+    justifyContent: 'flex-end', // Push text to bottom
+    padding: 16,
   },
-  title: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-    letterSpacing: -0.4,
+  titleWrapper: {
+      gap: 8,
   },
-  description: {
-    fontSize: 15,
-    color: COLORS.textSecondary,
-    lineHeight: 20,
+  bannerTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
   },
-  meta: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    marginTop: 2,
+  badgeContainer: {
+      backgroundColor: 'rgba(255,255,255,0.2)',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 4,
+      alignSelf: 'flex-start',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.3)',
+      // backdropFilter: 'blur(10px)' // Note: React Native needs extra lib for blur, using opacity for now
   },
-  separator: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    left: 0, 
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: COLORS.separator,
+  badgeText: {
+      color: '#FFF',
+      fontSize: 10,
+      fontWeight: '700',
+      letterSpacing: 0.8,
+  },
+
+  // --- Info Styles ---
+  infoSection: {
+    padding: 16,
+    backgroundColor: '#FFFFFF',
+  },
+  
+  // Stats
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  statItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+      gap: 12,
+  },
+  iconCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: '#F2F2F7', // Subtle grey circle
+      alignItems: 'center',
+      justifyContent: 'center',
+  },
+  statValue: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: '#000',
+  },
+  statLabel: {
+      fontSize: 12,
+      color: '#8E8E93',
+      fontWeight: '500',
+  },
+  divider: {
+      width: 1,
+      height: 24,
+      backgroundColor: '#E5E5EA',
+      marginHorizontal: 16,
+  },
+
+  // Meta (Footer)
+  metaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderTopWidth: 1,
+      borderTopColor: '#F2F2F7',
+      paddingTop: 12,
+  },
+  metaItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+  },
+  metaText: {
+      fontSize: 12,
+      color: '#8E8E93',
+      fontWeight: '500',
+  },
+  metaDot: {
+      marginHorizontal: 8,
+      color: '#C7C7CC',
+      fontSize: 10,
   },
 });
 

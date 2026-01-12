@@ -1,186 +1,248 @@
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Image, TouchableWithoutFeedback, Keyboard, SafeAreaView, ActivityIndicator, Alert } from "react-native";
+import { 
+  View, Text, TextInput, TouchableOpacity, StyleSheet, 
+  TouchableWithoutFeedback, Keyboard, SafeAreaView, 
+  Alert, KeyboardAvoidingView, Platform, ScrollView 
+} from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import { useNavigation } from "@react-navigation/native";
-import { useCreateGallery } from "../../../hooks/useGalleryData";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import { launchImageLibrary, ImagePickerResponse } from "react-native-image-picker";
+import FastImage from "react-native-fast-image";
+
+const COLORS = {
+  black: '#000000',
+  white: '#FFFFFF',
+  bg: '#FFFFFF', // Pure white background
+  placeholder: '#F2F2F7', // System Gray 6
+  textSecondary: '#8E8E93',
+  border: '#E5E5EA',
+};
 
 const CreateGroupDetailsScreen = () => {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [imageUri, setImageUri] = useState<string | undefined>(undefined);
+  const route = useRoute()
+  const {communityId} = route.params as any
 
-  const { mutateAsync, isPending, isError } = useCreateGallery()
-  const navigation = useNavigation()
+  const navigation = useNavigation();
 
   const onPickImage = () => {
-    launchImageLibrary({ mediaType: 'photo', quality: 0.7 }, (response: ImagePickerResponse) => {
-      if (response.didCancel) {
-        return;
-      } else if (response.errorMessage) {
+    launchImageLibrary({ mediaType: 'photo', quality: 0.8 }, (response: ImagePickerResponse) => {
+      if (response.didCancel) return;
+      if (response.errorMessage) {
         Alert.alert('Error', response.errorMessage);
         return;
-      } else if (response.assets && response.assets[0]?.uri) {
+      } 
+      if (response.assets && response.assets[0]?.uri) {
         setImageUri(response.assets[0].uri);
       }
     });
   };
 
-  const onContinue = async () => {
-    if (!name.trim() || isPending) return;
+  const onContinue = () => {
+    if (!name.trim()) return;
 
-    try {
-      const gallery = await mutateAsync({
-        galleryData: {
-          name: name.trim(),
-          type: "GROUP",
-        },
-        imageUri: imageUri ?? null,
-      });
-
-      (navigation as any).navigate("AddGroupMembers", {galleryId: gallery.id});
-    } catch (error) {
-      console.error("Failed to create group:", error);
-      Alert.alert(
-        "Creation Failed",
-        "Could not create the group. Please try again."
-      );
-    }
+    (navigation as any).navigate("CreateGroupSettings", {
+      name: name.trim(),
+      description: description.trim(),
+      imageUri: imageUri ?? null,
+      communityId: communityId
+    });
   };
 
   const isButtonDisabled = !name.trim();
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.container}>
-          <TouchableOpacity style={styles.imagePicker} onPress={onPickImage}>
+    <View style={styles.root}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0} // Adjust for header height
+      >
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          
+          {/* 1. Cover Photo Picker */}
+          <TouchableOpacity 
+            style={styles.bannerPicker} 
+            onPress={onPickImage}
+            activeOpacity={0.9}
+          >
             {imageUri ? (
-              <Image source={{ uri: imageUri }} style={styles.image} />
+              <FastImage 
+                source={{ uri: imageUri }} 
+                style={styles.bannerImage} 
+                resizeMode={FastImage.resizeMode.cover}
+              />
             ) : (
-              <View style={styles.imagePlaceholder}>
-                <Ionicons name="camera-outline" size={40} color={COLORS.gray} />
-                <Text style={styles.imagePlaceholderText}>Add Photo</Text>
+              <View style={styles.bannerPlaceholder}>
+                <View style={styles.iconCircle}>
+                   <Ionicons name="camera" size={24} color={COLORS.black} />
+                </View>
+                <Text style={styles.bannerText}>Add Cover Photo</Text>
               </View>
             )}
-          </TouchableOpacity>
 
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.input}
-              placeholder="Group Name"
-              placeholderTextColor={COLORS.gray}
-              value={name}
-              onChangeText={setName}
-              returnKeyType="next"
-            />
-            <TextInput
-              style={[styles.input, styles.descriptionInput]}
-              placeholder="Description (Optional)"
-              placeholderTextColor={COLORS.gray}
-              multiline
-              value={description}
-              onChangeText={setDescription}
-            />
-          </View>
-
-          <TouchableOpacity
-            style={[styles.button, (isButtonDisabled || isPending) && styles.buttonDisabled]}
-            onPress={onContinue}
-            disabled={isButtonDisabled || isPending}
-          >
-            {isPending ? (
-              <ActivityIndicator color={COLORS.white} />
-            ) : (
-              <Text style={styles.buttonText}>Continue</Text>
+            {/* Edit Badge (Only shows if image exists) */}
+            {imageUri && (
+                <View style={styles.editBadge}>
+                    <Ionicons name="pencil" size={14} color="#FFF" />
+                </View>
             )}
           </TouchableOpacity>
-        </View>
-      </TouchableWithoutFeedback>
-    </SafeAreaView>
+
+          {/* 2. Form Fields */}
+          <View style={styles.formContainer}>
+            
+            <View style={styles.inputGroup}>
+                <Text style={styles.label}>GROUP NAME</Text>
+                <TextInput
+                    style={styles.nameInput}
+                    placeholder="Name your group"
+                    placeholderTextColor="#C7C7CC"
+                    value={name}
+                    onChangeText={setName}
+                    returnKeyType="next"
+                    autoFocus
+                />
+            </View>
+
+            <View style={styles.inputGroup}>
+                <Text style={styles.label}>DESCRIPTION</Text>
+                <TextInput
+                    style={styles.descriptionInput}
+                    placeholder="What is this group about? (Optional)"
+                    placeholderTextColor="#C7C7CC"
+                    multiline
+                    value={description}
+                    onChangeText={setDescription}
+                    textAlignVertical="top"
+                />
+            </View>
+
+          </View>
+        </ScrollView>
+
+        {/* 3. Footer Action */}
+        <SafeAreaView style={styles.footer}>
+            <TouchableOpacity
+                style={[styles.continueButton, isButtonDisabled && styles.buttonDisabled]}
+                onPress={onContinue}
+                disabled={isButtonDisabled}
+            >
+                <Text style={styles.buttonText}>Continue</Text>
+                <Ionicons name="arrow-forward" size={18} color="#FFF" style={{marginLeft: 8}} />
+            </TouchableOpacity>
+        </SafeAreaView>
+
+      </KeyboardAvoidingView>
+    </View>
   );
 };
 
 export default CreateGroupDetailsScreen;
 
-const COLORS = {
-  black: '#000000',
-  white: '#FFFFFF',
-  lightGray: '#F5F5F5',
-  gray: '#8E8E93',
-  border: '#E0E0E0',
-  darkGray: '#1C1C1E',
-};
-
 const styles = StyleSheet.create({
-  safeArea: {
+  root: {
     flex: 1,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.bg,
   },
-  container: {
-    flex: 1,
-    paddingHorizontal: 24,
-    paddingTop: 20,
-    backgroundColor: COLORS.white,
+  scrollContent: {
+      paddingBottom: 40,
   },
-  imagePicker: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    alignSelf: 'center',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.lightGray,
-    marginBottom: 40,
-    overflow: 'hidden',
+
+  // --- Banner Picker ---
+  bannerPicker: {
+    height: 220,
+    width: '100%',
+    backgroundColor: COLORS.placeholder,
+    position: 'relative',
   },
-  image: {
+  bannerImage: {
     width: '100%',
     height: '100%',
   },
-  imagePlaceholder: {
-    justifyContent: 'center',
+  bannerPlaceholder: {
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
   },
-  imagePlaceholderText: {
-    marginTop: 8,
-    color: COLORS.gray,
-    fontSize: 14,
+  iconCircle: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: '#FFF',
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
   },
-  inputContainer: {
-    width: '100%',
+  bannerText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: COLORS.textSecondary,
   },
-  input: {
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
+  editBadge: {
+      position: 'absolute',
+      bottom: 16,
+      right: 16,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      padding: 8,
+      borderRadius: 20,
+  },
+
+  // --- Form ---
+  formContainer: {
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    gap: 32, // Space between input groups
+  },
+  inputGroup: {
+      gap: 12,
+  },
+  label: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: COLORS.textSecondary,
+      letterSpacing: 1, // Uppercase tracking
+  },
+  nameInput: {
+    fontSize: 28, // Large Title Style
+    fontWeight: '700',
     color: COLORS.black,
-    marginBottom: 16,
+    paddingVertical: 0, // Tighten up
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingBottom: 12,
   },
   descriptionInput: {
-    height: 100,
-    textAlignVertical: 'top',
-    paddingTop: 14,
+    fontSize: 17, // Body Style
+    color: COLORS.black,
+    minHeight: 80,
+    lineHeight: 24,
   },
-  permissionsSection: {
-    borderColor: COLORS.border,
-    borderRadius: 12,
+
+  // --- Footer ---
+  footer: {
+      paddingHorizontal: 24,
+      paddingVertical: 12,
+      borderTopWidth: 1,
+      borderTopColor: COLORS.placeholder,
+      backgroundColor: COLORS.white,
   },
-  button: {
+  continueButton: {
     backgroundColor: COLORS.black,
-    paddingVertical: 16,
-    borderRadius: 12,
+    height: 56, // Taller touch target
+    borderRadius: 28, // Pill shape
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 'auto',
-    marginBottom: 20,
   },
   buttonDisabled: {
-    backgroundColor: COLORS.gray,
+    backgroundColor: '#E5E5EA', // Disabled Grey
   },
   buttonText: {
     color: COLORS.white,

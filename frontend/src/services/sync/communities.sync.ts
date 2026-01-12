@@ -37,6 +37,8 @@ export const syncCommunities = async (
       record.joinRequiresApproval = rc.joinRequiresApproval ?? undefined;
       record.addPermission = rc.addPermission ?? undefined;
       record.deletePermission = rc.deletePermission ?? undefined;
+      record.memberCount = rc.memberCount ?? 0;
+      record.galleryCount = rc.galleryCount ?? 0;
       if ('created_at' in (record as any)._raw && rc.createdAt) {
         (record as any)._raw.created_at = new Date(rc.createdAt).getTime();
       }
@@ -99,6 +101,8 @@ export const syncCommunityDetails = async (
     record.joinRequiresApproval = remoteCommunity.joinRequiresApproval ?? undefined;
     record.addPermission = remoteCommunity.addPermission ?? undefined;
     record.deletePermission = remoteCommunity.deletePermission ?? undefined;
+    record.memberCount = remoteCommunity.memberCount ?? 0;
+    record.galleryCount = remoteCommunity.galleryCount ?? 0;
     if ('created_at' in (record as any)._raw && remoteCommunity.createdAt) {
       (record as any)._raw.created_at = new Date(remoteCommunity.createdAt).getTime();
     }

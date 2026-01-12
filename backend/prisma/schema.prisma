@@ -46,10 +46,14 @@ model Gallery {
   shareableLink String?   @unique
 
   joinRequiresApproval Boolean @default(false)
+  requirePictureReview Boolean @default(false)
   addPermission        GalleryAddPermission      @default(ADMIN)
   deletePermission     GalleryDeletePermission   @default(ADMINS_AUTHORS)
+  editPermission       GalleryEditPermission     @default(ADMIN)
 
   defaultTagId String? @unique
+  photoCount   Int      @default(0)
+  memberCount  Int      @default(0)
 
   communityId String? 
   community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
@@ -77,6 +81,8 @@ model Community {
   joinRequiresApproval Boolean @default(false)
   addPermission        GalleryAddPermission      @default(ADMIN)
   deletePermission     GalleryDeletePermission   @default(ADMINS_AUTHORS)
+  memberCount          Int      @default(0)
+  galleryCount         Int      @default(0)
 
   owner       User                  @relation("OwnedCommunities", fields: [ownerId], references: [id], onDelete: Cascade)
   memberships CommunityMembership[]
@@ -90,7 +96,8 @@ model CommunityMembership {
   userId      String
   communityId String
   joinedAt    DateTime @default(now())
-  role        MembershipRole @default(MEMBER) 
+  role        MembershipRole @default(MEMBER)
+  status      MembershipStatus @default(ACCEPTED)
 
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
@@ -113,6 +120,11 @@ enum GalleryAddPermission {
 enum GalleryDeletePermission {
   ADMINS_AUTHORS
   ADMIN
+}
+
+enum GalleryEditPermission {
+  ADMIN
+  ANYONE
 }
 
 enum MembershipStatus {
@@ -144,6 +156,11 @@ model Membership {
   @@index([galleryId])
 }
 
+enum PhotoVisibility {
+  IN_REVIEW
+  VISIBLE
+}
+
 model Photo {
   id          String   @id @default(uuid())
   galleryId   String
@@ -152,6 +169,7 @@ model Photo {
   s3Url       String
   thumbnailUrl String?
   thumbnailKey String?
+  visible     PhotoVisibility @default(VISIBLE)
   createdAt   DateTime @default(now())
 
   gallery  Gallery    @relation(fields: [galleryId], references: [id], onDelete: Cascade) // Cascade delete if gallery is deleted
@@ -160,6 +178,7 @@ model Photo {
 
   @@index([galleryId])
   @@index([uploaderId])
+  @@index([visible])
 }
 
 model Tag {

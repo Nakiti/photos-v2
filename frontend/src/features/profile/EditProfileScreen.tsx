@@ -84,9 +84,9 @@ const EditProfileScreen: React.FC = () => {
    };
 
    // --- Render ---
-   if (isLoadingProfile) {
-      return <ActivityIndicator size="large" style={styles.loadingContainer} />;
-   }
+   // if (isLoadingProfile) {
+   //    return <ActivityIndicator size="large" style={styles.loadingContainer} />;
+   // }
 
   // 2. Determine the URI for FastImage
    const avatarUri = localAvatarUri || user?.avatarUrl;

@@ -18,21 +18,21 @@ const GalleryHeader = ({galleryId,
    const {gallery, isLoading, isError, error} = useGallery(galleryId)
    
 
-   if (isLoading) {
-      return (
-        <View style={[styles.header, styles.center]}>
-          <ActivityIndicator size="large" color="#0000ff" />
-        </View>
-      );
-    }
+   // if (isLoading) {
+   //    return (
+   //      <View style={[styles.header, styles.center]}>
+   //        <ActivityIndicator size="large" color="#0000ff" />
+   //      </View>
+   //    );
+   //  }
   
-    if (isError) {
-      return (
-        <View style={[styles.header, styles.center]}>
-          <Text style={styles.errorText}>Failed to load groups: {error?.message ?? 'Unknown error'}</Text>
-        </View>
-      );
-    }
+   //  if (isError) {
+   //    return (
+   //      <View style={[styles.header, styles.center]}>
+   //        <Text style={styles.errorText}>Failed to load groups: {error?.message ?? 'Unknown error'}</Text>
+   //      </View>
+   //    );
+   //  }
    
    const handleNavigateDetails = () => {
       if (onTitlePress) {

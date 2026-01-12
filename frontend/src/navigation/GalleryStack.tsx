@@ -15,6 +15,12 @@ import EditJoinPermissionScreen from "../features/gallery/screens/GallerySetting
 import ChangeOwnerScreen from "../features/gallery/screens/GallerySettings/ChangeOwnerScreen";
 import DefaultHeader from "../components/DefaultHeader";
 import GalleryTagsScreen from "../features/gallery/screens/GalleryTagsScreen";
+import EditRequireApprovalScreen from "../features/gallery/screens/GallerySettings/EditRequireApprovalScreen";
+import EditRequirePictureReviewScreen from "../features/gallery/screens/GallerySettings/EditRequirePictureReviewScreen";
+import EditShareEventLinkScreen from "../features/gallery/screens/GallerySettings/EditShareEventLinkScreen";
+import PendingRequestsScreen from "../features/gallery/screens/GallerySettings/PendingRequestsScreen";
+import PendingImagesScreen from "../features/gallery/screens/PendingImagesScreen";
+import ShareGalleryScreen from "../features/gallery/screens/ShareGalleryScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -117,6 +123,41 @@ const GalleryStack = () => {
                 options={{
                     headerShown: true,
                     header: () => <DefaultHeader title="Change Owner"/>
+                }}
+            />
+            <Stack.Screen name="EditRequireApproval" component={EditRequireApprovalScreen as any}
+                options={{
+                    headerShown: true,
+                    header: () => <DefaultHeader title="Require Join Approval"/>
+                }}
+            />
+            <Stack.Screen name="EditRequirePictureReview" component={EditRequirePictureReviewScreen as any}
+                options={{
+                    headerShown: true,
+                    header: () => <DefaultHeader title="Require Picture Review"/>
+                }}
+            />
+            <Stack.Screen name="EditShareEventLink" component={EditShareEventLinkScreen as any}
+                options={{
+                    headerShown: true,
+                    header: () => <DefaultHeader title="Edit Share Event Link"/>
+                }}
+            />
+            <Stack.Screen name="PendingRequests" component={PendingRequestsScreen as any}
+                options={{
+                    headerShown: true,
+                    header: () => <DefaultHeader title="Pending Requests"/>
+                }}
+            />
+            <Stack.Screen name="PendingImages" component={PendingImagesScreen as any}
+                options={{
+                    headerShown: false,
+                }}
+            />
+            <Stack.Screen name="ShareGallery" component={ShareGalleryScreen as any}
+                options={{
+                    headerShown: true,
+                    header: () => <DefaultHeader title="Share Gallery" />
                 }}
             />
         </Stack.Navigator>

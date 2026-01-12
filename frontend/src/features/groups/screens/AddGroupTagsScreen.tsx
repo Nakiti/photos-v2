@@ -1,142 +1,210 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, Alert } from 'react-native';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { 
+  View, 
+  Text, 
+  FlatList, 
+  TextInput, 
+  TouchableOpacity, 
+  StyleSheet, 
+  KeyboardAvoidingView, 
+  Platform, 
+  SafeAreaView,
+  ActivityIndicator
+} from 'react-native';
 import { useDatabase } from '@nozbe/watermelondb/react';
-import { useQueryClient } from '@tanstack/react-query';
-import { createTag as createTagApi, listTagsForGallery } from '../../../services/api/tags.service';
-import { syncTags } from '../../../services/sync/tags.sync';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRoute, useNavigation, CommonActions } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
-type PendingTag = {
-  id: string; // local temp id for list rendering only
-  name: string;
-};
+// Hooks & Services
+import { useGalleryTags } from '../../../hooks/useGalleryTagData';
+import { createTag as createTagApi, deleteTag as deleteTagApi, listTagsForGallery } from '../../../services/api/tags.service';
+import { syncTags } from '../../../services/sync/tags.sync';
+import { useGallery, useUpdateGallery } from '../../../hooks/useGalleryData';
+import Tag from '../../../db/models/Tag';
+
+// Components
 
 const AddGroupTagsScreen = () => {
-  const route = useRoute();
   const navigation = useNavigation();
+  const route = useRoute();
   const { galleryId } = route.params as { galleryId: string };
-
   const database = useDatabase();
   const queryClient = useQueryClient();
 
+  // Data
+  const { tags, isLoading } = useGalleryTags(galleryId);
+  const { gallery } = useGallery(galleryId);
+  const updateGalleryMutation = useUpdateGallery();
+
+  // State
   const [name, setName] = useState('');
-  const [pendingTags, setPendingTags] = useState<PendingTag[]>([]);
-  const [isSaving, setIsSaving] = useState(false);
 
-  const canAddTag = useMemo(() => name.trim().length > 0, [name]);
+  const canCreate = useMemo(() => name.trim().length > 0, [name]);
 
-  const handleAddTag = () => {
-    if (!canAddTag) return;
-    const payload: PendingTag = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: name.trim(),
-    };
-    setPendingTags(prev => [payload, ...prev]);
-    setName('');
+  // Actions
+  const refreshTags = async () => {
+    const remote = await listTagsForGallery(galleryId);
+    await syncTags(database, galleryId, remote);
+    queryClient.invalidateQueries({ queryKey: ['gallery-tags', galleryId] });
   };
 
-  const handleRemovePending = (id: string) => {
-    setPendingTags(prev => prev.filter(t => t.id !== id));
+  const deleteMutation = useMutation({
+    mutationFn: async (tagId: string) => {
+      await deleteTagApi(galleryId, tagId);
+    },
+    onSuccess: async () => {
+      await refreshTags();
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const tagName = name.trim();
+      if (!tagName) return;
+      await createTagApi(galleryId, { name: tagName });
+    },
+    onSuccess: async () => {
+      setName('');
+      await refreshTags();
+    },
+  });
+
+  const handleCreate = () => {
+    if (!canCreate || createMutation.isPending) return;
+    createMutation.mutate();
   };
 
-  const handleContinue = async () => {
-    if (pendingTags.length === 0) {
-      (navigation as any).navigate('Gallery', {
-        screen: 'Gallery',
-        params: { galleryId },
-      });
-      return;
-    }
-    try {
-      setIsSaving(true);
-      await Promise.all(
-        pendingTags.map(t => createTagApi(galleryId, { name: t.name }))
-      );
-      const remote = await listTagsForGallery(galleryId);
-      await syncTags(database, galleryId, remote);
-      queryClient.invalidateQueries({ queryKey: ['gallery-tags', galleryId] });
-      (navigation as any).navigate('Gallery', {
-        screen: 'Gallery',
-        params: { galleryId },
-      });
-    } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Failed to create tags');
-    } finally {
-      setIsSaving(false);
-    }
+  const handleFinish = () => {
+    // Reset navigation stack to Main Tabs -> Community Flow -> Gallery
+    // Or just navigate to the Gallery if simple stack
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 1,
+        routes: [
+          { name: 'MainTabs' },
+          // Optional: Navigate directly to the new gallery
+          // { name: 'CommunityFlow', params: { screen: 'Gallery', params: { galleryId } } } 
+        ],
+      })
+    );
   };
 
-  const renderPending = ({ item }: { item: PendingTag }) => {
+  const renderItem = ({ item }: { item: Tag }) => {
+    const isDefault = gallery?.defaultTagId === item.id;
+    
     return (
       <View style={styles.tagRow}>
         <View style={styles.tagLeft}>
-          <Text style={styles.tagName}>{item.name}</Text>
+          <Text style={[styles.tagName, isDefault && styles.tagNameSelected]}>
+            {item.name}
+          </Text>
+          {isDefault && (
+            <View style={styles.defaultBadge}>
+              <Text style={styles.defaultBadgeText}>Default</Text>
+            </View>
+          )}
         </View>
-        <TouchableOpacity
-          onPress={() => handleRemovePending(item.id)}
-          style={styles.deleteBtn}
-          accessibilityRole="button"
-          accessibilityLabel={`Remove tag ${item.name}`}
-        >
-          <Text style={styles.deleteText}>Remove</Text>
-        </TouchableOpacity>
+
+        <View style={styles.tagRight}>
+          {!isDefault && (
+            <>
+              <TouchableOpacity
+                onPress={() => updateGalleryMutation.mutate({ galleryId, data: { defaultTagId: item.id } })}
+                disabled={updateGalleryMutation.isPending}
+                style={styles.textActionBtn}
+              >
+                <Text style={styles.actionText}>Set Default</Text>
+              </TouchableOpacity>
+              
+              <View style={styles.verticalDivider} />
+
+              <TouchableOpacity
+                onPress={() => deleteMutation.mutate(item.id)}
+                disabled={updateGalleryMutation.isPending}
+                style={styles.iconActionBtn}
+              >
+                <Ionicons name="trash-outline" size={18} color="#FF3B30" />
+              </TouchableOpacity>
+            </>
+          )}
+          {isDefault && (
+             <Ionicons name="checkmark-circle" size={20} color="#000" />
+          )}
+        </View>
       </View>
     );
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.headerArea}>
-        <Text style={styles.description}>
-          Tags help categorize your group’s photos. Members can apply tags like "Hiking",
-          "Birthday", or "Work" so it’s easy to find moments later.
-        </Text>
-      </View>
-
-      <View style={styles.form}>
-        <Text style={styles.label}>Create a tag</Text>
-        <View style={styles.inputRow}>
-          <TextInput
-            placeholder="Tag name (e.g. Hiking)"
-            value={name}
-            onChangeText={setName}
-            style={styles.inputField}
-            returnKeyType="done"
-            onSubmitEditing={handleAddTag}
-          />
-          <TouchableOpacity
-            disabled={!canAddTag}
-            style={[styles.plusBtn, !canAddTag && styles.btnDisabled]}
-            onPress={handleAddTag}
-            accessibilityRole="button"
-            accessibilityLabel="Add tag to list"
-          >
-            <Ionicons name="add" size={24} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.listHeader}>
-        <Text style={styles.listHeaderText}>
-          {pendingTags.length > 0 ? 'Pending tags to add' : 'No tags added yet'}
-        </Text>
-      </View>
-
-      <FlatList
-        data={pendingTags}
-        keyExtractor={(t) => t.id}
-        renderItem={renderPending}
-        contentContainerStyle={styles.list}
-      />
-
-      <TouchableOpacity
-        style={[styles.continueButton, isSaving && styles.btnDisabled]}
-        onPress={handleContinue}
-        disabled={isSaving}
+    <View style={styles.root}>
+      
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
       >
-        <Text style={styles.continueButtonText}>{isSaving ? 'Saving…' : 'Continue'}</Text>
-      </TouchableOpacity>
+        
+        {/* List of Tags */}
+        <FlatList
+            data={tags}
+            keyExtractor={(t) => t.id}
+            renderItem={renderItem}
+            contentContainerStyle={styles.listContent}
+            ListEmptyComponent={
+            !isLoading ? (
+                <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>No tags added yet</Text> 
+                    <Text style={styles.emptySubText}>
+                        Tags help organize photos (e.g., "Food", "Selfies", "Scenery").
+                    </Text>
+                </View>
+            ) : (
+                <ActivityIndicator style={{ marginTop: 40 }} color="#000" />
+            )
+            }
+        />
+
+        {/* Footer Section: Input + Finish Button */}
+        <SafeAreaView style={styles.footerContainer}>
+            
+            {/* Input Row */}
+            <View style={styles.inputRow}>
+                <TextInput
+                    placeholder="Tag Name (e.g. Vacation)"
+                    placeholderTextColor="#8E8E93"
+                    value={name}
+                    onChangeText={setName}
+                    style={styles.inputField}
+                    returnKeyType="done"
+                    onSubmitEditing={handleCreate}
+                    autoCorrect={false}
+                />
+                <TouchableOpacity
+                    disabled={!canCreate || createMutation.isPending}
+                    onPress={handleCreate}
+                    style={[styles.addBtn, (!canCreate || createMutation.isPending) && styles.addBtnDisabled]}
+                    activeOpacity={0.8}
+                >
+                    {createMutation.isPending ? (
+                        <ActivityIndicator color="#FFF" size="small" />
+                    ) : (
+                        <Ionicons name="arrow-up" size={20} color="#FFF" />
+                    )}
+                </TouchableOpacity>
+            </View>
+
+            {/* Finish Button */}
+            <TouchableOpacity 
+                style={styles.finishButton} 
+                onPress={handleFinish}
+                activeOpacity={0.8}
+            >
+                <Text style={styles.finishButtonText}>Finish Setup</Text>
+            </TouchableOpacity>
+
+        </SafeAreaView>
+
+      </KeyboardAvoidingView>
     </View>
   );
 };
@@ -144,123 +212,142 @@ const AddGroupTagsScreen = () => {
 export default AddGroupTagsScreen;
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
   },
-  headerArea: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 4,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111',
-    marginBottom: 6,
-  },
-  description: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
-  },
-  form: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  label: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
-  },
-  inputField: {
-    height: 44,
-    borderWidth: 1,
-    borderColor: '#e5e5e5',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#fafafa',
-    flex: 1,
-  },
-  btnDisabled: {
-    opacity: 0.5,
-  },
-  plusBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#111',
-  },
-  listHeader: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  listHeaderText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111',
-  },
-  list: {
-    paddingHorizontal: 8,
-    paddingBottom: 100,
+  
+  // --- List ---
+  listContent: {
+    paddingVertical: 16,
+    paddingBottom: 20,
   },
   tagRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
     borderBottomWidth: 1,
-    borderBottomColor: '#f2f2f2',
+    borderBottomColor: '#F5F5F5',
   },
   tagLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
   },
   tagName: {
     fontSize: 16,
-    color: '#111',
+    color: '#000000',
+    fontWeight: '500',
   },
-  deleteBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    backgroundColor: '#fbe9e9',
+  tagNameSelected: {
+      fontWeight: '700',
   },
-  deleteText: {
-    color: '#c62828',
+  defaultBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: '#F2F2F7',
+  },
+  defaultBadgeText: {
+    color: '#000',
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  
+  // --- Actions ---
+  tagRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  textActionBtn: {
+      paddingVertical: 4,
+  },
+  iconActionBtn: {
+      padding: 4,
+  },
+  actionText: {
+    color: '#000000',
+    fontSize: 13,
     fontWeight: '600',
   },
-  continueButton: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 20,
-    backgroundColor: '#111',
-    height: 48,
-    borderRadius: 10,
+  verticalDivider: {
+      width: 1,
+      height: 12,
+      backgroundColor: '#E5E5EA',
+  },
+
+  // --- Empty State ---
+  emptyContainer: {
+      alignItems: 'center',
+      marginTop: 60,
+      paddingHorizontal: 40,
+  },
+  emptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 8,
+  },
+  emptySubText: {
+      fontSize: 14,
+      color: '#8E8E93',
+      textAlign: 'center',
+      lineHeight: 20,
+  },
+
+  // --- Footer ---
+  footerContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#F2F2F7',
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 16,
+  },
+  
+  // Input Row
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+  },
+  inputField: {
+    flex: 1,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#F5F5F5',
+    paddingHorizontal: 20,
+    fontSize: 16,
+    color: '#000',
+  },
+  addBtn: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#000000',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  continueButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+  addBtnDisabled: {
+    backgroundColor: '#E5E5EA',
+  },
+
+  // Finish Button
+  finishButton: {
+      backgroundColor: '#000000',
+      height: 56,
+      borderRadius: 28,
+      alignItems: 'center',
+      justifyContent: 'center',
+  },
+  finishButtonText: {
+      color: '#FFFFFF',
+      fontSize: 16,
+      fontWeight: '600',
   },
 });
-
-

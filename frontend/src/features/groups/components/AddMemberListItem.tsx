@@ -1,63 +1,65 @@
 import React from 'react';
-import { View, Image, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
-import Ionicons from 'react-native-vector-icons/Ionicons';
-import User from '../../../db/models/User';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
+import FastImage from 'react-native-fast-image';
 
-type FriendStatus = 'can_add' | 'pending' | 'member';
+export type FriendStatus = 'member' | 'pending' | 'can_add';
 
 type Props = {
-  user: User;
+  user: {
+      id: string;
+      name: string;
+      handle?: string;
+      avatarUrl?: string | null;
+  };
   status: FriendStatus;
   onInvite: () => void;
   isInviting: boolean;
-  onRemove?: () => void;
 };
 
-const AddMemberListItem = ({ user, status, onInvite, isInviting, onRemove }: Props) => {
+const AddMemberListItem = ({ user, status, onInvite, isInviting }: Props) => {
   
-  console.log("user ", user.handle)
-  // This component now contains the logic for what to display
-  const renderStatusIndicator = () => {
-    if (isInviting) {
-      return <ActivityIndicator size="small" />;
-    }
-    
-
-    switch (status) {
-      case 'member':
-        return <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />;
-      case 'pending':
-        if (onRemove) {
-          return (
-            <TouchableOpacity style={styles.iconButton} onPress={onRemove}>
-              <Ionicons name="close" size={20} color="#FF3B30" />
-            </TouchableOpacity>
-          );
-        }
-        return <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />;
-      case 'can_add':
-        return (
-          <TouchableOpacity style={styles.iconButton} onPress={onInvite}>
-            <Ionicons name="add" size={24} color="#007AFF" />
-          </TouchableOpacity>
-        );
-      default:
-        return null;
-    }
-  };
+  const isMember = status === 'member';
+  const isPending = status === 'pending';
 
   return (
-    <View style={styles.itemContainer}>
-      <Image 
-        source={{ uri: user.avatarUrl || "https://upload.wikimedia.org/wikipedia/commons/a/ac/Default_pfp.jpg" }} 
+    <View style={styles.container}>
+      {/* Avatar */}
+      <FastImage 
+        source={{ 
+            uri: user.avatarUrl || "https://upload.wikimedia.org/wikipedia/commons/a/ac/Default_pfp.jpg",
+            priority: FastImage.priority.normal 
+        }} 
         style={styles.avatar} 
+        resizeMode={FastImage.resizeMode.cover}
       />
+
+      {/* Info */}
       <View style={styles.textContainer}>
-        <Text style={styles.name}>{user.name}</Text>
-        <Text style={styles.handle}>@{user.handle}</Text>
+        <Text style={styles.name} numberOfLines={1}>{user.name}</Text>
+        <Text style={styles.handle} numberOfLines={1}>@{user.handle}</Text>
       </View>
-      <View style={styles.statusContainer}>
-        {renderStatusIndicator()}
+
+      {/* Action */}
+      <View style={styles.actionContainer}>
+        {isInviting ? (
+            <ActivityIndicator size="small" color="#000" />
+        ) : isMember ? (
+            <View style={styles.badge}>
+                <Text style={[styles.badgeText, styles.memberText]}>Member</Text>
+            </View>
+        ) : isPending ? (
+            <View style={styles.badge}>
+                <Text style={[styles.badgeText, styles.pendingText]}>Invited</Text>
+            </View>
+        ) : (
+            <TouchableOpacity 
+                style={styles.addButton} 
+                onPress={onInvite}
+                activeOpacity={0.7}
+            >
+                <Text style={styles.addButtonText}>Add</Text>
+            </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -66,45 +68,66 @@ const AddMemberListItem = ({ user, status, onInvite, isInviting, onRemove }: Pro
 export default AddMemberListItem;
 
 const styles = StyleSheet.create({
-    itemContainer: {
+    container: {
        flexDirection: "row",
        alignItems: "center",
-       paddingVertical: 10,
-       paddingHorizontal: 14,
-       backgroundColor: "#fff",
-       borderRadius: 10,
-       marginBottom: 10,
-       borderBottomWidth: 1,
-       borderColor: "#eee",
+       paddingVertical: 12,
+       paddingHorizontal: 16,
+       backgroundColor: "#FFFFFF",
     },
     avatar: {
-       width: 42,
-       height: 42,
-       borderRadius: 21,
-       marginRight: 14,
-       backgroundColor: "#ddd",
+       width: 44,
+       height: 44,
+       borderRadius: 22,
+       marginRight: 12,
+       backgroundColor: "#F2F2F7",
+       borderWidth: 1,
+       borderColor: 'rgba(0,0,0,0.05)',
     },
     textContainer: {
        flex: 1,
        justifyContent: "center",
+       gap: 2,
     },
     name: {
-       fontSize: 15,
+       fontSize: 16,
        fontWeight: "600",
-       color: "#111",
+       color: "#000000",
     },
     handle: {
+       fontSize: 14,
+       color: "#8E8E93",
+    },
+    actionContainer: {
+       minWidth: 70,
+       alignItems: 'flex-end',
+       justifyContent: 'center',
+    },
+    // Add Button
+    addButton: {
+       backgroundColor: '#000000',
+       paddingVertical: 6,
+       paddingHorizontal: 16,
+       borderRadius: 16,
+    },
+    addButtonText: {
+       color: '#FFFFFF',
        fontSize: 13,
-       color: "#777",
-       marginTop: 2,
+       fontWeight: '600',
     },
-    statusContainer: {
-       paddingLeft: 10,
-       minWidth: 40, // Give it space
-       alignItems: 'center',
+    // Badges
+    badge: {
+        paddingVertical: 4,
+        paddingHorizontal: 8,
     },
-    iconButton: {
-       padding: 6,
-       borderRadius: 8,
+    badgeText: {
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    memberText: {
+        color: '#34C759', // Green
+    },
+    pendingText: {
+        color: '#8E8E93', // Gray
     },
  });

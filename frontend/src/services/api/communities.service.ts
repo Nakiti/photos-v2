@@ -9,6 +9,8 @@ export interface CommunityApiResponse {
   joinRequiresApproval?: boolean;
   addPermission?: 'ANYONE' | 'ADMIN';
   deletePermission?: 'ADMINS_AUTHORS' | 'ADMIN';
+  memberCount: number;
+  galleryCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -83,6 +85,16 @@ export const joinCommunity = async (communityId: string) => {
 export const leaveCommunity = async (communityId: string) => {
   const response = await apiClient.delete(`/api/v1/communities/${communityId}/leave`);
   return response.data;
+};
+
+export const transferOwnership = async (
+  communityId: string,
+  newOwnerId: string
+): Promise<CommunityApiResponse> => {
+  const response = await apiClient.put(`/api/v1/communities/${communityId}/transfer-ownership`, {
+    newOwnerId,
+  });
+  return response.data as CommunityApiResponse;
 };
 
 

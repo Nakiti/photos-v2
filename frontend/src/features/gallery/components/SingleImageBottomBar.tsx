@@ -13,6 +13,9 @@ type Props = {
   onPressUpload?: () => void;
   onPressLike?: () => void;
   liked?: boolean;
+  showApprove?: boolean;
+  onPressApprove?: () => void;
+  isApproving?: boolean;
 };
 
 const SingleImageBottomBar = ({
@@ -25,6 +28,9 @@ const SingleImageBottomBar = ({
   onPressUpload,
   onPressLike,
   liked = false,
+  showApprove = false,
+  onPressApprove,
+  isApproving = false,
 }: Props) => {
   return (
     <View
@@ -34,6 +40,20 @@ const SingleImageBottomBar = ({
     >
       <View style={styles.barRow}>
         <View style={styles.sideGroup}>
+          {showApprove && (
+            <TouchableOpacity
+              onPress={onPressApprove}
+              style={[styles.circleBtn, styles.approveBtn]}
+              activeOpacity={0.8}
+              disabled={isApproving}
+            >
+              <Ionicons 
+                name={isApproving ? "hourglass-outline" : "checkmark-circle-outline"} 
+                size={20} 
+                color="#22c55e" 
+              />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             onPress={onPressDownload}
             style={styles.circleBtn}
@@ -133,6 +153,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#f4f4f5",
     alignItems: "center",
     justifyContent: "center",
+  },
+  approveBtn: {
+    backgroundColor: "#dcfce7",
   },
 });
 

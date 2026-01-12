@@ -58,21 +58,21 @@ const EditJoinPermissionScreen = () => {
       );
    };
 
-   if (isLoading) {
-      return (
-         <View style={[styles.container, styles.center]}>
-            <ActivityIndicator size="large" color="#0000ff" />
-         </View>
-      );
-   }
+   // if (isLoading) {
+   //    return (
+   //       <View style={[styles.container, styles.center]}>
+   //          <ActivityIndicator size="large" color="#0000ff" />
+   //       </View>
+   //    );
+   // }
 
-   if (isError) {
-      return (
-         <View style={[styles.container, styles.center]}>
-            <Text style={styles.errorText}>Failed to load gallery: {error?.message || 'Unknown error'}</Text>
-         </View>
-      );
-   }
+   // if (isError) {
+   //    return (
+   //       <View style={[styles.container, styles.center]}>
+   //          <Text style={styles.errorText}>Failed to load gallery: {error?.message || 'Unknown error'}</Text>
+   //       </View>
+   //    );
+   // }
 
    const userRole = myMembership?.role;
    const canEdit = userRole === 'ADMIN' || gallery?.ownerId === myMembership?.userId;

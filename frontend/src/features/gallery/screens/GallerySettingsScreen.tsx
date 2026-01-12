@@ -1,18 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
-import SettingsItem from '../components/SettingsItem';
+import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, Switch, SafeAreaView, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useDeleteGallery, useGallery } from '../../../hooks/useGalleryData';
 import { useAuth } from '../../../hooks/useAuth';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
+// --- Types ---
 interface SettingItem {
    label: string;
    value?: string | null | boolean;
    onPress?: () => void;
-   bottom?: boolean;
    isDestructive?: boolean;
    isSwitch?: boolean;
-   privilege?: boolean; 
 }
 
 interface SettingsSection {
@@ -20,7 +19,92 @@ interface SettingsSection {
    items: SettingItem[];
 }
 
-interface GallerySettingsProps { galleryId: string | number }
+// --- Utility Functions ---
+const formatAddPermission = (value?: string | null): string => {
+   if (!value) return 'Anyone';
+   const normalized = value.toLowerCase();
+   if (normalized === 'anyone' || normalized === 'all') return 'Anyone';
+   if (normalized === 'admin') return 'Admin';
+   return value; // Fallback to original if unknown
+};
+
+const formatDeletePermission = (value?: string | null): string => {
+   if (!value) return 'Admin';
+   const normalized = value.toLowerCase();
+   if (normalized === 'admin') return 'Admin';
+   if (normalized === 'admins_authors' || normalized === 'admins/authors') return 'Admin/Authors';
+   return value; // Fallback to original if unknown
+};
+
+const formatJoinRequiresApproval = (value?: boolean | string | null): string => {
+   if (value === undefined || value === null) return 'Anyone';
+   if (typeof value === 'boolean') {
+      return value ? 'Require Approval' : 'Anyone';
+   }
+   if (typeof value === 'string') {
+      const normalized = value.toLowerCase();
+      if (normalized === 'admin_approval' || normalized === 'require approval') return 'Require Approval';
+      if (normalized === 'all' || normalized === 'anyone') return 'Anyone';
+   }
+   return 'Anyone'; // Default fallback
+};
+
+// --- Components ---
+
+const SectionHeader = ({ title }: { title: string }) => (
+    <View style={styles.sectionHeaderContainer}>
+        <Text style={styles.sectionHeaderText}>{title}</Text>
+    </View>
+);
+
+const SettingsRow = ({ item, isLast }: { item: SettingItem, isLast: boolean }) => {
+    return (
+        <TouchableOpacity 
+            style={styles.rowContainer} 
+            onPress={item.onPress}
+            activeOpacity={item.isSwitch ? 1 : 0.6} // Disable opacity change for switches
+            disabled={!item.onPress && !item.isSwitch}
+        >
+            <View style={styles.rowContent}>
+                {/* Label */}
+                <Text style={[
+                    styles.rowLabel, 
+                    item.isDestructive && styles.destructiveLabel
+                ]}>
+                    {item.label}
+                </Text>
+
+                {/* Right Side: Value, Switch, or Chevron */}
+                <View style={styles.rowRight}>
+                    {item.isSwitch ? (
+                        <Switch 
+                            value={item.value === true} 
+                            onValueChange={item.onPress} // Assuming onPress toggles logic
+                            trackColor={{ false: "#E5E5EA", true: "#000000" }} // Minimalist Black Toggle
+                            thumbColor={"#FFFFFF"}
+                            ios_backgroundColor="#E5E5EA"
+                        />
+                    ) : (
+                        <>
+                            {/* Value Text */}
+                            {item.value && (
+                                <Text style={styles.rowValue}>{item.value}</Text>
+                            )}
+                            
+                            {/* Chevron (Only if not destructive and is clickable) */}
+                            {!item.isDestructive && item.onPress && (
+                                <Ionicons name="chevron-forward" size={16} color="#C7C7CC" style={{marginLeft: 8}} />
+                            )}
+                        </>
+                    )}
+                </View>
+            </View>
+            
+            {/* Separator (Inset) */}
+            {!isLast && <View style={styles.separator} />}
+        </TouchableOpacity>
+    )
+}
 
 const GallerySettingsScreen = () => {
    const [settingsData, setSettingsData] = useState<SettingsSection[] | null>(null);
@@ -34,13 +118,13 @@ const GallerySettingsScreen = () => {
 
    const isOwner = gallery?.ownerId === user?.id
 
+   // --- Actions ---
 
    const confirmAndDeleteGallery = () => {
       if (!gallery?.id) return;
-      
       Alert.alert(
          'Delete Gallery',
-         'This will permanently delete this gallery and its photos for all members. This action cannot be undone.',
+         'Are you sure? This will permanently delete this gallery and all photos.',
          [
             { text: 'Cancel', style: 'cancel' },
             { 
@@ -48,9 +132,7 @@ const GallerySettingsScreen = () => {
                style: 'destructive',
                onPress: () => {
                   deleteGalleryMutation.mutate(gallery.id, {
-                     onSuccess: () => {
-                        (navigation as any).navigate('TabNavigator', { screen: 'Groups' })
-                     },
+                     onSuccess: () => (navigation as any).navigate('TabNavigator', { screen: 'Groups' }),
                   })
                }
             },
@@ -58,133 +140,91 @@ const GallerySettingsScreen = () => {
       )
    }
 
+   // --- Data Builder ---
+
    useEffect(() => {
       if (!gallery || !user) {
-         // Wait for data to be loaded
          setSettingsData(null);
          return;
       }
 
       const data: SettingsSection[] = [];
 
-      // --- Section 1: Personalization ---
-      const customizationSection: SettingsSection = {category: 'Customization', items: []}
-
+      // 1. Customization
+      const customizationSection: SettingsSection = {category: 'GENERAL', items: []}
       customizationSection.items.push({
-         label: 'Edit Details', 
+         label: 'Name', 
          value: gallery.name, 
          onPress: () => (navigation as any).navigate("EditGalleryDetails", { galleryId: gallery.id }),
-         bottom: true
       })
 
       if (gallery.type == "EVENT") {
-         customizationSection.items.push({
-            label: 'Edit Date', 
-            value: gallery.name, 
-            onPress: () => {}
-         })
-
-         customizationSection.items.push({
-            label: 'Edit Location', 
-            value: gallery.name, 
-            onPress: () => {}
-         })
+         customizationSection.items.push({ label: 'Date', value: "Oct 24", onPress: () => {} }) // Mock data
+         customizationSection.items.push({ label: 'Location', value: "New York", onPress: () => {} })
       }
+      if (customizationSection.items.length > 0) data.push(customizationSection);
 
-      if (customizationSection.items.length > 0) {
-         data.push(customizationSection);
-      }
-
-      // --- Section 2: Privacy (Conditionally build) ---
-      const privacySection: SettingsSection = { category: 'Privacy', items: [] };
-      
+      // 2. Privacy
+      const privacySection: SettingsSection = { category: 'PRIVACY', items: [] };
       if (gallery.type === 'EVENT') {
-        privacySection.items.push({
-          label: 'Share Event Link',
-          value: null,
-          onPress: () => { /* Logic to open share sheet with shareableLink */ }
+        privacySection.items.push({ 
+         label: 'Share Event Link', 
+         value: 'Public', 
+         onPress: () => (navigation as any).navigate("EditShareEventLink", {galleryId: gallery.id})
         });
       }
-      
       if (isOwner) {
          privacySection.items.push({
-            label: 'Require Admin Approval to Join',
-            value: gallery.joinRequiresApproval,
-            onPress: () => (navigation as any).navigate("EditJoinPermission", { galleryId: gallery.id })
+            label: 'Require Approval',
+            value: formatJoinRequiresApproval(gallery.joinRequiresApproval), 
+            onPress: () => (navigation as any).navigate("EditRequireApproval", {galleryId: gallery.id})
          });
-
+         privacySection.items.push({
+            label: 'Require Picture Review',
+            value: gallery.requirePictureReview ? 'On' : 'Off', 
+            onPress: () => (navigation as any).navigate("EditRequirePictureReview", {galleryId: gallery.id})
+         });
          privacySection.items.push({
             label: 'Pending Requests',
-            value: '0',
-            isSwitch: false,
-            onPress: () => { /* Logic to call useUpdateGallery mutation */ },
-            bottom: true
+            value: '0', 
+            onPress: () => (navigation as any).navigate("PendingRequests", {galleryId: gallery.id}),
          })
       }
+      if (privacySection.items.length > 0) data.push(privacySection);
 
-
-      if (privacySection.items.length > 0) {
-        data.push(privacySection);
-      }
-
-      // --- Section 3: Permissions (Conditionally build) ---
-      const permissionsSection: SettingsSection = { category: 'Permissions', items: [] };
-
-
+      // 3. Permissions
+      const permissionsSection: SettingsSection = { category: 'PERMISSIONS', items: [] };
       permissionsSection.items.push({
          label: 'Who can add members?',
-         value: gallery.addPermission, // This would come from gallery data
+         value: formatAddPermission(gallery.addPermission), 
          onPress: () => (navigation as any).navigate("EditAddMembersPermission", { galleryId: gallery.id })
       });
-
       permissionsSection.items.push({
          label: 'Who can edit details?',
-         value: 'Admins Only', // This would come from gallery data
+         value: 'Admin', 
          onPress: () => (navigation as any).navigate("EditPermission", { galleryId: gallery.id })
       });
-
       permissionsSection.items.push({
-         label: 'Who can delete pictures?',
-         value: gallery.deletePermission, // This would come from gallery data
+         label: 'Who can delete photos?',
+         value: formatDeletePermission(gallery.deletePermission), 
          onPress: () => (navigation as any).navigate("EditDeletePermission", { galleryId: gallery.id }),
-         bottom: true
       });
-      
-      
       data.push(permissionsSection);
       
-      // --- Section 4: Admin Settings (Only show if user is owner/admin) ---
+      // 4. Danger Zone
       if (isOwner) {
          data.push({
-            category: 'Admin Settings',
+            category: 'ADMIN',
             items: [
-               { 
-                 label: 'Delete Gallery', 
-                 value: null, 
-                 isDestructive: true, 
-                 onPress: confirmAndDeleteGallery 
-               },
-               { 
-                  label: 'Change Owner', 
-                  value: null, 
-                  isDestructive: true, 
-                  onPress: () => { /* Call useDeleteGallery mutation */ },
-                  bottom: true
-               },
+               { label: 'Transfer Ownership', onPress: () => {}, isDestructive: false },
+               { label: 'Delete Gallery', onPress: confirmAndDeleteGallery, isDestructive: true },
             ],
          });
-      }
-      
-      // --- Section 5: Leave ---
-      if (!isOwner) {
+      } else {
         data.push({
+          category: 'ACTIONS',
           items: [
-             { 
-               label: 'Leave Gallery', 
-               value: null, 
-               isDestructive: true, 
-               onPress: () => { /* Call useLeaveGallery mutation */ } 
-             },
+             { label: 'Leave Gallery', onPress: () => {}, isDestructive: true },
           ],
        });
       }
@@ -193,20 +233,36 @@ const GallerySettingsScreen = () => {
 
    }, [gallery, user, isOwner, navigation]);
 
+   if (isLoading) {
+      return (
+         <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color="#000" />
+         </View>
+      )
+   }
+
    return (
       <View style={styles.container}>
-         <ScrollView style={styles.scorllContainer}>
-            {settingsData && settingsData.map((section, index) => (
-               <View key={index} style={styles.sectionContainer}>
-                  {section.category && <Text style={styles.sectionTitle}>{section.category}</Text>}
-                  {section.items.map((listItem, idx) => (
-                     <View key={idx}>
-                        {listItem && <SettingsItem item={listItem} />}
-                     </View>
-                  ))}
-               </View>
-            ))}
-         </ScrollView>
+         <SafeAreaView style={styles.safeArea}>
+
+
+            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                {settingsData && settingsData.map((section, sectionIndex) => (
+                <View key={sectionIndex} style={styles.sectionContainer}>
+                    {section.category && <SectionHeader title={section.category} />}
+                    <View style={styles.sectionList}>
+                        {section.items.map((item, itemIndex) => (
+                            <SettingsRow 
+                                key={itemIndex} 
+                                item={item} 
+                                isLast={itemIndex === section.items.length - 1} 
+                            />
+                        ))}
+                    </View>
+                </View>
+                ))}
+            </ScrollView>
+         </SafeAreaView>
       </View>
    );
 };
@@ -214,31 +270,95 @@ const GallerySettingsScreen = () => {
 const styles = StyleSheet.create({
    container: {
       flex: 1,
-      backgroundColor: 'white', // Light mode background
-      // paddingTop: 20,
-      paddingBottom: 50
-
+      backgroundColor: '#FFFFFF',
    },
-   scorllContainer: {
-      flexGrow: 1,
-      backgroundColor: "#fff",
-      paddingHorizontal: 15,
-      paddingBottom: 20,
+   safeArea: {
+      flex: 1,
+   },
+   loadingContainer: {
+      flex: 1, 
+      justifyContent: 'center', 
+      alignItems: 'center',
+      backgroundColor: '#FFFFFF'
+   },
+   
+   // --- Navigation ---
+   navBar: {
+       flexDirection: 'row',
+       alignItems: 'center',
+       justifyContent: 'space-between',
+       paddingHorizontal: 24,
+       paddingVertical: 16,
+       borderBottomWidth: 1,
+       borderBottomColor: '#F9F9F9',
+   },
+   navTitle: {
+       fontSize: 16,
+       fontWeight: '600',
+       color: '#000',
+   },
+
+   // --- Scroll Content ---
+   scrollContent: {
+      paddingBottom: 60,
+      paddingTop: 10,
    },
    sectionContainer: {
-      marginBottom: 20,
-      backgroundColor: "#f9f9f9",
-      paddingHorizontal: 20,
-      borderRadius: 8,
+      marginBottom: 32,
    },
-   sectionTitle: {
-      fontSize: 16,
-      fontWeight: 'bold',
-      marginTop: 20,
-      // marginBottom: 4,
-      color: 'black', // Light mode text color
+   sectionList: {
+       paddingHorizontal: 24,
    },
 
+   // --- Headers ---
+   sectionHeaderContainer: {
+      paddingHorizontal: 24,
+      marginBottom: 8,
+   },
+   sectionHeaderText: {
+      fontSize: 11,
+      fontWeight: '600',
+      color: '#8E8E93',
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+   },
+
+   // --- Rows ---
+   rowContainer: {
+       // We don't put paddingVertical here because we want the separator to act as the boundary
+   },
+   rowContent: {
+       flexDirection: 'row',
+       alignItems: 'center',
+       justifyContent: 'space-between',
+       paddingVertical: 18,
+   },
+   rowLabel: {
+       fontSize: 16,
+       color: '#000000',
+       fontWeight: '400',
+       letterSpacing: -0.2,
+   },
+   destructiveLabel: {
+       color: '#FF3B30', // System Red
+   },
+   rowRight: {
+       flexDirection: 'row',
+       alignItems: 'center',
+   },
+   rowValue: {
+       fontSize: 16,
+       color: '#8E8E93', // Subtle Grey
+       marginRight: 4,
+   },
+   
+   // --- Separator ---
+   separator: {
+       height: StyleSheet.hairlineWidth,
+       backgroundColor: '#E5E5EA',
+       // Optional: Indent separator if you prefer that look
+       // marginLeft: 0, 
+   },
 });
 
 export default GallerySettingsScreen;

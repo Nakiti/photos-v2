@@ -25,32 +25,40 @@ export async function createCommunity(
 ) {
 	const { name, description, iconUrl, wantsIconUpload } = data;
 
-	const community = await prisma.community.create({
-		data: {
-			name,
-			description: description ?? undefined,
-			iconUrl: iconUrl ?? null,
-			ownerId,
-		},
-		select: {
-			id: true,
-			name: true,
-			description: true,
-			iconUrl: true,
-			ownerId: true,
-			joinRequiresApproval: true,
-			addPermission: true,
-			deletePermission: true,
-			createdAt: true,
-			updatedAt: true,
-		},
-	});
+	const community = await prisma.$transaction(async (tx) => {
+		const newCommunity = await tx.community.create({
+			data: {
+				name,
+				description: description ?? undefined,
+				iconUrl: iconUrl ?? null,
+				ownerId,
+				memberCount: 1, // Start at 1 because owner is added as member
+				galleryCount: 0,
+			},
+			select: {
+				id: true,
+				name: true,
+				description: true,
+				iconUrl: true,
+				ownerId: true,
+				joinRequiresApproval: true,
+				addPermission: true,
+				deletePermission: true,
+				memberCount: true,
+				galleryCount: true,
+				createdAt: true,
+				updatedAt: true,
+			},
+		});
 
-	// Ensure owner is also a MEMBER with ADMIN role
-	await prisma.communityMembership.upsert({
-		where: { userId_communityId: { userId: ownerId, communityId: community.id } },
-		update: { role: 'ADMIN' as any },
-		create: { userId: ownerId, communityId: community.id, role: 'ADMIN' as any },
+		// Ensure owner is also a MEMBER with ADMIN role
+		await tx.communityMembership.upsert({
+			where: { userId_communityId: { userId: ownerId, communityId: newCommunity.id } },
+			update: { role: 'ADMIN' as any },
+			create: { userId: ownerId, communityId: newCommunity.id, role: 'ADMIN' as any },
+		});
+
+		return newCommunity;
 	});
 
 	if (wantsIconUpload) {
@@ -85,6 +93,8 @@ export async function getMyCommunities(userId: string) {
 			joinRequiresApproval: true,
 			addPermission: true,
 			deletePermission: true,
+			memberCount: true,
+			galleryCount: true,
 			createdAt: true,
 			updatedAt: true,
 		},
@@ -105,6 +115,8 @@ export async function getMyCommunities(userId: string) {
 					joinRequiresApproval: true,
 					addPermission: true,
 					deletePermission: true,
+					memberCount: true,
+					galleryCount: true,
 					createdAt: true,
 					updatedAt: true,
 				},
@@ -129,6 +141,8 @@ export async function getCommunityById(communityId: string) {
 			joinRequiresApproval: true,
 			addPermission: true,
 			deletePermission: true,
+			memberCount: true,
+			galleryCount: true,
 			createdAt: true,
 			updatedAt: true,
 		},
@@ -205,6 +219,69 @@ export async function generateIconPresignedUrl(userId: string, communityId: stri
 	);
 	const finalUrl = `https://${config.aws.bucket}.s3.${config.aws.region}.amazonaws.com/${key}`;
 	return { presignedUrl, finalUrl };
+}
+
+/**
+ * Transfer ownership of a community to another member.
+ * @param currentOwnerId - Current owner's user ID
+ * @param communityId - Community ID
+ * @param newOwnerId - New owner's user ID
+ * @returns Updated community or null if transfer failed
+ */
+export async function transferOwnership(
+	currentOwnerId: string,
+	communityId: string,
+	newOwnerId: string
+) {
+	// Verify current user is owner
+	const community = await prisma.community.findUnique({
+		where: { id: communityId },
+		select: { ownerId: true },
+	});
+	if (!community || community.ownerId !== currentOwnerId) {
+		return null;
+	}
+
+	// Verify new owner is a member of the community
+	const membership = await prisma.communityMembership.findUnique({
+		where: { userId_communityId: { userId: newOwnerId, communityId } },
+		select: { id: true },
+	});
+	if (!membership) {
+		throw new Error('New owner must be a member of the community');
+	}
+
+	// Transfer ownership in a transaction
+	return prisma.$transaction(async (tx) => {
+		// 1. Update community owner
+		const updated = await tx.community.update({
+			where: { id: communityId },
+			data: { ownerId: newOwnerId },
+			select: {
+				id: true,
+				name: true,
+				description: true,
+				iconUrl: true,
+				ownerId: true,
+				joinRequiresApproval: true,
+				addPermission: true,
+				deletePermission: true,
+				memberCount: true,
+				galleryCount: true,
+				createdAt: true,
+				updatedAt: true,
+			},
+		});
+
+		// 2. Ensure new owner has ADMIN role
+		await tx.communityMembership.upsert({
+			where: { userId_communityId: { userId: newOwnerId, communityId } },
+			update: { role: 'ADMIN' as any },
+			create: { userId: newOwnerId, communityId, role: 'ADMIN' as any },
+		});
+
+		return updated;
+	});
 }
 
 

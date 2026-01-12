@@ -17,6 +17,7 @@ export interface CreateGalleryRequest {
   startDate?: string | null;
   endDate?: string | null;
   location?: string | null;
+  communityId?: string;
 }
 
 /**
@@ -210,11 +211,6 @@ export const uploadNewGalleryIcon = async (
 export const getGalleriesByCommunityId = async (
   communityId: string
 ): Promise<GalleryApiResponse[]> => {
-  try {
-    const response = await apiClient.get(`/api/v1/galleries/community/${communityId}`);
-    return response.data;
-  } catch (error) {
-    console.error('Failed to fetch galleries by community:', error);
-    return [];
-  }
+  const response = await apiClient.get(`/api/v1/galleries/community/${communityId}`);
+  return response.data;
 };

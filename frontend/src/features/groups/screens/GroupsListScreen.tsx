@@ -1,41 +1,37 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl, Text } from 'react-native';
-import GroupsListHeader from '../components/GroupsListHeader';
+import { View, StyleSheet, FlatList, RefreshControl, Text, ActivityIndicator } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { useQueryClient } from '@tanstack/react-query';
+import { useGalleries } from '../../../hooks/useGalleryData';
+import Gallery from '../../../db/models/Gallery';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+
+// Components
+import GroupsHeader from '../components/GroupsListHeader';
 import SearchBar from '../../../components/SearchBar';
 import GroupListItem from '../components/GroupListItem';
-import { useNavigation } from '@react-navigation/native';
-import { useGalleries } from '../../../hooks/useGalleryData';
-import { useQueryClient } from '@tanstack/react-query';
-import { ActivityIndicator } from 'react-native';
-import Gallery from '../../../db/models/Gallery';
 
 const GroupsListScreen = () => {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  
   const navigation = useNavigation();
   const queryClient = useQueryClient();
   
-  // Debounce the search query
+  // Debounce
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedQuery(query);
-    }, 300); // 300ms debounce delay
-
-    return () => {
-      clearTimeout(handler);
-    };
+    }, 300);
+    return () => clearTimeout(handler);
   }, [query]);
   
   const { galleries, isLoading, isSyncing, isError, error } = useGalleries(undefined, debouncedQuery);
 
-
-  console.log("galleries ", galleries)
-
-  // Track when sync completes after a manual refresh
+  // Sync Logic
   const prevIsSyncing = useRef(isSyncing);
   useEffect(() => {
-    // When sync completes (transitions from true to false) and we're refreshing
     if (refreshing && prevIsSyncing.current && !isSyncing) {
       setRefreshing(false);
     }
@@ -48,12 +44,10 @@ const GroupsListScreen = () => {
   }, [queryClient]);
 
   const handleGroupPress = (galleryId: string) => {
-    console.log(galleryId);
     (navigation as any).navigate('Gallery', {
       screen: 'Gallery',
       params: { galleryId },
     });
-    // navigation.navigate('Camera', { galleryId })
   }
 
   const renderItem = useCallback(({ item }: { item: Gallery }) => (
@@ -61,45 +55,67 @@ const GroupsListScreen = () => {
       id={item.id}
       title={item.name}
       icon={item.iconUrl || ''}
-      communityName={item.communityName ?? undefined}
-      lastUploadedBy=""
-      unseenCount={0}
+      communityName={item.communityName ?? undefined} // Pass community context
+      lastUploadedBy="" // Will trigger fallback in component
+      unseenCount={0} // Logic to be connected later
       lastUpdated={item.lastPhotoAt ? new Date(item.lastPhotoAt).toISOString() : new Date(item.createdAt).toISOString()}
+      photoCount={item.photoCount}
+      memberCount={item.memberCount}
       onPress={() => handleGroupPress(item.id)}
     />
   ), []);
 
   const keyExtractor = useCallback((item: Gallery) => item.id, []);
 
+  // Minimalist Empty State
   const ListEmptyComponent = useCallback(() => (
     <View style={styles.emptyContainer}>
-      <Text style={styles.emptyText}>No groups yet</Text>
+      <View style={styles.emptyIconCircle}>
+        <Ionicons name="albums-outline" size={48} color="#C7C7CC" />
+      </View>
+      <Text style={styles.emptyTitle}>No galleries found</Text>
       <Text style={styles.emptySubtext}>
-        Tap the + button above to create your first group.
+        {query.length > 0 
+          ? "Try adjusting your search terms." 
+          : "Tap the + button to create a new gallery."}
       </Text>
     </View>
-  ), []);
+  ), [query]);
 
-  if (isLoading && galleries.length === 0) {
-    return (
-      <View style={[styles.container, styles.center]}>
-        <ActivityIndicator size="large" color="#0000ff" />
-      </View>
-    );
-  }
+  // Loading State
+  // if (isLoading && galleries.length === 0) {
+  //   return (
+  //     <View style={styles.centerContainer}>
+  //       <ActivityIndicator size="small" color="#000" />
+  //     </View>
+  //   );
+  // }
 
-  if (isError && galleries.length === 0) {
-    return (
-      <View style={[styles.container, styles.center]}>
-        <Text style={styles.errorText}>Failed to load groups: {error?.message || 'Unknown error'}</Text>
-      </View>
-    );
-  }
+  // Error State
+  // if (isError && galleries.length === 0) {
+  //   return (
+  //     <View style={styles.centerContainer}>
+  //       <Ionicons name="alert-circle-outline" size={48} color="#FF3B30" />
+  //       <Text style={styles.errorText}>
+  //           {error?.message || 'Unable to load galleries'}
+  //       </Text>
+  //     </View>
+  //   );
+  // }
 
   return (
     <View style={styles.container}>
-      <GroupsListHeader />
-      <SearchBar value={query} onChangeText={setQuery} placeholder="Search groups" />
+      {/* 1. Header (Fixed at top) */}
+      <GroupsHeader />
+      
+      {/* 2. Search (Fixed below header) */}
+      <SearchBar 
+        value={query} 
+        onChangeText={setQuery} 
+        placeholder="Search galleries" 
+      />
+      
+      {/* 3. List */}
       <FlatList
         data={galleries}
         keyExtractor={keyExtractor}
@@ -108,13 +124,13 @@ const GroupsListScreen = () => {
           <RefreshControl 
             refreshing={refreshing} 
             onRefresh={onRefresh}
-            tintColor="#007AFF"
-            colors={['#007AFF']}
+            tintColor="#000000" // Black spinner
           />
         }
         ListEmptyComponent={ListEmptyComponent}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        // Removed ItemSeparatorComponent because GroupListItem now has its own bottom border
         contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
       />
     </View>
   );
@@ -123,45 +139,54 @@ const GroupsListScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
   },
-  center: {
+  centerContainer: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#d32f2f',
-    textAlign: 'center',
-    paddingHorizontal: 24,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 40,
   },
   listContent: {
-    backgroundColor: '#fff',
-    paddingBottom: 24,
+    paddingBottom: 40,
   },
-  separator: {
-    height: 1,
-    backgroundColor: '#f1f1f1',
-    marginLeft: 72,
-  },
+  
+  // Empty State Styles
   emptyContainer: {
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 60,
-    paddingBottom: 24,
+    paddingTop: 80, // Push down nicely
+    paddingHorizontal: 40,
   },
-  emptyText: {
+  emptyIconCircle: {
+      width: 80,
+      height: 80,
+      borderRadius: 40,
+      backgroundColor: '#F9F9F9',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 16,
+  },
+  emptyTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#666',
+    color: '#000000',
     marginBottom: 8,
     textAlign: 'center',
   },
   emptySubtext: {
-    fontSize: 14,
-    color: '#999',
+    fontSize: 15,
+    color: '#8E8E93',
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
+  },
+
+  // Error Styles
+  errorText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#8E8E93',
+    textAlign: 'center',
   },
 });
 

@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, SafeAreaView } from 'react-native';
 import { useDatabase } from '@nozbe/watermelondb/react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useGalleryTags } from '../../../hooks/useGalleryTagData';
-import { createTag as createTagApi, deleteTag as deleteTagApi, listTagsForGallery, type TagApi } from '../../../services/api/tags.service';
+import { createTag as createTagApi, deleteTag as deleteTagApi, listTagsForGallery } from '../../../services/api/tags.service';
 import { syncTags } from '../../../services/sync/tags.sync';
 import Tag from '../../../db/models/Tag';
 import { useRoute } from '@react-navigation/native';
@@ -17,7 +17,7 @@ const GalleryTagsScreen = () => {
   const database = useDatabase();
   const queryClient = useQueryClient();
 
-  const { tags, isLoading, isSyncing } = useGalleryTags(galleryId);
+  const { tags, isLoading } = useGalleryTags(galleryId);
   const { gallery } = useGallery(galleryId);
   const updateGalleryMutation = useUpdateGallery();
 
@@ -59,46 +59,49 @@ const GalleryTagsScreen = () => {
 
   const renderItem = ({ item }: { item: Tag }) => {
     const isDefault = gallery?.defaultTagId === item.id;
+    
     return (
       <View style={styles.tagRow}>
+        {/* Left Side: Name + Badge */}
         <View style={styles.tagLeft}>
-          {!!(item as any).color && (
-            <View style={[styles.colorDot, { backgroundColor: (item as any).color }]} />
-          )}
-          <Text style={styles.tagName}>{item.name}</Text>
+          <Text style={[styles.tagName, isDefault && styles.tagNameSelected]}>
+            {item.name}
+          </Text>
+          
           {isDefault && (
             <View style={styles.defaultBadge}>
               <Text style={styles.defaultBadgeText}>Default</Text>
             </View>
           )}
         </View>
+
+        {/* Right Side: Actions */}
         <View style={styles.tagRight}>
           {!isDefault && (
             <>
               <TouchableOpacity
                 onPress={() => updateGalleryMutation.mutate({ galleryId, data: { defaultTagId: item.id } })}
-                style={[styles.makeDefaultBtn, updateGalleryMutation.isPending && styles.btnDisabled]}
                 disabled={updateGalleryMutation.isPending}
-                accessibilityRole="button"
-                accessibilityLabel={`Make ${item.name} default`}
+                style={styles.actionBtn}
               >
-                <Text style={styles.makeDefaultText}>Make default</Text>
+                <Text style={styles.makeDefaultText}>Set Default</Text>
               </TouchableOpacity>
+              
+              <View style={styles.verticalDivider} />
+
               <TouchableOpacity
                 onPress={() => deleteMutation.mutate(item.id)}
-                style={[styles.deleteBtn, updateGalleryMutation.isPending && styles.btnDisabled]}
                 disabled={updateGalleryMutation.isPending}
-                accessibilityRole="button"
-                accessibilityLabel={`Delete tag ${item.name}`}
+                style={styles.actionBtn}
               >
-                <Text style={styles.deleteText}>Delete</Text>
+                <Ionicons name="trash-outline" size={18} color="#FF3B30" />
               </TouchableOpacity>
             </>
           )}
+          
+          {/* If it is default, we can't delete it easily, maybe show a checkmark instead */}
           {isDefault && (
-            <View style={[styles.deleteBtn, styles.disabledDeleteBtn]}>
-              <Text style={[styles.deleteText, styles.disabledDeleteText]}>Delete</Text>
-            </View>
+             <Ionicons name="checkmark-circle" size={20} color="#000" />
           )}
         </View>
       </View>
@@ -107,45 +110,57 @@ const GalleryTagsScreen = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.form}>
-        <Text style={styles.label}>Create a tag</Text>
-        <View style={styles.inputRow}>
-          <TextInput
-            placeholder="Tag name (e.g. Hiking)"
-            value={name}
-            onChangeText={setName}
-            style={styles.inputField}
-            returnKeyType="done"
-            onSubmitEditing={handleCreate}
-          />
-          <TouchableOpacity
-            disabled={!canCreate || createMutation.isPending}
-            onPress={handleCreate}
-            style={[styles.plusBtn, (!canCreate || createMutation.isPending) && styles.btnDisabled]}
-            accessibilityRole="button"
-            accessibilityLabel="Add tag to list"
-          >
-            <Ionicons name="add" size={24} color="#fff" />
-          </TouchableOpacity>
-        </View>
-      </View>
 
-      <View style={styles.listHeader}>
-        <Text style={styles.listHeaderText}>
-          {isLoading ? 'Loading tags...' : 'Existing tags'}
-          {isSyncing ? ' (syncing...)' : ''}
-        </Text>
-      </View>
+      <SafeAreaView style={styles.safeArea}>
+        <KeyboardAvoidingView 
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={{ flex: 1 }}
+            keyboardVerticalOffset={100}
+        >
+            
+            {/* 2. List */}
+            <FlatList
+                data={tags}
+                keyExtractor={(t) => t.id}
+                renderItem={renderItem}
+                contentContainerStyle={styles.listContent}
+                ListEmptyComponent={
+                !isLoading ? (
+                    <View style={styles.emptyContainer}>
+                        <Text style={styles.emptyText}>No tags yet.</Text> 
+                        <Text style={styles.emptySubText}>Create one to start organizing.</Text>
+                    </View>
+                ) : null
+                }
+            />
 
-      <FlatList
-        data={tags}
-        keyExtractor={(t) => t.id}
-        renderItem={renderItem}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          !isLoading ? <Text style={styles.emptyText}>No tags yet</Text> : null
-        }
-      />
+            {/* 3. Input Form (Sticks to bottom of safe area) */}
+            <View style={styles.formContainer}>
+                <TextInput
+                    placeholder="New Tag Name..."
+                    placeholderTextColor="#999"
+                    value={name}
+                    onChangeText={setName}
+                    style={styles.inputField}
+                    returnKeyType="done"
+                    onSubmitEditing={handleCreate}
+                />
+                <TouchableOpacity
+                    disabled={!canCreate || createMutation.isPending}
+                    onPress={handleCreate}
+                    style={[styles.addBtn, (!canCreate || createMutation.isPending) && styles.addBtnDisabled]}
+                    activeOpacity={0.8}
+                >
+                    {createMutation.isPending ? (
+                        <Ionicons name="ellipsis-horizontal" size={24} color="#FFF" />
+                    ) : (
+                        <Ionicons name="arrow-up" size={24} color="#FFF" />
+                    )}
+                </TouchableOpacity>
+            </View>
+
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     </View>
   );
 };
@@ -155,131 +170,118 @@ export default GalleryTagsScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
   },
-  form: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 12,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  label: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
-  },
-  inputField: {
-    height: 44,
-    borderWidth: 1,
-    borderColor: '#e5e5e5',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#fafafa',
+  safeArea: {
     flex: 1,
   },
-  btnDisabled: {
-    opacity: 0.5,
-  },
-  plusBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#111',
-  },
-  listHeader: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  listHeaderText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111',
-  },
-  list: {
-    paddingHorizontal: 8,
-    paddingBottom: 24,
+  
+  // --- List Styles ---
+  listContent: {
+    paddingTop: 16,
+    paddingBottom: 40,
   },
   tagRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
     borderBottomWidth: 1,
-    borderBottomColor: '#f2f2f2',
+    borderBottomColor: '#F5F5F5',
   },
   tagLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  colorDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    marginRight: 8,
-    backgroundColor: '#ccc',
+    gap: 12,
   },
   tagName: {
     fontSize: 16,
-    color: '#111',
+    color: '#000000',
+    fontWeight: '400',
   },
-  deleteBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+  tagNameSelected: {
+      fontWeight: '600',
+  },
+  defaultBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 6,
-    backgroundColor: '#fbe9e9',
+    backgroundColor: '#000000', // Black Badge
   },
+  defaultBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  
+  // --- Right Actions ---
   tagRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
   },
-  disabledDeleteBtn: {
-    opacity: 0.5,
-  },
-  deleteText: {
-    color: '#c62828',
-    fontWeight: '600',
-  },
-  disabledDeleteText: {
-    color: '#c62828',
-  },
-  makeDefaultBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#c7d8ff',
-    backgroundColor: '#eef5ff',
+  actionBtn: {
+      padding: 8,
   },
   makeDefaultText: {
-    color: '#1651c5',
+    color: '#000000',
+    fontSize: 13,
     fontWeight: '600',
+  },
+  verticalDivider: {
+      width: 1,
+      height: 14,
+      backgroundColor: '#E5E5EA',
+      marginHorizontal: 4,
+  },
+  
+  // --- Empty State ---
+  emptyContainer: {
+      alignItems: 'center',
+      marginTop: 60,
   },
   emptyText: {
-    textAlign: 'center',
-    paddingVertical: 40,
-    color: '#666',
-  },
-  defaultBadge: {
-    marginLeft: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    backgroundColor: '#eef5ff',
-  },
-  defaultBadgeText: {
-    color: '#1651c5',
-    fontSize: 12,
+    fontSize: 18,
     fontWeight: '600',
+    color: '#000',
+    marginBottom: 4,
+  },
+  emptySubText: {
+      fontSize: 14,
+      color: '#8E8E93',
+  },
+
+  // --- Input Form ---
+  formContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F9F9F9',
+    backgroundColor: '#FFFFFF', // Ensure opaque background
+  },
+  inputField: {
+    flex: 1,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#F5F5F5', // Light grey input
+    paddingHorizontal: 20,
+    fontSize: 16,
+    color: '#000',
+    marginRight: 12,
+  },
+  addBtn: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#000000', // Solid Black Button
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addBtnDisabled: {
+    backgroundColor: '#E5E5EA', // Grey when disabled
   },
 });
-
-

@@ -24,4 +24,12 @@ export const updateCommunitySchema = z.object({
 
 export type UpdateCommunityDto = z.infer<typeof updateCommunitySchema>['body'];
 
+export const transferOwnershipSchema = z.object({
+	body: z.object({
+		newOwnerId: z.string().uuid('Invalid user ID'),
+	}),
+});
+
+export type TransferOwnershipDto = z.infer<typeof transferOwnershipSchema>['body'];
+
 

@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, FlatList, TouchableOpacity, Text, Alert } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, StyleSheet, TouchableOpacity, Text, Alert, SafeAreaView } from 'react-native';
 import { launchImageLibrary, ImagePickerResponse } from 'react-native-image-picker';
 import ImagesDisplay from '../components/ImagesDisplay';
 import GalleryBottomBar from '../components/GalleryBottomBar';
@@ -9,134 +9,121 @@ import { useGallery } from '../../../hooks/useGalleryData';
 import { useGalleryTags } from '../../../hooks/useGalleryTagData';
 import { useCreateOptimisticPhotos } from '../../../hooks/usePhotoData';
 import { useGallerySocket } from '../../../hooks/useGallerySocket';
+import { useAuth } from '../../../hooks/useAuth';
+import { useMyMembership } from '../../../hooks/useMembershipData';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 
 type GalleryImage = {
   id?: string;
   fullsize: string;
   thumbnail: string;
   is_uploaded: number;
+  visible?: 'IN_REVIEW' | 'VISIBLE';
+  uploaderId?: string;
 };
 
 const GalleryScreen = () => {
-  const route = useRoute()
-  const { galleryId } = route.params as { galleryId: string }
+  const route = useRoute();
+  const { galleryId } = route.params as { galleryId: string };
+  const navigation = useNavigation<any>();
 
-  // Tags state
+  // Data Hooks
   const { tags } = useGalleryTags(galleryId);
-  const [selectedTagId, setSelectedTagId] = useState<string | null>(null); // null means 'All'
-
-  // Photos from local DB (observed)
-  const { photos } = useGallery(galleryId, { tagId: selectedTagId });
-  // Batch photo upload hook
+  const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
+  const { gallery, photos } = useGallery(galleryId, { tagId: selectedTagId });
   const { mutate: createOptimisticPhotos } = useCreateOptimisticPhotos();
-  // Join gallery room for real-time updates
+  const { user } = useAuth();
+  const { data: myMembership } = useMyMembership(galleryId);
+  
+  // Real-time
   useGallerySocket(galleryId);
 
-  // Compute images to display
+  // Compute images with visibility filtering
   const images: GalleryImage[] = useMemo(() => {
+    const isOwner = gallery?.ownerId === user?.id;
+    const isAdmin = myMembership?.role === 'ADMIN';
+    
     return (photos || [])
+      .filter((p: any) => {
+        // Server already filters, but we do client-side filtering for consistency
+        // Show VISIBLE to all, IN_REVIEW only to uploader, owner, or admin
+        if (p.visible === 'VISIBLE') return true;
+        if (p.visible === 'IN_REVIEW') {
+          return isOwner || isAdmin || p.uploaderId === user?.id;
+        }
+        // Default to showing if visibility is not set (backward compatibility)
+        return true;
+      })
       .map((p: any) => ({
         id: p.id,
         fullsize: p.s3Url || '',
         thumbnail: p.thumbnailUrl || p.thumbnailUri || p.localThumbnailUri || '',
         is_uploaded: p.status === 'synced' ? 1 : 0,
+        visible: p.visible || 'VISIBLE',
+        uploaderId: p.uploaderId,
       }))
       .filter(img => !!img.fullsize || !!img.thumbnail);
-  }, [photos]);
+  }, [photos, gallery, user, myMembership]);
 
-
-  console.log("images ", images)
-
-  const navigation = useNavigation<any>();
-
-  const handlePressHeader = () => {
-    navigation.navigate('GalleryDetails', {galleryId});
-  }
-
-  const handleBackPress = () => {
-    navigation.goBack();
-  }
-
+  // Handlers
+  const handlePressHeader = () => navigation.navigate('GalleryDetails', { galleryId });
+  const handleBackPress = () => navigation.goBack();
 
   const handlePressUpload = () => {
     launchImageLibrary(
-      { 
-        mediaType: 'photo', 
-        quality: 1.0, // Full quality since we resize anyway
-        selectionLimit: 0, // 0 = unlimited selection
-        includeBase64: false, // Not needed since we use URIs
-      }, 
+      { mediaType: 'photo', quality: 1.0, selectionLimit: 0 }, 
       async (response: ImagePickerResponse) => {
-        if (response.didCancel) {
-          return;
-        }
-        
-        if (response.errorCode) {
-          Alert.alert('Error', response.errorMessage || 'Failed to pick images');
-          return;
-        }
-
+        if (response.didCancel || response.errorCode) return;
         const assets = response.assets || [];
-        
-        if (assets.length === 0) {
-          return;
-        }
-
-        // Extract URIs from selected assets
-        const uris = assets
-          .map(asset => asset.uri)
-          .filter((uri): uri is string => !!uri);
-
-        if (uris.length > 0) {
-          createOptimisticPhotos(
-            { 
-              galleryId, 
-              localUris: uris, 
-              tagIds: [] // Can add tag selection UI later if needed
-            },
-            {
-              onSuccess: (result) => {
-                console.log(`Successfully queued ${result.count} photos for upload`);
-              },
-              onError: (error) => {
-                console.error("Failed to create photos:", error);
-                Alert.alert("Error", "Failed to add photos. Please try again.");
-              }
-            }
-          );
-        }
+        const uris = assets.map(asset => asset.uri).filter((uri): uri is string => !!uri);
+        if (uris.length > 0) createOptimisticPhotos({ galleryId, localUris: uris, tagIds: [] });
       }
     );
   };
 
   const handlePressCamera = () => {
-    navigation.navigate("Camera", {
-      screen: "Camera", 
-      params: {galleryId}
-    })
+    navigation.navigate("Camera", { screen: "Camera", params: { galleryId } });
   };
 
   return (
     <View style={styles.container}>
-      <GalleryHeader galleryId={galleryId} onTitlePress={handlePressHeader} onBackPress={handleBackPress} />
-      {images.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>No photos yet</Text>
-          <Text style={styles.emptySubtext}>
-            Upload some photos or open the camera to take new ones.
-          </Text>
-          <View style={styles.ctaRow}>
-            <TouchableOpacity style={[styles.ctaBtn, styles.ctaBtnSecondary]} onPress={handlePressUpload}>
-              <Text style={styles.ctaTextSecondary}>Upload photos</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.ctaBtn, styles.ctaBtnPrimary]} onPress={handlePressCamera}>
-              <Text style={styles.ctaTextPrimary}>Open camera</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : (
-        <ImagesDisplay images={images} galleryId={galleryId} selectedTagId={selectedTagId ?? ''}/>
-      )}
+      {/* 1. Header sits at the top (Safe Area)
+      */}
+      <SafeAreaView style={styles.safeAreaTop}>
+          <GalleryHeader 
+            galleryId={galleryId} 
+            onTitlePress={handlePressHeader} 
+            onBackPress={handleBackPress} 
+          />
+      </SafeAreaView>
+
+      {/* 2. Main Content Area
+        We allow this to take full height. The BottomBar will float ON TOP of this.
+      */}
+      <View style={styles.contentContainer}>
+          {images.length === 0 ? (
+            <View style={styles.emptyStateContainer}>
+                <View style={styles.emptyIconCircle}>
+                   <Ionicons name="images" size={40} color="#666" />
+                </View>
+                <Text style={styles.emptyTitle}>Empty Gallery</Text>
+                <Text style={styles.emptySubtext}>
+                   Use the controls below to add your first photo.
+                </Text>
+            </View>
+          ) : (
+            <ImagesDisplay 
+                images={images} 
+                galleryId={galleryId} 
+                selectedTagId={selectedTagId ?? ''}
+                // IMPT: Add padding to bottom of list so photos aren't hidden behind the floating bar
+                contentContainerStyle={{ paddingBottom: 120 }} 
+            />
+          )}
+      </View>
+
+      {/* 3. Floating Overlay Controls 
+      */}
       <GalleryBottomBar 
         onPressUpload={handlePressUpload} 
         onPressCamera={handlePressCamera}
@@ -151,103 +138,46 @@ const GalleryScreen = () => {
 const styles = StyleSheet.create({
    container: {
       flex: 1,
-      backgroundColor: 'white',
+      backgroundColor: '#FFFFFF',
    },
-   flatListContent: {
-      paddingTop: 37,
-      backgroundColor: "green"
+   safeAreaTop: {
+      backgroundColor: '#FFFFFF',
+      zIndex: 5, // Ensures header stays above content while scrolling
    },
-   imageContainer: {
-      margin: 1,
-      overflow: 'hidden',
-      backgroundColor: "green"
-   },
-   image: {
+   contentContainer: {
       flex: 1,
-      width: '100%',
-      height: '100%',
-      resizeMode: 'cover',
+      // If you want content to scroll BEHIND the header, remove 'zIndex' from header 
+      // and adjust paddingTop here. For now, we stack them vertically.
    },
-   iconButton: {
-      marginHorizontal: 10,
-   },
-   emptyContainer: {
+   
+   // --- Empty State ---
+   emptyStateContainer: {
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      paddingHorizontal: 24,
+      paddingHorizontal: 40,
+      marginTop: -60, // Visual offset to center perfectly above the bottom bar
+   },
+   emptyIconCircle: {
+      width: 80,
+      height: 80,
+      borderRadius: 40,
+      backgroundColor: '#F5F5F5',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 20,
    },
    emptyTitle: {
-      fontSize: 18,
+      fontSize: 20,
       fontWeight: '600',
-      color: '#666',
+      color: '#222',
       marginBottom: 8,
-      textAlign: 'center',
    },
    emptySubtext: {
-      fontSize: 14,
+      fontSize: 15,
       color: '#999',
       textAlign: 'center',
-      lineHeight: 20,
-      marginBottom: 16,
-   },
-   ctaRow: {
-      flexDirection: 'row',
-      gap: 8,
-   },
-   ctaBtn: {
-      flex: 1,
-      height: 44,
-      borderRadius: 10,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: 12,
-   },
-   ctaBtnPrimary: {
-      backgroundColor: '#111',
-   },
-   ctaBtnSecondary: {
-      backgroundColor: '#f4f4f4',
-   },
-   ctaTextPrimary: {
-      color: '#fff',
-      fontWeight: '600',
-   },
-   ctaTextSecondary: {
-      color: '#111',
-      fontWeight: '600',
-   },
-   floatingLeft: {
-      position: 'absolute',
-      bottom: 24,
-      left: 24,
-      width: 60,
-      height: 60,
-      borderRadius: 35,
-      backgroundColor: '#333',
-      justifyContent: 'center',
-      alignItems: 'center',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.3,
-      shadowRadius: 4,
-      elevation: 5,
-   },
-   floatingRight: {
-      position: 'absolute',
-      bottom: 24,
-      right: 24,
-      width: 60,
-      height: 60,
-      borderRadius: 35,
-      backgroundColor: '#333',
-      justifyContent: 'center',
-      alignItems: 'center',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.3,
-      shadowRadius: 4,
-      elevation: 5,
+      lineHeight: 22,
    },
 });
 

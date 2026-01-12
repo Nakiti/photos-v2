@@ -11,11 +11,29 @@ const prisma = new PrismaClient();
  * @returns The resulting Membership record
  */
 export async function addMember(galleryId: string, userIdToAdd: string) {
+  // Check if membership already exists
+  const existing = await prisma.membership.findUnique({
+    where: { userId_galleryId: { userId: userIdToAdd, galleryId } },
+  });
+  
   const membership = await prisma.membership.upsert({
     where: { userId_galleryId: { userId: userIdToAdd, galleryId } },
     update: {},
-    create: { userId: userIdToAdd, galleryId },
+    create: { userId: userIdToAdd, galleryId, status: 'ACCEPTED' as any },
   });
+  
+  // Increment memberCount if this is a new membership
+  if (!existing) {
+    await prisma.gallery.update({
+      where: { id: galleryId },
+      data: {
+        memberCount: {
+          increment: 1,
+        },
+      },
+    });
+  }
+  
   return membership;
 }
 
@@ -27,9 +45,28 @@ export async function addMember(galleryId: string, userIdToAdd: string) {
  * @returns The deleted Membership record
  */
 export async function removeMember(galleryId: string, userIdToRemove: string) {
+  // Check if membership exists and its status before deleting
+  const existing = await prisma.membership.findUnique({
+    where: { userId_galleryId: { userId: userIdToRemove, galleryId } },
+    select: { status: true } as any,
+  });
+  
   const membership = await prisma.membership.delete({
     where: { userId_galleryId: { userId: userIdToRemove, galleryId } },
   });
+  
+  // Decrement memberCount if membership was ACCEPTED
+  if (existing && (existing as any).status === 'ACCEPTED') {
+    await prisma.gallery.update({
+      where: { id: galleryId },
+      data: {
+        memberCount: {
+          decrement: 1,
+        },
+      },
+    });
+  }
+  
   return membership;
 }
 
@@ -115,11 +152,30 @@ export async function joinGallery(
   userId: string,
   status: 'ACCEPTED' | 'PENDING'
 ) {
-  return prisma.membership.upsert({
+  // Check if membership already exists
+  const existing = await prisma.membership.findUnique({
+    where: { userId_galleryId: { userId, galleryId } },
+  });
+  
+  const membership = await prisma.membership.upsert({
     where: { userId_galleryId: { userId, galleryId } },
     update: {},
     create: ({ userId, galleryId, status, role: 'MEMBER' } as unknown) as any,
   });
+  
+  // Increment memberCount if this is a new membership with ACCEPTED status
+  if (!existing && status === 'ACCEPTED') {
+    await prisma.gallery.update({
+      where: { id: galleryId },
+      data: {
+        memberCount: {
+          increment: 1,
+        },
+      },
+    });
+  }
+  
+  return membership;
 }
 
 /**
@@ -132,10 +188,23 @@ export async function acceptInvite(galleryId: string, userId: string) {
   });
   const current = existing as any;
   if (!current || current.status !== 'INVITED') return null;
-  return prisma.membership.update({
+  
+  const membership = await prisma.membership.update({
     where: { userId_galleryId: { userId, galleryId } },
     data: ({ status: 'ACCEPTED' } as unknown) as any,
   });
+  
+  // Increment memberCount when status changes from INVITED to ACCEPTED
+  await prisma.gallery.update({
+    where: { id: galleryId },
+    data: {
+      memberCount: {
+        increment: 1,
+      },
+    },
+  });
+  
+  return membership;
 }
 
 /**
@@ -143,7 +212,26 @@ export async function acceptInvite(galleryId: string, userId: string) {
  */
 export async function leaveGallery(galleryId: string, userId: string) {
   try {
+    // Check if membership exists and its status before deleting
+    const existing = await prisma.membership.findUnique({
+      where: { userId_galleryId: { userId, galleryId } },
+      select: { status: true } as any,
+    });
+    
     await prisma.membership.delete({ where: { userId_galleryId: { userId, galleryId } } });
+    
+    // Decrement memberCount if membership was ACCEPTED
+    if (existing && (existing as any).status === 'ACCEPTED') {
+      await prisma.gallery.update({
+        where: { id: galleryId },
+        data: {
+          memberCount: {
+            decrement: 1,
+          },
+        },
+      });
+    }
+    
     return true;
   } catch {
     // If not found, treat as idempotent success
@@ -155,11 +243,22 @@ export async function leaveGallery(galleryId: string, userId: string) {
  * Invite a user to a gallery (admin only).
  */
 export async function inviteMember(galleryId: string, userIdToInvite: string) {
-  return prisma.membership.upsert({
+  // Check if membership already exists
+  const existing = await prisma.membership.findUnique({
+    where: { userId_galleryId: { userId: userIdToInvite, galleryId } },
+    select: { status: true } as any,
+  });
+  
+  const membership = await prisma.membership.upsert({
     where: { userId_galleryId: { userId: userIdToInvite, galleryId } },
     update: ({ status: 'INVITED', role: 'MEMBER' } as unknown) as any,
     create: ({ userId: userIdToInvite, galleryId, status: 'INVITED', role: 'MEMBER' } as unknown) as any,
   });
+  
+  // Note: INVITED status doesn't count toward memberCount until accepted
+  // No count change needed here
+  
+  return membership;
 }
 
 /**
@@ -182,10 +281,23 @@ export async function approveMember(galleryId: string, targetUserId: string) {
   });
   const current = existing as any;
   if (!current || current.status !== 'PENDING') return null;
-  return prisma.membership.update({
+  
+  const membership = await prisma.membership.update({
     where: { userId_galleryId: { userId: targetUserId, galleryId } },
     data: ({ status: 'ACCEPTED' } as unknown) as any,
   });
+  
+  // Increment memberCount when status changes from PENDING to ACCEPTED
+  await prisma.gallery.update({
+    where: { id: galleryId },
+    data: {
+      memberCount: {
+        increment: 1,
+      },
+    },
+  });
+  
+  return membership;
 }
 
 /**
@@ -261,6 +373,18 @@ export async function addCommunityMembersToGallery(
       skipDuplicates: true,
     });
 
+    // Increment memberCount by the number of new members added
+    if (newUserIds.length > 0) {
+      await prisma.gallery.update({
+        where: { id: galleryId },
+        data: {
+          memberCount: {
+            increment: newUserIds.length,
+          },
+        },
+      });
+    }
+
     return { addedCount: newUserIds.length, errors: [] };
   } catch (error: any) {
     // Fallback to individual upserts if createMany fails
@@ -269,7 +393,7 @@ export async function addCommunityMembersToGallery(
         prisma.membership.upsert({
           where: { userId_galleryId: { userId, galleryId } },
           update: {},
-          create: { userId, galleryId } as any,
+          create: { userId, galleryId, status: 'ACCEPTED' as any } as any,
         })
       )
     );
@@ -278,6 +402,18 @@ export async function addCommunityMembersToGallery(
     const errors = results
       .filter((r) => r.status === 'rejected')
       .map((r) => (r as PromiseRejectedResult).reason);
+
+    // Increment memberCount by the number of successfully added members
+    if (addedCount > 0) {
+      await prisma.gallery.update({
+        where: { id: galleryId },
+        data: {
+          memberCount: {
+            increment: addedCount,
+          },
+        },
+      });
+    }
 
     return { addedCount, errors };
   }

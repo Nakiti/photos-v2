@@ -7,6 +7,7 @@ import {
 	updateCommunity,
 	deleteCommunity,
 	requestIconUpload,
+	transferOwnership,
 } from './communities.controller.js';
 import membersRoutes from './members/members.routes.js';
 import { joinCommunity, leaveCommunity } from './members/members.controller.js';
@@ -33,6 +34,9 @@ router.delete('/:communityId', isAuthenticated, deleteCommunity);
 // POST /api/v1/communities/:communityId/icon/presign
 router.post('/:communityId/icon/presign', isAuthenticated, requestIconUpload);
 
+// PUT /api/v1/communities/:communityId/transfer-ownership
+router.put('/:communityId/transfer-ownership', isAuthenticated, transferOwnership);
+
 // Membership actions for current user
 // POST /api/v1/communities/:communityId/join
 router.post('/:communityId/join', isAuthenticated, joinCommunity);
@@ -43,6 +47,12 @@ router.delete('/:communityId/leave', isAuthenticated, leaveCommunity);
 router.use('/:communityId/members', membersRoutes);
 
 export default router;
+
+
+
+
+
+
 
 
 

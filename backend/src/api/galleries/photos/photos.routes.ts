@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { isAuthenticated } from '../../../middleware/auth.middleware.js';
-import { getPhotosForGallery, getPhotoIdsForSync, requestPresignedUrl, confirmPhotoUpload, deletePhoto } from './photos.controller.js';
+import { getPhotosForGallery, getPhotoIdsForSync, requestPresignedUrl, confirmPhotoUpload, deletePhoto, updatePhotoVisibility, approveAllPhotos } from './photos.controller.js';
 import photoTagsRoutes from './photoTags/photoTags.routes.js';
 
 // This router is merged into the galleries router, so the path is relative.
@@ -40,6 +40,24 @@ router.post('/presign', isAuthenticated, requestPresignedUrl);
  */
 router.post('/confirm', isAuthenticated, confirmPhotoUpload);
 
+
+// --- PATCH Routes ---
+
+/**
+ * @route PATCH /api/v1/galleries/:galleryId/photos/:photoId/visibility
+ * @description Update photo visibility status.
+ * @access Private (must be gallery owner or admin)
+ */
+router.patch('/:photoId/visibility', isAuthenticated, updatePhotoVisibility);
+
+// --- POST Routes (approve) ---
+
+/**
+ * @route POST /api/v1/galleries/:galleryId/photos/approve-all
+ * @description Approve all in-review photos in a gallery.
+ * @access Private (must be gallery owner or admin)
+ */
+router.post('/approve-all', isAuthenticated, approveAllPhotos);
 
 // --- DELETE Routes ---
 

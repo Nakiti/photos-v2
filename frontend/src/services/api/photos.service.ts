@@ -245,4 +245,37 @@ export const deletePhoto = async (galleryId: string, photoId: string): Promise<v
   await apiClient.delete(`/api/v1/galleries/${galleryId}/photos/${photoId}`);
 };
 
+/**
+ * Update photo visibility status. Allowed for gallery owner or admin.
+ *
+ * @param galleryId The gallery id
+ * @param photoId The photo id
+ * @param visible The new visibility status
+ * @returns {Promise<Photo>} Resolves to the updated photo
+ */
+export const updatePhotoVisibility = async (
+  galleryId: string,
+  photoId: string,
+  visible: 'IN_REVIEW' | 'VISIBLE'
+): Promise<Photo> => {
+  const response = await apiClient.patch(
+    `/api/v1/galleries/${galleryId}/photos/${photoId}/visibility`,
+    { visible }
+  );
+  return response.data as Photo;
+};
+
+/**
+ * Approve all in-review photos in a gallery. Allowed for gallery owner or admin.
+ *
+ * @param galleryId The gallery id
+ * @returns {Promise<{ count: number }>} Resolves to the count of approved photos
+ */
+export const approveAllPhotos = async (galleryId: string): Promise<{ count: number }> => {
+  const response = await apiClient.post(
+    `/api/v1/galleries/${galleryId}/photos/approve-all`
+  );
+  return response.data as { count: number };
+};
+
 

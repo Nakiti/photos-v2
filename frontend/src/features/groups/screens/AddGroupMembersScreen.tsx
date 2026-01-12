@@ -1,274 +1,490 @@
-import React from "react";
-import { View, Text, TextInput, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Alert } from "react-native";
-import FriendsListItem from "../../profile/components/FriendsListItem";
-import { useFriendships } from "../../../hooks/useFriendshipData";
-import { useInviteMember, useMemberships } from "../../../hooks/useMembershipData";
-import { useRoute, useNavigation } from "@react-navigation/native";
-import { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback } from "react";
+import { 
+  View, 
+  Text, 
+  TextInput, 
+  StyleSheet, 
+  FlatList, 
+  ActivityIndicator, 
+  TouchableOpacity, 
+  Alert, 
+  SafeAreaView, 
+  KeyboardAvoidingView, 
+  Platform,
+  ScrollView
+} from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import AddMemberListItem from "../components/AddMemberListItem";
+import { useRoute, useNavigation } from "@react-navigation/native";
 
-export type GroupCandidate = {
-  id: string;
-  name: string;
-  handle?: string;
-  avatar?: string; // icon URI
-  image?: string;  // profile picture URI
-  status?: number;
-};
+// Hooks
+import { useFriendships } from "../../../hooks/useFriendshipData";
+import { useInviteMember, useMemberships, useAddCommunityMembersToGallery } from "../../../hooks/useMembershipData";
+import { useSearchUsers } from "../../../hooks/useUser";
+import { useCommunityMembers } from "../../../hooks/useCommunityMembershipData";
 
-export type AddGroupMembersScreenProps = {
-  data: GroupCandidate[];
-  loading?: boolean;
-  searchText: string;
-  onChangeSearchText: (text: string) => void;
-  onAddMember?: (id: string, image?: string) => void;
-  onSelectItem?: (item: GroupCandidate) => void;
-  activeUserContent?: React.ReactNode; // optional overlay/content provided by parent
-};
-
-type FriendStatus = 'member' | 'pending' | 'can_add';
+// Components
+import AddMemberListItem, { FriendStatus } from "../components/AddMemberListItem";
 
 const AddGroupMembersScreen = () => {
-  const [searchText, setSearchText] = useState('')
+  const navigation = useNavigation<any>();
+  const route = useRoute();
+  const { galleryId, communityId } = route.params as { galleryId: string, communityId?: string };
 
-  const route = useRoute()
-  const navigation = useNavigation()
-  const { galleryId } = route.params as { galleryId: string }
-  console.log("galleryId", galleryId)
+  const [searchText, setSearchText] = useState('');
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
+  // Data
   const { friends, isLoading: isLoadingFriends } = useFriendships();
   const { acceptedMembers, pendingMembers, isLoading: isLoadingMembers } = useMemberships(galleryId);
   const { mutate: inviteMember, isPending: isInviting } = useInviteMember();
-
-  const acceptedMemberIds = useMemo(() => 
-    new Set(acceptedMembers.map(m => m.user.id))
-  , [acceptedMembers]);
+  const { users: searchResults, isLoading: isSearching, search } = useSearchUsers({}, false);
   
-  const pendingMemberIds = useMemo(() => 
-    new Set(pendingMembers.map(m => m.user.id))
-  , [pendingMembers]);
+  // Community members (only when communityId is available)
+  const { members: communityMembers, isLoading: isLoadingCommunityMembers } = useCommunityMembers(communityId || null);
+  const { mutateAsync: addAllCommunityMembers, isPending: isAddingAllMembers } = useAddCommunityMembersToGallery();
 
-  console.log("galleryId in add", galleryId)
-  console.log("friends ", friends)
+  // Fast Lookups
+  const acceptedMemberIds = useMemo(() => new Set(acceptedMembers.map(m => m.user.id)), [acceptedMembers]);
+  const pendingMemberIds = useMemo(() => new Set(pendingMembers.map(m => m.user.id)), [pendingMembers]);
 
-
-  const displayList = useMemo(() => {
-    return friends
-      .filter(friendship => 
-        friendship.friendProfile.name?.toLowerCase().includes(searchText.toLowerCase()) ||
-        friendship.friendProfile.handle?.toLowerCase().includes(searchText.toLowerCase())
-      )
-      .map(friendship => {
-        const friendId = friendship.friendProfile.id;
-        let status: FriendStatus = 'can_add';
-        
-        if (acceptedMemberIds.has(friendId)) {
-          status = 'member';
-        } else if (pendingMemberIds.has(friendId)) {
-          status = 'pending';
-        }
-        
-        return {
-          user: friendship.friendProfile,
-          status: status,
-        };
-      });
-  }, [friends, searchText, acceptedMemberIds, pendingMemberIds]);
-
-  // 4. Handle the invite action
-  const handleInvite = (userId: string) => {
-    inviteMember({ galleryId, userId: userId }, {
-      onSuccess: () => {
-        // TanStack Query's invalidation will handle the UI update
-        console.log(`Invited user ${userId}`);
-      },
-      onError: (err) => {
-        Alert.alert("Error", "Failed to send invite.");
-      }
+  // Community Members List (when communityId is available)
+  const communityMembersList = useMemo(() => {
+    if (!communityId) return [];
+    return communityMembers.map(({ user }) => {
+      const userId = user.id;
+      let status: FriendStatus = 'can_add';
+      
+      if (acceptedMemberIds.has(userId)) status = 'member';
+      else if (pendingMemberIds.has(userId)) status = 'pending';
+      
+      return { 
+        user: {
+          id: user.id,
+          name: user.name || user.handle || 'Unknown User',
+          handle: user.handle,
+          avatarUrl: user.avatarUrl,
+        }, 
+        status 
+      };
     });
+  }, [communityMembers, acceptedMemberIds, pendingMemberIds, communityId]);
+
+  // Friends List (not filtered by search)
+  const friendsList = useMemo(() => {
+    return friends.map(friendship => {
+      const friendId = friendship.friendProfile.id;
+      let status: FriendStatus = 'can_add';
+      
+      if (acceptedMemberIds.has(friendId)) status = 'member';
+      else if (pendingMemberIds.has(friendId)) status = 'pending';
+      
+      return { 
+        user: {
+          id: friendship.friendProfile.id,
+          name: friendship.friendProfile.name || friendship.friendProfile.handle || 'Unknown User',
+          handle: friendship.friendProfile.handle,
+          avatarUrl: friendship.friendProfile.avatarUrl,
+        }, 
+        status 
+      };
+    });
+  }, [friends, acceptedMemberIds, pendingMemberIds]);
+
+  // Search Results with status
+  const searchResultsWithStatus = useMemo(() => {
+    return searchResults.map(user => {
+      const userId = user.id;
+      let status: FriendStatus = 'can_add';
+      
+      if (acceptedMemberIds.has(userId)) status = 'member';
+      else if (pendingMemberIds.has(userId)) status = 'pending';
+      
+      return { 
+        user: {
+          id: user.id,
+          name: user.name || user.handle || 'Unknown User',
+          handle: user.handle,
+          avatarUrl: user.avatarUrl,
+        }, 
+        status 
+      };
+    });
+  }, [searchResults, acceptedMemberIds, pendingMemberIds]);
+
+  // Handlers
+  const handleInvite = useCallback((userId: string) => {
+    inviteMember({ galleryId, userId }, {
+      onError: () => Alert.alert("Error", "Failed to send invite.")
+    });
+  }, [galleryId, inviteMember]);
+
+  const handleSearch = useCallback(async () => {
+    if (!searchText.trim()) {
+      setShowSearchResults(false);
+      return;
+    }
+    await search({
+      search: searchText.trim(),
+      limit: 20,
+    });
+    setShowSearchResults(true);
+  }, [searchText, search]);
+
+  const handleSearchChange = useCallback((text: string) => {
+    setSearchText(text);
+    if (text.trim().length > 0) {
+      // Auto-search as user types (with debounce would be better, but keeping it simple)
+      handleSearch();
+    } else {
+      setShowSearchResults(false);
+    }
+  }, [handleSearch]);
+
+  const handleContinue = () => {
+    navigation.navigate('AddGroupTags', { galleryId, communityId });
   };
 
-  const renderItemContent = (item: { user: any; status: FriendStatus }) => {
-    switch (item.status) {
-      case 'member':
-        return <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />;
-      case 'pending':
-        return <Text style={styles.statusText}>Pending</Text>;
-      case 'can_add':
-        return (
-          <TouchableOpacity 
-            style={styles.addButton} 
-            onPress={() => handleInvite(item.user.id)}
-            disabled={isInviting}
-          >
-            <Ionicons name="add" size={24} color="#007AFF" />
-          </TouchableOpacity>
-        );
-      default:
-        return null;
+  const handleAddAllCommunityMembers = async () => {
+    if (!communityId) return;
+    try {
+      await addAllCommunityMembers({ galleryId, communityId });
+      Alert.alert('Success', 'All community members have been added to the gallery.');
+    } catch (error) {
+      Alert.alert('Error', 'Failed to add all community members.');
     }
   };
 
-  const renderHeader = () => (
-    <TextInput
-      style={styles.searchInput}
-      placeholder="Type a name"
-      placeholderTextColor="#888"
-      value={searchText}
-      onChangeText={setSearchText}
-    />
-  );
-
-  const handleContinue = () => {
-    (navigation as any).navigate('AddGroupTags', { galleryId });
-  };
+  const isLoading = communityId 
+    ? isLoadingCommunityMembers || isLoadingMembers
+    : isLoadingFriends || isLoadingMembers;
 
   return (
-    <View style={styles.container}>
-      {(isLoadingFriends || isLoadingMembers) ? (
-        <ActivityIndicator size="large" style={{ marginTop: 50 }} />
-      ) : friends.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No friends available</Text>
-          <Text style={styles.emptySubtext}>
-            Add some friends first, then you can add members to this group later.
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          data={displayList}
-          keyExtractor={(item) => item.user.id}
-          renderItem={({ item }) => (
-            <AddMemberListItem
-              user={item.user}
-              onInvite={() => handleInvite(item.user.id)}
-              isInviting={isInviting}
-              status={item.status}
-            />
-          )}
-          ListHeaderComponent={renderHeader}
-          contentContainerStyle={styles.listContentContainer}
+    <View style={styles.root}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={{ flex: 1 }}
+      >
+        <ScrollView 
+          style={{ flex: 1 }}
           keyboardShouldPersistTaps="handled"
-        />
-        
-      )}
-      <TouchableOpacity style={styles.continueButton} onPress={handleContinue}>
-        <Text style={styles.continueButtonText}>Continue</Text>
-      </TouchableOpacity>
-      
+          contentContainerStyle={styles.scrollContent}
+        >
+          {communityId ? (
+            /* Community Members Mode */
+            <View style={styles.communitySection}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Community Members</Text>
+                <Text style={styles.sectionSubtitle}>
+                  {communityMembersList.length} {communityMembersList.length === 1 ? 'member' : 'members'}
+                </Text>
+              </View>
+
+              {/* Add All Button */}
+              <TouchableOpacity
+                style={[styles.addAllButton, isAddingAllMembers && styles.addAllButtonDisabled]}
+                onPress={handleAddAllCommunityMembers}
+                disabled={isAddingAllMembers}
+                activeOpacity={0.8}
+              >
+                {isAddingAllMembers ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <>
+                    <Ionicons name="people" size={18} color="#FFF" />
+                    <Text style={styles.addAllButtonText}>Add All Community Members</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              {/* Community Members List */}
+              {isLoading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="small" color="#000" />
+                </View>
+              ) : communityMembersList.length > 0 ? (
+                communityMembersList.map((item) => (
+                  <AddMemberListItem
+                    key={item.user.id}
+                    user={item.user}
+                    status={item.status}
+                    onInvite={() => handleInvite(item.user.id)}
+                    isInviting={isInviting}
+                  />
+                ))
+              ) : (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>No community members</Text>
+                  <Text style={styles.emptySubtext}>This community has no members yet.</Text>
+                </View>
+              )}
+            </View>
+          ) : (
+            /* Search + Friends Mode */
+            <>
+              {/* Search Section */}
+              <View style={styles.searchSection}>
+                <View style={styles.searchContainer}>
+                  <View style={styles.searchBar}>
+                    <Ionicons name="search" size={18} color="#8E8E93" style={styles.searchIcon} />
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="Search users by name or handle"
+                      placeholderTextColor="#8E8E93"
+                      value={searchText}
+                      onChangeText={handleSearchChange}
+                      onSubmitEditing={handleSearch}
+                      returnKeyType="search"
+                      autoCorrect={false}
+                      autoCapitalize="none"
+                    />
+                    {searchText.length > 0 && (
+                      <TouchableOpacity onPress={() => {
+                        setSearchText('');
+                        setShowSearchResults(false);
+                      }}>
+                        <Ionicons name="close-circle" size={18} color="#C7C7CC" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+
+                {/* Search Results */}
+                {showSearchResults && (
+                  <View style={styles.searchResultsContainer}>
+                    {isSearching ? (
+                      <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="small" color="#000" />
+                      </View>
+                    ) : searchResultsWithStatus.length > 0 ? (
+                      searchResultsWithStatus.map((item) => (
+                        <AddMemberListItem
+                          key={item.user.id}
+                          user={item.user}
+                          status={item.status}
+                          onInvite={() => handleInvite(item.user.id)}
+                          isInviting={isInviting}
+                        />
+                      ))
+                    ) : (
+                      <View style={styles.emptyContainer}>
+                        <Text style={styles.emptyText}>No users found</Text>
+                        <Text style={styles.emptySubtext}>Try a different search term</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+              </View>
+
+              {/* Divider */}
+              {showSearchResults && friendsList.length > 0 && (
+                <View style={styles.divider}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>OR</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+              )}
+
+              {/* Friends Section */}
+              <View style={styles.friendsSection}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Your Friends</Text>
+                  <Text style={styles.sectionSubtitle}>{friendsList.length} {friendsList.length === 1 ? 'friend' : 'friends'}</Text>
+                </View>
+
+                {isLoading ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="small" color="#000" />
+                  </View>
+                ) : friendsList.length > 0 ? (
+                  friendsList.map((item) => (
+                    <AddMemberListItem
+                      key={item.user.id}
+                      user={item.user}
+                      status={item.status}
+                      onInvite={() => handleInvite(item.user.id)}
+                      isInviting={isInviting}
+                    />
+                  ))
+                ) : (
+                  <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>No friends available</Text>
+                    <Text style={styles.emptySubtext}>Add friends from your profile to invite them here.</Text>
+                  </View>
+                )}
+              </View>
+            </>
+          )}
+        </ScrollView>
+
+        {/* Footer */}
+        <SafeAreaView style={styles.footer}>
+          <TouchableOpacity 
+            style={styles.continueButton} 
+            onPress={handleContinue}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.continueButtonText}>Continue</Text>
+            <Ionicons name="arrow-forward" size={18} color="#FFF" />
+          </TouchableOpacity>
+        </SafeAreaView>
+
+      </KeyboardAvoidingView>
     </View>
   );
 };
 
-const COLORS = {
-  black: '#000000',
-  white: '#FFFFFF',
-  lightGray: '#F5F5F5', 
-  gray: '#8E8E93',      
-  border: '#E0E0E0',    
-  darkGray: '#1C1C1E',
-};
-
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: "#fff",
-    paddingHorizontal: 20,
+    backgroundColor: "#FFFFFF",
   },
-  header: {
+  scrollContent: {
+    paddingBottom: 20,
+  },
+  
+  // Search Section
+  searchSection: {
+    backgroundColor: "#FFFFFF",
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: '#F2F2F7',
+  },
+  searchBar: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
+    backgroundColor: "#F2F2F7",
+    borderRadius: 10,
+    height: 40,
+    paddingHorizontal: 12,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#000",
-  },
-  skip: {
-    fontSize: 16,
-    color: "#000",
+  searchIcon: {
+    marginRight: 8,
   },
   searchInput: {
-    backgroundColor: "#f0f0f0",
-    padding: 12,
-    borderRadius: 10,
-    color: "#333",
-    marginBottom: 12,
+    flex: 1,
+    fontSize: 16,
+    color: "#000",
+    height: '100%',
   },
-  listContentContainer: {
-    paddingBottom: 120,
+  searchResultsContainer: {
+    backgroundColor: "#FFFFFF",
+  },
+
+  // Divider
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E5E5EA',
+  },
+  dividerText: {
+    paddingHorizontal: 16,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8E8E93',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  // Community Section
+  communitySection: {
+    backgroundColor: "#FFFFFF",
+  },
+  
+  // Friends Section
+  friendsSection: {
+    backgroundColor: "#FFFFFF",
+  },
+  sectionHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F2F2F7',
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 2,
+  },
+  sectionSubtitle: {
+    fontSize: 13,
+    color: '#8E8E93',
+  },
+  
+  // Add All Button
+  addAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#000000',
+    marginHorizontal: 16,
+    marginVertical: 12,
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  addAllButtonDisabled: {
+    backgroundColor: '#8E8E93',
+  },
+  addAllButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  
+  // Loading & Empty States
+  loadingContainer: {
+    paddingVertical: 40,
+    alignItems: 'center',
   },
   emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
     paddingTop: 40,
+    paddingBottom: 20,
+    alignItems: 'center',
+    paddingHorizontal: 32,
   },
   emptyText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
-    color: '#666',
+    color: '#000',
     marginBottom: 8,
-    textAlign: 'center',
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#999',
+    color: '#8E8E93',
     textAlign: 'center',
     lineHeight: 20,
   },
-  statusText: {
-    color: COLORS.gray,
-    fontSize: 14,
-  },
-  addButton: {
-    padding: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#007AFF',
-    backgroundColor: 'transparent',
-  },
-  tabs: {
-    flexDirection: "row",
-    borderBottomWidth: 1,
-    borderBottomColor: "#ddd",
-    paddingBottom: 10,
-    marginBottom: 10,
-  },
-  tabText: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#555",
-    marginRight: 20,
-  },
-  activeTab: {
-    color: "#007AFF",
-    borderBottomWidth: 2,
-    borderBottomColor: "#007AFF",
-    paddingBottom: 5,
+
+  // Footer
+  footer: {
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#F2F2F7',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   continueButton: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: 20,
-    backgroundColor: '#111',
-    height: 48,
-    borderRadius: 10,
+    backgroundColor: '#000000',
+    height: 50,
+    borderRadius: 25,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
+    gap: 8,
   },
   continueButtonText: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
   },

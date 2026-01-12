@@ -101,11 +101,13 @@ export const useSocketEvents = () => {
     
     socket.on('new_photo', handleNewPhoto);
 
-    // --- LISTENER 2: A thumbnail is ready for an existing photo ---
-    const handlePhotoUpdated = (data: { photoId: string; thumbnailUrl: string }) => {
-      console.log('[Cloud][Socket] photo_updated received:', data);
-      // We got a thumbnail, update the existing record.
-      syncPhotoThumbnail(database, data.photoId, data.thumbnailUrl);
+    // --- LISTENER 2: A photo was updated (thumbnail or visibility) ---
+    const handlePhotoUpdated = async (updatedPhoto: PhotoApi) => {
+      console.log('[Cloud][Socket] photo_updated received:', updatedPhoto);
+      // Sync the updated photo (handles both thumbnail and visibility updates)
+      await syncPhotos(database, [updatedPhoto]);
+      // Invalidate queries to refresh UI
+      queryClient.invalidateQueries({ queryKey: ['gallery', updatedPhoto.galleryId] });
     };
 
     socket.on('photo_updated', handlePhotoUpdated);

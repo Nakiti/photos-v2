@@ -1,52 +1,88 @@
 import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { 
+  View, 
+  Text, 
+  TouchableOpacity, 
+  StyleSheet, 
+  SafeAreaView, 
+  StatusBar 
+} from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 
 const CreateGalleryChoiceScreen = () => {
   const navigation = useNavigation<any>();
+  const route = useRoute();
+  const { communityId } = (route.params as any) || {};
+
+  const handleClose = () => {
+    navigation.goBack();
+  };
 
   const goToCreateGroup = () => {
-    navigation.navigate("CreateGroupDetails");
+    navigation.navigate("CreateGroupDetails", { communityId });
   };
 
   const goToCreateEvent = () => {
-    navigation.navigate("Events", { screen: "CreateEventDetails" });
+    navigation.navigate("Events", { 
+        screen: "CreateEventDetails", 
+        params: { communityId } 
+    });
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>What would you like to create?</Text>
+    <View style={styles.root}>
+      <StatusBar barStyle="dark-content" />
+      <SafeAreaView style={styles.safeArea}>
+        
 
-      <View style={styles.cardsRow}>
-        <TouchableOpacity
-          style={styles.card}
-          onPress={goToCreateGroup}
-          activeOpacity={0.9}
-          accessibilityRole="button"
-          accessibilityLabel="Create a group"
-        >
-          <View style={styles.iconWrap}>
-            <Ionicons name="people-outline" size={28} color="#111" />
-          </View>
-          <Text style={styles.cardTitle}>Group</Text>
-          <Text style={styles.cardSubtitle}>Create a space for friends or family</Text>
-        </TouchableOpacity>
+        {/* --- Title Section --- */}
+        <View style={styles.titleContainer}>
+            <Text style={styles.subtitle}>Select the type of gallery you want to build.</Text>
+        </View>
 
-        <TouchableOpacity
-          style={styles.card}
-          onPress={goToCreateEvent}
-          activeOpacity={0.9}
-          accessibilityRole="button"
-          accessibilityLabel="Create an event"
-        >
-          <View style={styles.iconWrap}>
-            <Ionicons name="calendar-clear-outline" size={28} color="#111" />
-          </View>
-          <Text style={styles.cardTitle}>Event</Text>
-          <Text style={styles.cardSubtitle}>Capture moments for a specific day</Text>
-        </TouchableOpacity>
-      </View>
+        {/* --- Options List --- */}
+        <View style={styles.listContainer}>
+            
+            {/* Option 1: Group */}
+            <TouchableOpacity
+                style={styles.optionRow}
+                onPress={goToCreateGroup}
+                activeOpacity={0.7}
+            >
+                <View style={styles.iconContainer}>
+                    <Ionicons name="people" size={28} color="#000" />
+                </View>
+                <View style={styles.textContainer}>
+                    <Text style={styles.optionTitle}>Group</Text>
+                    <Text style={styles.optionSubtitle}>A permanent space for friends & family.</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#E5E5EA" />
+            </TouchableOpacity>
+
+            <View style={styles.separator} />
+
+            {/* Option 2: Event */}
+            <TouchableOpacity
+                style={styles.optionRow}
+                onPress={goToCreateEvent}
+                activeOpacity={0.7}
+            >
+                <View style={styles.iconContainer}>
+                    <Ionicons name="calendar" size={28} color="#000" />
+                </View>
+                <View style={styles.textContainer}>
+                    <Text style={styles.optionTitle}>Event</Text>
+                    <Text style={styles.optionSubtitle}>Capture a specific day, trip, or party.</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#E5E5EA" />
+            </TouchableOpacity>
+
+            <View style={styles.separator} />
+
+        </View>
+
+      </SafeAreaView>
     </View>
   );
 };
@@ -54,51 +90,84 @@ const CreateGalleryChoiceScreen = () => {
 export default CreateGalleryChoiceScreen;
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#FFFFFF",
+  },
+  safeArea: {
+    flex: 1,
+  },
+  
+  // --- Header ---
+  header: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    marginBottom: 24,
+    alignItems: 'flex-end', // Close button on right
+  },
+  closeButton: {
+      padding: 4,
+      backgroundColor: '#F2F2F7', // Subtle circle bg
+      borderRadius: 20,
+  },
+
+  // --- Title ---
+  titleContainer: {
     paddingHorizontal: 24,
-    paddingTop: 24,
+    marginBottom: 40,
   },
   title: {
-    fontSize: 22,
-    fontWeight: "600",
-    color: "#111",
-    marginBottom: 16,
-  },
-  cardsRow: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  card: {
-    flex: 1,
-    backgroundColor: "#f5f5f5",
-    borderRadius: 14,
-    padding: 16,
-    alignItems: "flex-start",
-  },
-  iconWrap: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 8,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-  },
-  cardTitle: {
-    fontSize: 16,
+    fontSize: 34,
     fontWeight: "700",
-    color: "#111",
+    color: "#000000",
+    marginBottom: 8,
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    marginTop: 8,
+    fontSize: 16,
+    color: "#8E8E93",
+    lineHeight: 22,
+  },
+
+  // --- List ---
+  listContainer: {
+    paddingHorizontal: 24,
+  },
+  optionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 24, // Generous touch area
+  },
+  iconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#F2F2F7", // System Gray 6
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 20,
+  },
+  textContainer: {
+    flex: 1,
+    justifyContent: "center",
+    marginRight: 16,
+  },
+  optionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#000000",
     marginBottom: 4,
   },
-  cardSubtitle: {
-    fontSize: 13,
-    color: "#666",
+  optionSubtitle: {
+    fontSize: 14,
+    color: "#8E8E93",
+  },
+  
+  // --- Divider ---
+  separator: {
+      height: 1,
+      backgroundColor: "#F2F2F7",
+      marginLeft: 76, // Indented to match text start
   },
 });
-
-
-
