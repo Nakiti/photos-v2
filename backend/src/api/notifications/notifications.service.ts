@@ -1,11 +1,10 @@
 import { Expo, type ExpoPushMessage } from 'expo-server-sdk';
 import { PrismaClient } from '@prisma/client';
-import { Redis } from 'ioredis';
-import { photoQueue, redisConnection } from '../../../libs/queue.js';
+import { photoQueue } from '../../../libs/queue.js';
+import { redis } from '../../../libs/redis.js';
 
 const expo = new Expo();
 const prisma = new PrismaClient();
-const redis = new Redis(redisConnection);
 
 /**
  * Sends push notifications via Expo and returns a list of invalid tokens

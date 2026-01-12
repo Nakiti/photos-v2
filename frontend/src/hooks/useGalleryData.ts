@@ -11,6 +11,7 @@ import { createGallery, getGalleryDetails } from '../services/api/gallery.servic
 import { UpdateGalleryRequest } from '../types/gallery.types';
 import { Photo as PhotoApi} from '../types';
 import { fetchPhotoIdsForSync, fetchPhotos } from '../services/api/photos.service';
+import { getRateLimitState } from '../services/api/gallery.service';
 import { switchMap } from '@nozbe/watermelondb/utils/rx';
 import { of } from '@nozbe/watermelondb/utils/rx';
 import { syncPhotos, reconcileDeletedPhotos } from '../services/sync/photos.sync';
@@ -195,18 +196,25 @@ export const useGallery = (galleryId: string | null, options?: { tagId?: string 
       console.log(`[Local][Gallery ${galleryId}] lastSynced=${lastSyncedTimestamp ?? 'none'}`);
 
       // 2. Fetch all data from the server
-      const [remoteDetails, newPhotos, remotePhotoIds] = await Promise.all([
+      const [remoteDetails, newPhotos, remotePhotoIds, rateLimitState] = await Promise.all([
         getGalleryDetails(galleryId),
         fetchPhotos(galleryId, lastSyncedTimestamp),
-        fetchPhotoIdsForSync(galleryId)
+        fetchPhotoIdsForSync(galleryId),
+        getRateLimitState(galleryId).catch(() => null) // Don't fail if rate limit fetch fails
       ]);
 
       console.log(
         `[Cloud][Gallery ${galleryId}] fetched photos=${newPhotos.length} idsForSync=${remotePhotoIds.length}`
       );
 
-      // 3. Sync gallery details
-      await syncGalleryDetails(database, remoteDetails);
+      // 3. Sync gallery details (including rate limit state if available)
+      const galleryWithRateLimit = rateLimitState ? {
+        ...remoteDetails,
+        uploadLimitPerHour: rateLimitState.uploadLimitPerHour,
+        rateLimitStateToken: rateLimitState.stateToken,
+        rateLimitLastSynced: Date.now(),
+      } : remoteDetails;
+      await syncGalleryDetails(database, galleryWithRateLimit);
       
       // 4. Sync the new photos
       await syncPhotos(database, newPhotos);

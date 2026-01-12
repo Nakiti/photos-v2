@@ -11,6 +11,7 @@ import {
   reconcileGalleryPhotos,
   requestIconUpload,
   searchGalleries,
+  getRateLimitState,
 } from './galleries.controller.js';
 import photoRoutes from './photos/photos.routes.js';
 import membersRoutes from './members/members.routes.js';
@@ -67,6 +68,13 @@ router.get('/community/:communityId', isAuthenticated, getGalleriesByCommunity);
  * @access Private
  */
 router.get('/:galleryId', isAuthenticated, getGalleryDetails);
+
+/**
+ * @route GET /api/v1/galleries/:galleryId/rate-limit-state
+ * @summary Get current rate limit state for the authenticated user in this gallery
+ * @access Private
+ */
+router.get('/:galleryId/rate-limit-state', isAuthenticated, getRateLimitState);
 
 /**
  * @route PUT /api/v1/galleries/:galleryId

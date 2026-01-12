@@ -2,12 +2,10 @@ import { Server, Socket } from 'socket.io';
 import http from 'http';
 import jwt from 'jsonwebtoken';
 import config from '../config/config.js';
-import { Redis } from 'ioredis';
-import { redisConnection } from './queue.js';
+import { redis } from './redis.js';
 
 // Module-level state (singleton pattern)
 let io: Server | null = null;
-const redis = new Redis(redisConnection);
 
 /**
  * Initializes the WebSocket server with authentication and connection handlers.

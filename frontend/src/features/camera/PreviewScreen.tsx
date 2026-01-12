@@ -1,6 +1,7 @@
 import { useNavigation, useRoute, StackActions } from '@react-navigation/native';
 import { useCreateOptimisticPhoto } from '../../hooks/usePhotoData';
 import { useGalleryTags } from '../../hooks/useGalleryTagData';
+import { useUploadRateLimit } from '../../hooks/useUploadRateLimit';
 import GalleryHeader from '../gallery/components/GalleryHeader';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import LinearGradient from 'react-native-linear-gradient';
@@ -15,6 +16,7 @@ const PreviewScreen = () => {
 
     const { mutate: createOptimisticPhoto, isPending } = useCreateOptimisticPhoto()
     const { tags, isLoading: tagsLoading } = useGalleryTags(galleryId)
+    const { canUpload, currentCount, limit, retryAfterMinutes } = useUploadRateLimit(galleryId)
     const [isPickerOpen, setIsPickerOpen] = useState(false)
     const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
 
@@ -24,13 +26,23 @@ const PreviewScreen = () => {
 
     const handleSend = () => {
         if (isPending) return; // Don't allow double-taps
+
+        // Check rate limit before creating photo
+        if (!canUpload) {
+            const message = retryAfterMinutes 
+                ? `You've reached your upload limit (${currentCount}/${limit} photos this hour). Please wait ${retryAfterMinutes} minute${retryAfterMinutes !== 1 ? 's' : ''} before uploading more photos.`
+                : `You've reached your upload limit (${currentCount}/${limit} photos this hour).`;
+            Alert.alert('Upload Limit Reached', message, [
+                { text: 'OK', onPress: () => navigation.goBack() }
+            ]);
+            return;
+        }
     
         // Call the optimistic create function
         createOptimisticPhoto(
           { galleryId, localUri: photoUri, tagIds: selectedTagIds },
           {
             onSuccess: () => {
-
               navigation.dispatch(StackActions.pop(2));
             },
             onError: (error) => {

@@ -1,8 +1,8 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const mySchema = appSchema({
-  // Ensure version matches the latest changes (added visible to photos and requirePictureReview to galleries)
-  version: 24,
+  // Version 25: Added photo_attempts table, rate limit fields to galleries, retry_after to photos
+  version: 25,
   tables: [
     tableSchema({
       name: 'users',
@@ -37,6 +37,10 @@ export const mySchema = appSchema({
         { name: 'last_photo_at', type: 'number', isOptional: true },
         { name: 'photo_count', type: 'number' },
         { name: 'member_count', type: 'number' },
+        // Rate limiting fields
+        { name: 'upload_limit_per_hour', type: 'number', isOptional: true },
+        { name: 'rate_limit_state_token', type: 'string', isOptional: true },
+        { name: 'rate_limit_last_synced', type: 'number', isOptional: true },
         { name: 'created_at', type: 'number' },
         { name: 'updated_at', type: 'number' },
       ],
@@ -63,7 +67,8 @@ export const mySchema = appSchema({
         { name: 'local_thumbnail_uri', type: 'string', isOptional: true },
         { name: 'thumbnail_url', type: 'string', isOptional: true },
         { name: 'visible', type: 'string' }, // 'IN_REVIEW' | 'VISIBLE'
-        { name: 'status', type: 'string' }, // 'queued', 'uploading', 'upload_failed', 'synced'
+        { name: 'status', type: 'string' }, // 'queued', 'uploading', 'upload_failed', 'synced', 'sync_pending'
+        { name: 'retry_after', type: 'number', isOptional: true }, // Timestamp when sync_pending photos should retry
         { name: 'created_at', type: 'number' },
       ],
     }),
@@ -116,6 +121,18 @@ export const mySchema = appSchema({
         { name: 'role', type: 'string' },
         { name: 'status', type: 'string', isIndexed: true },
         { name: 'joined_at', type: 'number' },
+      ],
+    }),
+    tableSchema({
+      name: 'photo_attempts',
+      columns: [
+        { name: 'gallery_id', type: 'string', isIndexed: true },
+        { name: 'user_id', type: 'string', isIndexed: true },
+        { name: 'attempted_at', type: 'number', isIndexed: true },
+        { name: 'status', type: 'string', isIndexed: true }, // 'pending' | 'confirmed' | 'rejected'
+        { name: 'photo_id', type: 'string', isOptional: true, isIndexed: true },
+        { name: 'server_rejected', type: 'boolean', isOptional: true },
+        { name: 'retry_after', type: 'number', isOptional: true },
       ],
     }),
   ],

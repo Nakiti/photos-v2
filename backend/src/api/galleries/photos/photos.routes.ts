@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { isAuthenticated } from '../../../middleware/auth.middleware.js';
+import { checkUploadRateLimit } from '../../../middleware/rateLimiter.middleware.js';
 import { getPhotosForGallery, getPhotoIdsForSync, requestPresignedUrl, confirmPhotoUpload, deletePhoto, updatePhotoVisibility, approveAllPhotos } from './photos.controller.js';
 import photoTagsRoutes from './photoTags/photoTags.routes.js';
 
@@ -30,15 +31,17 @@ router.get('/sync', isAuthenticated, getPhotoIdsForSync);
  * @route POST /api/v1/galleries/:galleryId/photos/presign
  * @description Request a secure, presigned URL to upload a photo directly to S3.
  * @access Private (must be a member of the gallery)
+ * @rateLimit Checked - verifies user hasn't exceeded limit before allowing presigned URL request
  */
-router.post('/presign', isAuthenticated, requestPresignedUrl);
+router.post('/presign', isAuthenticated, checkUploadRateLimit, requestPresignedUrl);
 
 /**
  * @route POST /api/v1/galleries/:galleryId/photos/confirm
  * @description Confirm a photo has been successfully uploaded to S3 and save its metadata.
  * @access Private (must be a member of the gallery)
+ * @rateLimit Enforced - checks limit before allowing upload, records after successful upload
  */
-router.post('/confirm', isAuthenticated, confirmPhotoUpload);
+router.post('/confirm', isAuthenticated, checkUploadRateLimit, confirmPhotoUpload);
 
 
 // --- PATCH Routes ---

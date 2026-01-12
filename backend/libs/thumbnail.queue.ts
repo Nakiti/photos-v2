@@ -3,11 +3,11 @@ import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3
 import { PrismaClient } from '@prisma/client';
 import sharp from 'sharp';
 import config from '../config/config.js';
+import { redisConnection } from './redis.js';
 
 const prisma = new PrismaClient();
-const connection = { /* ... your Redis connection ... */ };
 
-export const thumbnailQueue = new Queue('thumbnail-generation', { connection });
+export const thumbnailQueue = new Queue('thumbnail-generation', { connection: redisConnection });
 
 const s3 = new S3Client({ /* ... your S3 config ... */ });
 
@@ -48,4 +48,4 @@ new Worker('thumbnail-generation', async job => {
   } catch (error) {
     console.error(`Failed to generate thumbnail for ${photoId}:`, error);
   }
-}, { connection });
+}, { connection: redisConnection });

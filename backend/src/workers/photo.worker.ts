@@ -1,11 +1,9 @@
 import { Worker } from 'bullmq';
 import { PrismaClient } from '@prisma/client';
-import { redisConnection } from '../../libs/queue.js';
+import { redisConnection, redis } from '../../libs/redis.js';
 import { sendPushNotifications } from '../api/notifications/notifications.service.js';
-import { Redis } from 'ioredis';
 
-const prisma = new PrismaClient()
-const redis = new Redis(redisConnection);
+const prisma = new PrismaClient();
 
 export const worker = new Worker('photo-notifications', async (job) => {
     console.log(`Job ${job.id}: ${job.name}`);

@@ -12,6 +12,7 @@ import {
   type UpdateGalleryDto,
 } from './galleries.validation.js';
 import { generateIconPresignedUrl } from './galleries.service.js';
+import { checkUploadLimit } from '../../../libs/rateLimiter.js';
 
 /**
  * POST /api/v1/galleries
@@ -235,5 +236,41 @@ export async function searchGalleries(req: Request, res: Response) {
       });
     }
     return res.status(500).json({ message: 'Failed to search galleries' });
+  }
+}
+
+/**
+ * GET /api/v1/galleries/:galleryId/rate-limit-state
+ * Get current rate limit state for the authenticated user in this gallery.
+ */
+export async function getRateLimitState(req: Request, res: Response) {
+  const userId = (req as any).user?.id as string | undefined;
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+
+  try {
+    const { galleryId } = req.params as { galleryId: string };
+    
+    // Check access to gallery
+    const access = await galleriesService.getGalleryDetails(userId, galleryId);
+    if (!access) return res.status(403).json({ message: 'Forbidden' });
+
+    // Get current rate limit state
+    const result = await checkUploadLimit(userId, galleryId);
+    const now = Date.now();
+    const windowResetAt = now + (60 * 60 * 1000); // 1 hour from now
+    
+    // Generate state token (simple hash for now)
+    const stateToken = Buffer.from(`${galleryId}:${userId}:${result.currentCount}:${windowResetAt}`).toString('base64');
+
+    return res.status(200).json({
+      galleryId,
+      uploadLimitPerHour: result.limit,
+      currentCount: result.currentCount,
+      windowResetAt,
+      stateToken,
+    });
+  } catch (error) {
+    console.error('Rate limit state error:', error);
+    return res.status(500).json({ message: 'Failed to get rate limit state' });
   }
 }

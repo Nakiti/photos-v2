@@ -129,6 +129,16 @@ export const syncGalleryDetails = async (
     record.lastPhotoAt = remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : undefined
     record.photoCount = remoteGallery.photoCount ?? 0
     record.memberCount = remoteGallery.memberCount ?? 0
+    // Rate limiting fields
+    if ((remoteGallery as any).uploadLimitPerHour !== undefined) {
+      record.uploadLimitPerHour = (remoteGallery as any).uploadLimitPerHour;
+    }
+    if ((remoteGallery as any).rateLimitStateToken) {
+      record.rateLimitStateToken = (remoteGallery as any).rateLimitStateToken;
+    }
+    if ((remoteGallery as any).rateLimitLastSynced) {
+      record.rateLimitLastSynced = (remoteGallery as any).rateLimitLastSynced;
+    }
   };
 
   // --- 3. Prepare the correct operation (Update or Create) ---

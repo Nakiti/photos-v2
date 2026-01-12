@@ -214,3 +214,20 @@ export const getGalleriesByCommunityId = async (
   const response = await apiClient.get(`/api/v1/galleries/community/${communityId}`);
   return response.data;
 };
+
+/**
+ * Get current rate limit state for the authenticated user in a gallery.
+ *
+ * @param galleryId The gallery id
+ * @returns Promise resolving to rate limit state
+ */
+export const getRateLimitState = async (galleryId: string): Promise<{
+  galleryId: string;
+  uploadLimitPerHour: number;
+  currentCount: number;
+  windowResetAt: number;
+  stateToken: string;
+}> => {
+  const response = await apiClient.get(`/api/v1/galleries/${galleryId}/rate-limit-state`);
+  return response.data;
+};

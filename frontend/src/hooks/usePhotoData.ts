@@ -6,6 +6,7 @@ import Photo from "../db/models/Photo";
 import { uploadPhoto, deletePhoto, uploadPhotoFlow } from "../services/api/photos.service";
 import { useState, useEffect } from "react";
 import { updateOptimisticPhoto } from "../services/sync/photos.sync";
+import { recordLocalAttempt, findAttemptByPhotoId, markAttemptConfirmed, markAttemptRejected } from "../services/rateLimit.service";
 import { Q } from "@nozbe/watermelondb";
 import ImageResizer from 'react-native-image-resizer'; // 1. Import the resizer
 import PhotoTag from "../db/models/PhotoTag";
@@ -88,6 +89,9 @@ export const useCreateOptimisticPhoto = () => {
             
             await database.batch(newPhotoOp, ...tagOperations);
           });
+  
+          // Record the upload attempt for rate limiting
+          await recordLocalAttempt(database, galleryId, user.id, temporaryId);
   
         } catch (error) {
           console.error("Failed to create optimistic photo record:", error);
@@ -232,25 +236,59 @@ export const usePhotoUploadQueue = () => {
 
         console.log("photo before upoad queue ", photo)
 
-        const finalPhoto = await uploadPhotoFlow(
-            photo.galleryId,
-            photo.localUri!,
-            photo.localThumbnailUri!,
-            tagIds
-        )
+        try {
+          const finalPhoto = await uploadPhotoFlow(
+              photo.galleryId,
+              photo.localUri!,
+              photo.localThumbnailUri!,
+              tagIds
+          )
+            
+          // Sync the final data
+          await updateOptimisticPhoto(database, photo.id, finalPhoto);
           
-        // Sync the final data
-        await updateOptimisticPhoto(database, photo.id, finalPhoto);
+          // Mark attempt as confirmed
+          const attempt = await findAttemptByPhotoId(database, photo.id);
+          if (attempt) {
+            await markAttemptConfirmed(database, attempt.id, photo.id);
+          }
+        } catch (uploadError: any) {
+          // Check if it's a 429 rate limit error
+          if (uploadError?.response?.status === 429) {
+            const retryAfterHeader = uploadError.response?.headers?.['retry-after'];
+            const retryAfter = retryAfterHeader 
+              ? Date.now() + (parseInt(retryAfterHeader, 10) * 1000)
+              : Date.now() + (60 * 60 * 1000); // Default to 1 hour
+
+            // Mark attempt as rejected
+            const attempt = await findAttemptByPhotoId(database, photo.id);
+            if (attempt) {
+              await markAttemptRejected(database, attempt.id, retryAfter);
+            }
+
+            // Set photo status to sync_pending
+            await database.write(async () => {
+              await photo.update(record => {
+                record.status = 'sync_pending';
+                record.retryAfter = retryAfter;
+              });
+            });
+
+            throw uploadError; // Re-throw to trigger onError
+          } else {
+            // Other errors: mark as upload_failed
+            await database.write(async () => {
+              await photo.update(record => {
+                record.status = 'upload_failed';
+              });
+            });
+            throw uploadError;
+          }
+        }
       },
       onError: async (error, photo) => {
         console.error(`Failed to upload photo ${photo.id}:`, error);
-        // Set status to 'upload_failed'
-        await database.write(async () => {
-          await photo.update(record => {
-            record.status = 'upload_failed';
-          });
-        });
-      },
+        // Status already set in mutationFn, just log
     });
   
     // 3. Process the queue when it changes
@@ -258,7 +296,7 @@ export const usePhotoUploadQueue = () => {
     // would use a network status listener and be more robust.
     useEffect(() => {
       const uploadingPhotos = queuedPhotos.filter(p => p.status === 'uploading');
-      const pendingPhotos = queuedPhotos.filter(p => p.status === 'queued');
+      const pendingPhotos = queuedPhotos.filter(p => p.status === 'queued' || (p.status === 'sync_pending' && (!p.retryAfter || p.retryAfter <= Date.now())));
   
       // Only try to upload one photo at a time (for simplicity)
       if (uploadingPhotos.length === 0 && pendingPhotos.length > 0) {

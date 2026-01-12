@@ -8,6 +8,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { thumbnailQueue } from '../../../../libs/thumbnail.queue.js';
 import { smartThrottleNewPhoto } from '../../notifications/notifications.service.js';
+import { recordUpload } from '../../../../libs/rateLimiter.js';
 
 const prisma = new PrismaClient();
 
@@ -270,6 +271,10 @@ export async function confirmUploadedPhoto(
 
   const uploaderName = (uploader?.name || uploader?.handle || 'A user') as string;
   const galleryName = (gallery?.name || '') as string;
+  
+  // Record the upload for rate limiting (only after successful creation)
+  await recordUpload(uploaderId, galleryId);
+  
   await smartThrottleNewPhoto(
     galleryId,
     uploaderId,

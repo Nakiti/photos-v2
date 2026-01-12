@@ -18,7 +18,8 @@ export default class Photo extends Model {
   @text('local_thumbnail_uri') localThumbnailUri?: string;
   @text('thumbnail_url') thumbnailUri?: string;
   @text('visible') visible?: 'IN_REVIEW' | 'VISIBLE';
-  @field('status') status!: 'queued' | 'uploading' | 'upload_failed' | 'synced';
+  @field('status') status!: 'queued' | 'uploading' | 'upload_failed' | 'synced' | 'sync_pending';
+  @field('retry_after') retryAfter?: number;
   @readonly @date('created_at') createdAt!: number;
 
   @relation('galleries', 'gallery_id') gallery!: any;

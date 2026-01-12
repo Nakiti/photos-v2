@@ -30,6 +30,10 @@ export default class Gallery extends Model {
   @date('last_photo_at') lastPhotoAt?: number;
   @field('photo_count') photoCount!: number;
   @field('member_count') memberCount!: number;
+  // Rate limiting fields
+  @field('upload_limit_per_hour') uploadLimitPerHour?: number;
+  @field('rate_limit_state_token') rateLimitStateToken?: string;
+  @field('rate_limit_last_synced') rateLimitLastSynced?: number;
   @readonly @date('created_at') createdAt!: number;
   @readonly @date('updated_at') updatedAt!: number;
 

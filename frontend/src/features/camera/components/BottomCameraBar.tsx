@@ -1,13 +1,15 @@
-import { View, TouchableOpacity, StyleSheet } from "react-native"
+import { View, TouchableOpacity, StyleSheet, Text } from "react-native"
 import Ionicons from "react-native-vector-icons/Ionicons"
 
 type BottomCameraBarProps = {
    onShutterPress: () => void
    onToggleFacing: () => void
    onOpenGallery: () => void
+   disabled?: boolean
+   rateLimitInfo?: { currentCount: number; limit: number; retryAfterMinutes?: number }
 }
 
-const BottomCameraBar = ({ onShutterPress, onToggleFacing, onOpenGallery }: BottomCameraBarProps) => {
+const BottomCameraBar = ({ onShutterPress, onToggleFacing, onOpenGallery, disabled = false, rateLimitInfo }: BottomCameraBarProps) => {
    return (
       <View style={styles.bottomBar}>
          <View style={styles.leftButton}>
@@ -16,9 +18,24 @@ const BottomCameraBar = ({ onShutterPress, onToggleFacing, onOpenGallery }: Bott
             </TouchableOpacity>
          </View>
          <View style={styles.shutterContainer}>
-            <TouchableOpacity style={styles.shutterOuter} onPress={onShutterPress}>
-               <View style={styles.shutterInner} />
+            <TouchableOpacity 
+               style={[styles.shutterOuter, disabled && styles.shutterOuterDisabled]} 
+               onPress={onShutterPress}
+               disabled={disabled}
+               activeOpacity={disabled ? 1 : 0.7}
+            >
+               <View style={[styles.shutterInner, disabled && styles.shutterInnerDisabled]} />
             </TouchableOpacity>
+            {disabled && rateLimitInfo && (
+               <View style={styles.rateLimitOverlay}>
+                  <Text style={styles.rateLimitText}>
+                     {rateLimitInfo.retryAfterMinutes 
+                        ? `${rateLimitInfo.retryAfterMinutes}m`
+                        : `${rateLimitInfo.currentCount}/${rateLimitInfo.limit}`
+                     }
+                  </Text>
+               </View>
+            )}
          </View>
 
          <View style={styles.rightButton}>
@@ -76,5 +93,26 @@ const styles = StyleSheet.create({
       height: 50,
       justifyContent: 'center',
       alignItems: 'center',
+   },
+   shutterOuterDisabled: {
+      opacity: 0.5,
+      borderColor: '#ff4444',
+   },
+   shutterInnerDisabled: {
+      backgroundColor: '#ff4444',
+   },
+   rateLimitOverlay: {
+      position: 'absolute',
+      bottom: -30,
+      alignSelf: 'center',
+      backgroundColor: 'rgba(255, 68, 68, 0.9)',
+      paddingHorizontal: 12,
+      paddingVertical: 4,
+      borderRadius: 12,
+   },
+   rateLimitText: {
+      color: 'white',
+      fontSize: 12,
+      fontWeight: '600',
    },
 });

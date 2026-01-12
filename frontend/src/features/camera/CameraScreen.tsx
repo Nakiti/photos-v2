@@ -1,10 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform, Linking, Alert } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Camera, useCameraDevice } from 'react-native-vision-camera'; // <-- Corrected import
+import { Camera, useCameraDevice } from 'react-native-vision-camera';
 import TopCameraBar from './components/TopCameraBar';
 import BottomCameraBar from './components/BottomCameraBar';
 import { useRoute } from '@react-navigation/native';
+import { useUploadRateLimit } from '../../hooks/useUploadRateLimit';
 
 type Facing = 'back' | 'front'
 type FlashMode = 'on' | 'off'
@@ -14,10 +15,11 @@ type CameraScreenProps = {
 }
 
 const CameraScreen = ({ navigation }: CameraScreenProps) => {
+   const route = useRoute();
+   const { galleryId } = route.params as { galleryId: string };
+   const { canUpload, currentCount, limit, retryAfterMinutes } = useUploadRateLimit(galleryId);
    const [hasPermission, setHasPermission] = useState(false);
    const [permissionDenied, setPermissionDenied] = useState(false);
-   const route = useRoute()
-   const { galleryId } = route.params as { galleryId: string }
 
    useEffect(() => {
       const checkPermission = async () => {
@@ -106,6 +108,14 @@ const CameraScreen = ({ navigation }: CameraScreenProps) => {
    }
 
    const handleCapture = async () => {
+      if (!canUpload) {
+         const message = retryAfterMinutes 
+            ? `You've reached your upload limit (${currentCount}/${limit} photos this hour). Please wait ${retryAfterMinutes} minute${retryAfterMinutes !== 1 ? 's' : ''} before taking more photos.`
+            : `You've reached your upload limit (${currentCount}/${limit} photos this hour).`;
+         Alert.alert('Upload Limit Reached', message);
+         return;
+      }
+
       try {
          if (selectedTimer && selectedTimer > 0) {
             for (let i = selectedTimer; i > 0; i--) {
@@ -142,7 +152,13 @@ const CameraScreen = ({ navigation }: CameraScreenProps) => {
                   zoom={zoom}
                />
             </GestureDetector>
-            <BottomCameraBar onShutterPress={handleCapture} onToggleFacing={handleToggleFacing} onOpenGallery={handleOpenGallery} />
+            <BottomCameraBar 
+               onShutterPress={handleCapture} 
+               onToggleFacing={handleToggleFacing} 
+               onOpenGallery={handleOpenGallery}
+               disabled={!canUpload}
+               rateLimitInfo={!canUpload ? { currentCount, limit, retryAfterMinutes } : undefined}
+            />
          </View>
       </GestureHandlerRootView>
    );
