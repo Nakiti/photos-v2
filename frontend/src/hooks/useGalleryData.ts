@@ -131,11 +131,12 @@ export const useGalleries = (
  *
  * @param galleryId The ID of the gallery to fetch.
  */
-export const useGallery = (galleryId: string | null, options?: { tagId?: string | null }) => {
+export const useGallery = (galleryId: string | null, options?: { tagId?: string | null; uploaderId?: string | null }) => {
   const database = useDatabase();
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const selectedTagId = options?.tagId ?? null;
+  const selectedUploaderId = options?.uploaderId ?? null;
 
   useEffect(() => {
     if (!galleryId) {
@@ -149,11 +150,14 @@ export const useGallery = (galleryId: string | null, options?: { tagId?: string 
 
     const gallerySubscription = galleryObservable.subscribe(setGallery);
 
-    // Observe photos for this gallery, optionally filtered by tag (local-first)
+    // Observe photos for this gallery, optionally filtered by tag and/or uploader (local-first)
     const photosCollection = database.collections.get<Photo>('photos');
     const conditions = [Q.where('gallery_id', galleryId)] as any[];
     if (selectedTagId) {
       conditions.push(Q.on('photo_tags', 'tag_id', selectedTagId));
+    }
+    if (selectedUploaderId) {
+      conditions.push(Q.where('uploader_id', selectedUploaderId));
     }
     const photosQuery = photosCollection.query(
       ...conditions,
@@ -162,7 +166,7 @@ export const useGallery = (galleryId: string | null, options?: { tagId?: string 
     const photosSubscription = photosQuery.observe().subscribe((list) => {
       setPhotos(list as unknown as Photo[]);
       console.log(
-        `[Local][Gallery ${galleryId}] observed ${(list as any).length} photos (tag=${selectedTagId ?? 'all'})`
+        `[Local][Gallery ${galleryId}] observed ${(list as any).length} photos (tag=${selectedTagId ?? 'all'}, uploader=${selectedUploaderId ?? 'all'})`
       );
     });
 
@@ -170,7 +174,7 @@ export const useGallery = (galleryId: string | null, options?: { tagId?: string 
       gallerySubscription.unsubscribe();
       photosSubscription.unsubscribe();
     };
-  }, [database, galleryId, selectedTagId]);
+  }, [database, galleryId, selectedTagId, selectedUploaderId]);
 
 
   // 2. FETCH & SYNC REMOTE DATA ("Inbox" and "Deletion" Sync)

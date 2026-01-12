@@ -6,7 +6,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import config from '../../../config/config.js';
 import {v4 as uuidv4} from "uuid"
 import { checkGalleryPermission } from './permission.service.js';
-import { socketManager } from '../../../libs/socket.manager.js';
+import { broadcastGalleryUpdated } from '../../../libs/socket.manager.js';
 
 const prisma = new PrismaClient();
 
@@ -383,7 +383,7 @@ export async function updateGallery(
   };
   
   // Broadcast gallery update to gallery room
-  socketManager.broadcastGalleryUpdated(galleryId, result);
+  broadcastGalleryUpdated(galleryId, result);
   
   return result;
 }

@@ -2,7 +2,7 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import cors from "cors";
 import dotenv from "dotenv";
 import apiRoutes from "./src/api/index.js";
-import { socketManager } from "./libs/socket.manager.js";
+import { initializeSocket } from "./libs/socket.manager.js";
 import http from "http"
 
 dotenv.config();
@@ -21,7 +21,7 @@ app.use('/api/v1', apiRoutes);
 
 const httpServer = http.createServer(app);
 
-socketManager.initialize(httpServer);
+initializeSocket(httpServer);
 
 // --- 404 Handler ---
 app.use((req: Request, res: Response, next: NextFunction) => {

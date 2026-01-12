@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import AWS from 'aws-sdk';
 import config from '../../../../config/config.js';
-import { socketManager } from '../../../../libs/socket.manager.js';
+import { broadcastNewPhoto, broadcastPhotoDeleted, broadcastPhotoUpdated } from '../../../../libs/socket.manager.js';
 import { photoQueue } from '../../../../libs/queue.js';
 import {v4 as uuidv4} from "uuid"
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -266,7 +266,7 @@ export async function confirmUploadedPhoto(
     galleryId: created.galleryId,
     uploader: uploader,
   };
-  socketManager.broadcastNewPhoto(galleryId, socketPayload);
+  broadcastNewPhoto(galleryId, socketPayload);
 
   const uploaderName = (uploader?.name || uploader?.handle || 'A user') as string;
   const galleryName = (gallery?.name || '') as string;
@@ -316,7 +316,7 @@ export async function deletePhoto(requesterId: string, galleryId: string, photoI
   });
   
   // Broadcast photo deletion to gallery room
-  socketManager.broadcastPhotoDeleted(galleryId, photoId);
+  broadcastPhotoDeleted(galleryId, photoId);
   
   return true;
 }
@@ -370,7 +370,7 @@ export async function updatePhotoVisibility(
   });
 
   // Broadcast photo update to gallery room
-  socketManager.broadcastPhotoUpdated(galleryId, updated);
+  broadcastPhotoUpdated(galleryId, updated);
 
   return updated;
 }
@@ -430,7 +430,7 @@ export async function approvePhotos(
 
   // Broadcast each photo update
   updatedPhotos.forEach(photo => {
-    socketManager.broadcastPhotoUpdated(galleryId, photo);
+    broadcastPhotoUpdated(galleryId, photo);
   });
 
   return { count: updated.count };
@@ -504,7 +504,7 @@ export async function approveAllInReviewPhotos(
 
   // Broadcast each photo update
   updatedPhotos.forEach(photo => {
-    socketManager.broadcastPhotoUpdated(galleryId, photo);
+    broadcastPhotoUpdated(galleryId, photo);
   });
 
   return { count: updated.count };

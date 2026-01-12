@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, Alert, SafeAreaView } from 'react-native';
 import { launchImageLibrary, ImagePickerResponse } from 'react-native-image-picker';
 import ImagesDisplay from '../components/ImagesDisplay';
@@ -11,7 +11,9 @@ import { useCreateOptimisticPhotos } from '../../../hooks/usePhotoData';
 import { useGallerySocket } from '../../../hooks/useGallerySocket';
 import { useAuth } from '../../../hooks/useAuth';
 import { useMyMembership } from '../../../hooks/useMembershipData';
+import { useDatabase } from '@nozbe/watermelondb/react';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import User from '../../../db/models/User';
 
 type GalleryImage = {
   id?: string;
@@ -28,15 +30,63 @@ const GalleryScreen = () => {
   const navigation = useNavigation<any>();
 
   // Data Hooks
+  const database = useDatabase();
   const { tags } = useGalleryTags(galleryId);
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
-  const { gallery, photos } = useGallery(galleryId, { tagId: selectedTagId });
+  const [selectedUploaderId, setSelectedUploaderId] = useState<string | null>(null);
+  const { gallery, photos } = useGallery(galleryId, { tagId: selectedTagId, uploaderId: selectedUploaderId });
   const { mutate: createOptimisticPhotos } = useCreateOptimisticPhotos();
   const { user } = useAuth();
   const { data: myMembership } = useMyMembership(galleryId);
   
   // Real-time
   useGallerySocket(galleryId);
+
+  // Extract unique users from photos
+  const users = useMemo(() => {
+    const uploaderIds = new Set<string>();
+    (photos || []).forEach((p: any) => {
+      if (p.uploaderId) {
+        uploaderIds.add(p.uploaderId);
+      }
+    });
+    return Array.from(uploaderIds);
+  }, [photos]);
+
+  // Fetch user names for display
+  const [usersWithNames, setUsersWithNames] = useState<Array<{ id: string; name: string }>>([]);
+  
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      if (users.length === 0) {
+        if (!cancelled) setUsersWithNames([]);
+        return;
+      }
+      try {
+        const usersCollection = database.collections.get<User>('users');
+        const userPromises = users.map(async (userId) => {
+          try {
+            const user = await usersCollection.find(userId);
+            return {
+              id: userId,
+              name: user?.name || user?.handle || 'Unknown',
+            };
+          } catch {
+            return { id: userId, name: 'Unknown' };
+          }
+        });
+        const loadedUsers = await Promise.all(userPromises);
+        if (!cancelled) setUsersWithNames(loadedUsers);
+      } catch {
+        if (!cancelled) setUsersWithNames([]);
+      }
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [database, users]);
 
   // Compute images with visibility filtering
   const images: GalleryImage[] = useMemo(() => {
@@ -116,8 +166,6 @@ const GalleryScreen = () => {
                 images={images} 
                 galleryId={galleryId} 
                 selectedTagId={selectedTagId ?? ''}
-                // IMPT: Add padding to bottom of list so photos aren't hidden behind the floating bar
-                contentContainerStyle={{ paddingBottom: 120 }} 
             />
           )}
       </View>
@@ -130,6 +178,9 @@ const GalleryScreen = () => {
         tags={tags as any}
         selectedTagId={selectedTagId}
         onSelectTag={setSelectedTagId}
+        users={usersWithNames}
+        selectedUploaderId={selectedUploaderId}
+        onSelectUploader={setSelectedUploaderId}
       />
     </View>
   );

@@ -8,11 +8,15 @@ type GalleryBottomBarProps = {
    tags?: Array<{ id: string; name: string; color?: string }>;
    selectedTagId?: string | null;
    onSelectTag?: (tagId: string | null) => void;
+   users?: Array<{ id: string; name: string }>;
+   selectedUploaderId?: string | null;
+   onSelectUploader?: (uploaderId: string | null) => void;
 };
 
-const GalleryBottomBar = ({ onPressUpload, onPressCamera, tags = [], selectedTagId = null, onSelectTag }: GalleryBottomBarProps) => {
+const GalleryBottomBar = ({ onPressUpload, onPressCamera, tags = [], selectedTagId = null, onSelectTag, users = [], selectedUploaderId = null, onSelectUploader }: GalleryBottomBarProps) => {
 
    const [isFiltersOpen, setIsFiltersOpen] = useState(false)
+   const [isUsersOpen, setIsUsersOpen] = useState(false)
 
    const currentLabel = useMemo(() => {
       if (!selectedTagId) return 'All Photos';
@@ -20,20 +24,34 @@ const GalleryBottomBar = ({ onPressUpload, onPressCamera, tags = [], selectedTag
       return t?.name || 'Filters';
    }, [selectedTagId, tags]);
 
-   const handleSelect = (tagId: string | null) => {
+   const currentUserLabel = useMemo(() => {
+      if (!selectedUploaderId) return 'All Users';
+      const u = users.find(u => u.id === selectedUploaderId);
+      return u?.name || 'Users';
+   }, [selectedUploaderId, users]);
+
+   const handleSelectTag = (tagId: string | null) => {
       onSelectTag && onSelectTag(tagId);
       setIsFiltersOpen(false);
    };
 
+   const handleSelectUser = (uploaderId: string | null) => {
+      onSelectUploader && onSelectUploader(uploaderId);
+      setIsUsersOpen(false);
+   };
+
    return (
       <>
-         {isFiltersOpen && (
-            <Pressable style={styles.dismissOverlay} onPress={() => setIsFiltersOpen(false)} />
+         {(isFiltersOpen || isUsersOpen) && (
+            <Pressable style={styles.dismissOverlay} onPress={() => {
+               setIsFiltersOpen(false);
+               setIsUsersOpen(false);
+            }} />
          )}
 
          <View style={styles.container} pointerEvents="box-none">
             
-            {/* Filter Menu */}
+            {/* Tag Filter Menu */}
             {isFiltersOpen && (
                <View style={styles.menuContainer}>
                   {[{ id: '__all__', name: 'All Photos' } as any, ...tags].map((t, index) => {
@@ -42,12 +60,35 @@ const GalleryBottomBar = ({ onPressUpload, onPressCamera, tags = [], selectedTag
                      return (
                         <TouchableOpacity
                            key={t.id}
-                           onPress={() => handleSelect(isAll ? null : t.id)}
+                           onPress={() => handleSelectTag(isAll ? null : t.id)}
                            style={[styles.menuItem, index !== 0 && styles.menuItemBorder]}
                            activeOpacity={0.7}
                         >
                            <Text style={[styles.menuText, selected && styles.menuTextSelected]}>
                               {t.name}
+                           </Text>
+                           {selected && <Icon name="checkmark" size={14} color="#FFF" />}
+                        </TouchableOpacity>
+                     )
+                  })}
+               </View>
+            )}
+
+            {/* User Filter Menu */}
+            {isUsersOpen && (
+               <View style={styles.menuContainer}>
+                  {[{ id: '__all__', name: 'All Users' } as any, ...users].map((u, index) => {
+                     const isAll = u.id === '__all__';
+                     const selected = isAll ? !selectedUploaderId : selectedUploaderId === u.id;
+                     return (
+                        <TouchableOpacity
+                           key={u.id}
+                           onPress={() => handleSelectUser(isAll ? null : u.id)}
+                           style={[styles.menuItem, index !== 0 && styles.menuItemBorder]}
+                           activeOpacity={0.7}
+                        >
+                           <Text style={[styles.menuText, selected && styles.menuTextSelected]}>
+                              {u.name}
                            </Text>
                            {selected && <Icon name="checkmark" size={14} color="#FFF" />}
                         </TouchableOpacity>
@@ -67,10 +108,13 @@ const GalleryBottomBar = ({ onPressUpload, onPressCamera, tags = [], selectedTag
                 {/* Divider */}
                 <View style={styles.divider} />
 
-                {/* 2. Filter / Label */}
+                {/* 2. Tag Filter / Label */}
                 <TouchableOpacity 
                     style={styles.filterSection} 
-                    onPress={() => setIsFiltersOpen((v) => !v)}
+                    onPress={() => {
+                        setIsFiltersOpen((v) => !v);
+                        setIsUsersOpen(false);
+                    }}
                     activeOpacity={0.5}
                 >
                     <Text style={styles.filterText} numberOfLines={1}>{currentLabel}</Text>
@@ -80,7 +124,23 @@ const GalleryBottomBar = ({ onPressUpload, onPressCamera, tags = [], selectedTag
                 {/* Divider */}
                 <View style={styles.divider} />
 
-                {/* 3. Camera */}
+                {/* 3. User Filter / Label */}
+                <TouchableOpacity 
+                    style={styles.filterSection} 
+                    onPress={() => {
+                        setIsUsersOpen((v) => !v);
+                        setIsFiltersOpen(false);
+                    }}
+                    activeOpacity={0.5}
+                >
+                    <Text style={styles.filterText} numberOfLines={1}>{currentUserLabel}</Text>
+                    <Icon name={isUsersOpen ? "chevron-down" : "chevron-up"} size={10} color="rgba(255,255,255,0.4)" />
+                </TouchableOpacity>
+
+                {/* Divider */}
+                <View style={styles.divider} />
+
+                {/* 4. Camera */}
                 <TouchableOpacity style={styles.iconSection} onPress={onPressCamera} activeOpacity={0.5}>
                     <Icon name="camera-outline" size={20} color="#FFF" />
                 </TouchableOpacity>
@@ -114,7 +174,7 @@ const styles = StyleSheet.create({
       
       // Dimensions
       height: 44, // Skinnier (Standard iOS size)
-      minWidth: 280, // Wider base
+      minWidth: 320, // Wider base to accommodate additional filter
       paddingHorizontal: 4, 
       
       // Glass Look
