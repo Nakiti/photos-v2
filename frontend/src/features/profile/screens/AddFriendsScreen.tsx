@@ -1,9 +1,9 @@
 import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import FriendsListItem from './components/FriendsListItem';
-import { useFriendships, useRejectFriendRequest, useSendFriendRequest } from '../../hooks/useFriendshipData';
-import { useSearchUsers } from '../../hooks/useUser';
+import FriendsListItem from '../components/FriendsListItem';
+import { useFriendships, useRejectFriendRequest, useSendFriendRequest } from '../../../hooks/useFriendshipData';
+import { useSearchUsers } from '../../../hooks/useUser';
 import { useQueryClient } from '@tanstack/react-query';
 
 type Friend = {

@@ -75,7 +75,7 @@ const CommunityStack = () => {
         name="AddCommunityMembers"
         component={AddCommunityMembersScreen}
         options={{
-          header: () => <DefaultNoBackHeader title="Add Members" />,
+          header: () => <DefaultHeader title="Add Members" />,
         }}
       />
       <Stack.Screen 

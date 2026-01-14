@@ -1,9 +1,9 @@
 import React, { useCallback, useState, useMemo, useEffect, useRef } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl, Text, ActivityIndicator } from 'react-native';
-import FriendsListItem from './components/FriendsListItem';
-import FriendsListHeader from './components/FriendsListHeader';
-import SearchBar from '../../components/SearchBar';
-import { useFriendships, useRemoveFriend } from '../../hooks/useFriendshipData';
+import FriendsListItem from './../components/FriendsListItem';
+import FriendsListHeader from '../components/FriendsListHeader';
+import SearchBar from '../../../components/SearchBar';
+import { useFriendships, useRemoveFriend } from '../../../hooks/useFriendshipData';
 import { useQueryClient } from '@tanstack/react-query';
 
 type Friend = {

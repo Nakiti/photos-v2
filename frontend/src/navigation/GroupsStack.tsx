@@ -7,6 +7,7 @@ import AddGroupTagsScreen from "../features/groups/screens/AddGroupTagsScreen";
 import CreateGalleryChoiceScreen from "../features/groups/screens/CreateGalleryChoiceScreen";
 import DefaultHeader from "../components/DefaultHeader";
 import DefaultNoBackHeader from "../components/DefaultNoBackHeader";
+import NotificationHubScreen from "../features/groups/screens/NotificationHubScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -59,6 +60,13 @@ const GroupsStack = () => {
                 component={AddGroupTagsScreen} 
                 options={{
                     header: () => <DefaultNoBackHeader title="Add Group Tags" />
+                }}
+            />
+            <Stack.Screen 
+                name="NotificationsHub"
+                component={NotificationHubScreen}
+                options={{
+                    header: () => <DefaultHeader title="Notifications" />
                 }}
             />
         </Stack.Navigator>

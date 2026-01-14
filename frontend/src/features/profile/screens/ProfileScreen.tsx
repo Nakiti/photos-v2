@@ -2,7 +2,7 @@ import React from 'react';
 import { View, StyleSheet, Text, Image, TouchableOpacity } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
-import { useUser } from '../../hooks/useUser';
+import { useUser } from '../../../hooks/useUser';
 import { ActivityIndicator } from 'react-native-paper';
 import FastImage from 'react-native-fast-image';
 

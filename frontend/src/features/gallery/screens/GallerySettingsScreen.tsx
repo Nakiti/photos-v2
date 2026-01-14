@@ -1,8 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, Switch, SafeAreaView, ActivityIndicator } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import { useDeleteGallery, useGallery } from '../../../hooks/useGalleryData';
-import { useAuth } from '../../../hooks/useAuth';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  ScrollView, 
+  Alert, 
+  TouchableOpacity, 
+  Switch, 
+  SafeAreaView, 
+  ActivityIndicator 
+} from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 // --- Types ---
@@ -19,37 +27,28 @@ interface SettingsSection {
    items: SettingItem[];
 }
 
-// --- Utility Functions ---
-const formatAddPermission = (value?: string | null): string => {
-   if (!value) return 'Anyone';
-   const normalized = value.toLowerCase();
-   if (normalized === 'anyone' || normalized === 'all') return 'Anyone';
-   if (normalized === 'admin') return 'Admin';
-   return value; // Fallback to original if unknown
+// --- Mock Hooks (Simulating Data) ---
+const useUser = () => {
+    return {
+        user: {
+            id: '123',
+            name: 'Nikhil',
+            email: 'n2akiti@ucsd.edu',
+            syncEnabled: true,
+            notificationsEnabled: true
+        },
+        isLoading: false
+    };
 };
 
-const formatDeletePermission = (value?: string | null): string => {
-   if (!value) return 'Admin';
-   const normalized = value.toLowerCase();
-   if (normalized === 'admin') return 'Admin';
-   if (normalized === 'admins_authors' || normalized === 'admins/authors') return 'Admin/Authors';
-   return value; // Fallback to original if unknown
+const useAuth = () => {
+    return {
+        signOut: async () => console.log("Sign out"),
+        deleteAccount: async () => console.log("Delete account")
+    };
 };
 
-const formatJoinRequiresApproval = (value?: boolean | string | null): string => {
-   if (value === undefined || value === null) return 'Anyone';
-   if (typeof value === 'boolean') {
-      return value ? 'Require Approval' : 'Anyone';
-   }
-   if (typeof value === 'string') {
-      const normalized = value.toLowerCase();
-      if (normalized === 'admin_approval' || normalized === 'require approval') return 'Require Approval';
-      if (normalized === 'all' || normalized === 'anyone') return 'Anyone';
-   }
-   return 'Anyone'; // Default fallback
-};
-
-// --- Components ---
+// --- Components (Shared with GallerySettings) ---
 
 const SectionHeader = ({ title }: { title: string }) => (
     <View style={styles.sectionHeaderContainer}>
@@ -62,7 +61,7 @@ const SettingsRow = ({ item, isLast }: { item: SettingItem, isLast: boolean }) =
         <TouchableOpacity 
             style={styles.rowContainer} 
             onPress={item.onPress}
-            activeOpacity={item.isSwitch ? 1 : 0.6} // Disable opacity change for switches
+            activeOpacity={item.isSwitch ? 1 : 0.6}
             disabled={!item.onPress && !item.isSwitch}
         >
             <View style={styles.rowContent}>
@@ -79,8 +78,8 @@ const SettingsRow = ({ item, isLast }: { item: SettingItem, isLast: boolean }) =
                     {item.isSwitch ? (
                         <Switch 
                             value={item.value === true} 
-                            onValueChange={item.onPress} // Assuming onPress toggles logic
-                            trackColor={{ false: "#E5E5EA", true: "#000000" }} // Minimalist Black Toggle
+                            onValueChange={item.onPress} 
+                            trackColor={{ false: "#E5E5EA", true: "#000000" }} 
                             thumbColor={"#FFFFFF"}
                             ios_backgroundColor="#E5E5EA"
                         />
@@ -91,7 +90,7 @@ const SettingsRow = ({ item, isLast }: { item: SettingItem, isLast: boolean }) =
                                 <Text style={styles.rowValue}>{item.value}</Text>
                             )}
                             
-                            {/* Chevron (Only if not destructive and is clickable) */}
+                            {/* Chevron */}
                             {!item.isDestructive && item.onPress && (
                                 <Ionicons name="chevron-forward" size={16} color="#C7C7CC" style={{marginLeft: 8}} />
                             )}
@@ -100,138 +99,137 @@ const SettingsRow = ({ item, isLast }: { item: SettingItem, isLast: boolean }) =
                 </View>
             </View>
             
-            {/* Separator (Inset) */}
+            {/* Separator */}
             {!isLast && <View style={styles.separator} />}
         </TouchableOpacity>
     )
 }
 
-const GallerySettingsScreen = () => {
+// --- Main Screen ---
+
+const ProfileSettingsScreen = () => {
+   const navigation = useNavigation<any>();
    const [settingsData, setSettingsData] = useState<SettingsSection[] | null>(null);
-   const navigation = useNavigation()
-   const route = useRoute();
-   const { galleryId } = route.params as { galleryId: string }
 
-   const { gallery, isLoading } = useGallery(galleryId)
-   const { user } = useAuth()
-   const deleteGalleryMutation = useDeleteGallery()
-
-   const isOwner = gallery?.ownerId === user?.id
+   // Mock Data Fetching
+   const { user, isLoading } = useUser();
+   const { signOut, deleteAccount } = useAuth();
 
    // --- Actions ---
 
-   const confirmAndDeleteGallery = () => {
-      if (!gallery?.id) return;
+   const confirmSignOut = () => {
       Alert.alert(
-         'Delete Gallery',
-         'Are you sure? This will permanently delete this gallery and all photos.',
+         'Log Out',
+         'Are you sure you want to log out?',
+         [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+               text: 'Log Out', 
+               style: 'destructive',
+               onPress: () => signOut()
+            },
+         ]
+      );
+   };
+
+   const confirmDeleteAccount = () => {
+      Alert.alert(
+         'Delete Account',
+         'This action is irreversible. All your photos and data will be lost.',
          [
             { text: 'Cancel', style: 'cancel' },
             { 
                text: 'Delete', 
                style: 'destructive',
-               onPress: () => {
-                  deleteGalleryMutation.mutate(gallery.id, {
-                     onSuccess: () => (navigation as any).navigate('TabNavigator', { screen: 'Groups' }),
-                  })
-               }
+               onPress: () => deleteAccount()
             },
          ]
-      )
-   }
+      );
+   };
 
    // --- Data Builder ---
 
    useEffect(() => {
-      if (!gallery || !user) {
+      if (!user) {
          setSettingsData(null);
          return;
       }
 
       const data: SettingsSection[] = [];
 
-      // 1. Customization
-      const customizationSection: SettingsSection = {category: 'GENERAL', items: []}
-      customizationSection.items.push({
-         label: 'Name', 
-         value: gallery.name, 
-         onPress: () => (navigation as any).navigate("EditGalleryDetails", { galleryId: gallery.id }),
-      })
-
-      if (gallery.type == "EVENT") {
-         customizationSection.items.push({ label: 'Date', value: "Oct 24", onPress: () => {} }) // Mock data
-         customizationSection.items.push({ label: 'Location', value: "New York", onPress: () => {} })
-      }
-      if (customizationSection.items.length > 0) data.push(customizationSection);
-
-      // 2. Privacy
-      const privacySection: SettingsSection = { category: 'PRIVACY', items: [] };
-      if (gallery.type === 'EVENT') {
-        privacySection.items.push({ 
-         label: 'Share Event Link', 
-         value: 'Public', 
-         onPress: () => (navigation as any).navigate("EditShareEventLink", {galleryId: gallery.id})
-        });
-      }
-      if (isOwner) {
-         privacySection.items.push({
-            label: 'Require Approval',
-            value: formatJoinRequiresApproval(gallery.joinRequiresApproval), 
-            onPress: () => (navigation as any).navigate("EditRequireApproval", {galleryId: gallery.id})
-         });
-         privacySection.items.push({
-            label: 'Require Picture Review',
-            value: gallery.requirePictureReview ? 'On' : 'Off', 
-            onPress: () => (navigation as any).navigate("EditRequirePictureReview", {galleryId: gallery.id})
-         });
-         privacySection.items.push({
-            label: 'Pending Requests',
-            value: '0', 
-            onPress: () => (navigation as any).navigate("PendingRequests", {galleryId: gallery.id}),
-         })
-      }
-      if (privacySection.items.length > 0) data.push(privacySection);
-
-      // 3. Permissions
-      const permissionsSection: SettingsSection = { category: 'PERMISSIONS', items: [] };
-      permissionsSection.items.push({
-         label: 'Who can add members?',
-         value: formatAddPermission(gallery.addPermission), 
-         onPress: () => (navigation as any).navigate("EditAddMembersPermission", { galleryId: gallery.id })
+      // 1. Account
+      const accountSection: SettingsSection = {category: 'ACCOUNT', items: []};
+      accountSection.items.push({
+         label: 'Edit Profile', 
+         onPress: () => navigation.navigate("EditProfile"),
       });
-      permissionsSection.items.push({
-         label: 'Who can edit details?',
-         value: 'Admin', 
-         onPress: () => (navigation as any).navigate("EditPermission", { galleryId: gallery.id })
+      accountSection.items.push({
+         label: 'Email', 
+         value: user.email, 
+         onPress: () => navigation.navigate("ChangeEmail"),
       });
-      permissionsSection.items.push({
-         label: 'Who can delete photos?',
-         value: formatDeletePermission(gallery.deletePermission), 
-         onPress: () => (navigation as any).navigate("EditDeletePermission", { galleryId: gallery.id }),
+      accountSection.items.push({
+         label: 'Password', 
+         value: '••••••••', 
+         onPress: () => navigation.navigate("ChangePassword"),
       });
-      data.push(permissionsSection);
+      data.push(accountSection);
+
+      // 2. Preferences (Sync & Data - Important for Offline First)
+      const preferencesSection: SettingsSection = {category: 'PREFERENCES', items: []};
+      preferencesSection.items.push({
+         label: 'Notifications',
+         value: 'On', 
+         onPress: () => navigation.navigate("NotificationSettings"),
+      });
+      preferencesSection.items.push({
+         label: 'Sync over Cellular',
+         value: true, 
+         isSwitch: true,
+         onPress: () => console.log('Toggle Sync'),
+      });
+      preferencesSection.items.push({
+        label: 'Upload Quality',
+        value: 'High', 
+        onPress: () => navigation.navigate("DataUsageSettings"),
+     });
+      data.push(preferencesSection);
+
+      // 3. Support
+      const supportSection: SettingsSection = { category: 'SUPPORT', items: [] };
+      supportSection.items.push({
+         label: 'Help Center',
+         onPress: () => navigation.navigate("HelpCenter"),
+      });
+      supportSection.items.push({
+         label: 'Privacy Policy',
+         onPress: () => navigation.navigate("PrivacyPolicy"),
+      });
+      supportSection.items.push({
+        label: 'Terms of Service',
+        onPress: () => navigation.navigate("TermsOfService"),
+     });
+      data.push(supportSection);
+
+      // 4. Session
+      data.push({
+        category: 'SESSION',
+        items: [
+           { label: 'Log Out', onPress: confirmSignOut, isDestructive: true },
+        ],
+      });
       
-      // 4. Danger Zone
-      if (isOwner) {
-         data.push({
-            category: 'ADMIN',
-            items: [
-               { label: 'Transfer Ownership', onPress: () => {}, isDestructive: false },
-               { label: 'Delete Gallery', onPress: confirmAndDeleteGallery, isDestructive: true },
-            ],
-         });
-      } else {
-        data.push({
-          category: 'ACTIONS',
-          items: [
-             { label: 'Leave Gallery', onPress: () => {}, isDestructive: true },
-          ],
-       });
-      }
+      // 5. Danger Zone
+      data.push({
+         category: '',
+         items: [
+            { label: 'Delete Account', onPress: confirmDeleteAccount, isDestructive: true },
+         ],
+      });
 
       setSettingsData(data);
 
-   }, [gallery, user, isOwner, navigation]);
+   }, [user, navigation]);
 
    if (isLoading) {
       return (
@@ -244,23 +242,36 @@ const GallerySettingsScreen = () => {
    return (
       <View style={styles.container}>
          <SafeAreaView style={styles.safeArea}>
-
-
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                {settingsData && settingsData.map((section, sectionIndex) => (
-                <View key={sectionIndex} style={styles.sectionContainer}>
-                    {section.category && <SectionHeader title={section.category} />}
-                    <View style={styles.sectionList}>
-                        {section.items.map((item, itemIndex) => (
-                            <SettingsRow 
-                                key={itemIndex} 
-                                item={item} 
-                                isLast={itemIndex === section.items.length - 1} 
-                            />
-                        ))}
+                
+                {/* Profile Header Block */}
+                <View style={styles.profileHeader}>
+                    <View style={styles.avatarPlaceholder}>
+                         <Text style={styles.avatarInitials}>
+                             {user?.name?.substring(0,2).toUpperCase() || 'U'}
+                         </Text>
                     </View>
+                    <Text style={styles.profileName}>{user?.name}</Text>
+                    <Text style={styles.profileHandle}>@{user?.email?.split('@')[0]}</Text>
                 </View>
+
+                {/* Settings List */}
+                {settingsData && settingsData.map((section, sectionIndex) => (
+                    <View key={sectionIndex} style={styles.sectionContainer}>
+                        {section.category ? <SectionHeader title={section.category} /> : null}
+                        <View style={styles.sectionList}>
+                            {section.items.map((item, itemIndex) => (
+                                <SettingsRow 
+                                    key={itemIndex} 
+                                    item={item} 
+                                    isLast={itemIndex === section.items.length - 1} 
+                                />
+                            ))}
+                        </View>
+                    </View>
                 ))}
+
+                <Text style={styles.versionText}>Focal v1.0.2</Text>
             </ScrollView>
          </SafeAreaView>
       </View>
@@ -281,27 +292,43 @@ const styles = StyleSheet.create({
       alignItems: 'center',
       backgroundColor: '#FFFFFF'
    },
-   
-   // --- Navigation ---
-   navBar: {
-       flexDirection: 'row',
+
+   // --- Profile Header ---
+   profileHeader: {
        alignItems: 'center',
-       justifyContent: 'space-between',
-       paddingHorizontal: 24,
-       paddingVertical: 16,
+       paddingVertical: 32,
        borderBottomWidth: 1,
        borderBottomColor: '#F9F9F9',
+       marginBottom: 24,
    },
-   navTitle: {
-       fontSize: 16,
+   avatarPlaceholder: {
+       width: 80,
+       height: 80,
+       borderRadius: 40,
+       backgroundColor: '#F2F2F7',
+       alignItems: 'center',
+       justifyContent: 'center',
+       marginBottom: 16,
+   },
+   avatarInitials: {
+       fontSize: 28,
        fontWeight: '600',
-       color: '#000',
+       color: '#8E8E93',
+   },
+   profileName: {
+       fontSize: 22,
+       fontWeight: '700',
+       color: '#000000',
+       marginBottom: 4,
+   },
+   profileHandle: {
+       fontSize: 16,
+       color: '#8E8E93',
    },
 
    // --- Scroll Content ---
    scrollContent: {
       paddingBottom: 60,
-      paddingTop: 10,
    },
    sectionContainer: {
       marginBottom: 32,
@@ -325,7 +352,7 @@ const styles = StyleSheet.create({
 
    // --- Rows ---
    rowContainer: {
-       // We don't put paddingVertical here because we want the separator to act as the boundary
+       // Separator handles spacing
    },
    rowContent: {
        flexDirection: 'row',
@@ -356,9 +383,15 @@ const styles = StyleSheet.create({
    separator: {
        height: StyleSheet.hairlineWidth,
        backgroundColor: '#E5E5EA',
-       // Optional: Indent separator if you prefer that look
-       // marginLeft: 0, 
+   },
+
+   // --- Version Footer ---
+   versionText: {
+       textAlign: 'center',
+       color: '#D1D1D6',
+       fontSize: 12,
+       marginBottom: 40,
    },
 });
 
-export default GallerySettingsScreen;
+export default ProfileSettingsScreen;

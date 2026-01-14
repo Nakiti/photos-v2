@@ -4,49 +4,56 @@ import {
    StyleSheet,
    SafeAreaView,
    TextInput,
-   useWindowDimensions,
    FlatList,
    ActivityIndicator,
-   Text
+   Text,
+   TouchableOpacity
 } from 'react-native';
-import MemberItem from '../components/MemberItem';
-import { useMemberships } from '../../../hooks/useMembershipData';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useRoute } from '@react-navigation/native';
+
+// Hooks
+import { useMemberships } from '../../../hooks/useMembershipData';
+
+// Components
+import MemberItem from '../components/MemberItem';
 import UserInfoCard from '../../../components/UserInfoCard';
 import MembersListHeader from '../components/MembersListHeader';
-import { useGallery } from '../../../hooks/useGalleryData';
 
 type DisplayUser = {
    id: string;
    name: string;
    handle: string;
    avatarUri?: string;
-   bio?: string; // <-- Add fields the card needs
-   groups?: any[]; // <-- Add fields the card needs
+   role: string;
+   bio?: string; 
+   groups?: string[];
 };
 
 const GalleryMembersScreen = () => {
-   const [searchText, setSearchText] = useState('');
-   const { width } = useWindowDimensions();
-
    const route = useRoute();
    const { galleryId } = route.params as { galleryId: string };
 
-   const { acceptedMembers, isLoading, isSyncing, isError, error } = useMemberships(galleryId);
-   const [selectedMember, setSelectedMember] = useState<DisplayUser | null>(null)
+   const [searchText, setSearchText] = useState('');
+   const [selectedMember, setSelectedMember] = useState<DisplayUser | null>(null);
 
-   console.log("accepted members ", acceptedMembers)
+   const { acceptedMembers, isLoading } = useMemberships(galleryId);
 
+   // Map Data
    const displayMembers = useMemo(() => {
       return acceptedMembers.map(m => ({
          id: m.user.id,
-         name: m.user.name || m.user.handle,
+         name: m.user.name || m.user.handle || 'Unknown',
          handle: m.user.handle,
          avatarUri: m.user.avatarUrl,
-         role: m.membership.role
+         role: m.membership.role,
+         // Mock data for card example - connect real bio/groups if available in schema
+         bio: "No bio available.",
+         groups: ["React Native", "Photography"]
       }));
    }, [acceptedMembers]);
 
+   // Filter
    const filteredMembers = useMemo(() => {
       const q = searchText.trim().toLowerCase();
       if (!q) return displayMembers;
@@ -56,134 +63,136 @@ const GalleryMembersScreen = () => {
       );
    }, [displayMembers, searchText]);
 
+   // Handlers
    const handleMemberPress = (member: DisplayUser) => {
       setSelectedMember(member);
    };
 
-   const handleDismiss = () => {
-      setSelectedMember(null);
-   };
-
-   const handleInputsChange = (text: string) => {
-      setSearchText(text);
-   };
-
+   // Header Component
    const ListHeader = () => (
-      <View>
-         <TextInput
-            style={styles.searchBar}
-            placeholder="Search members"
-            placeholderTextColor="#999"
-            onChangeText={handleInputsChange}
-            value={searchText}
-         />
+      <View style={styles.headerContainer}>
+         <View style={styles.searchBar}>
+            <Ionicons name="search" size={18} color="#8E8E93" style={styles.searchIcon} />
+            <TextInput
+                style={styles.searchInput}
+                placeholder="Search members"
+                placeholderTextColor="#8E8E93"
+                value={searchText}
+                onChangeText={setSearchText}
+                autoCorrect={false}
+            />
+            {searchText.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchText('')}>
+                    <Ionicons name="close-circle" size={18} color="#C7C7CC" />
+                </TouchableOpacity>
+            )}
+         </View>
       </View>
    );
 
-
-   // if (isLoading) {
-   //    return (
-   //      <View style={[styles.container, styles.center]}>
-   //        <ActivityIndicator size="large" color="#0000ff" />
-   //      </View>
-   //    );
-   //  }
-  
-   //  if (isError) {
-   //    return (
-   //      <View style={[styles.container, styles.center]}>
-   //        <Text style={styles.errorText}>Failed to load groups: {error.message}</Text>
-   //      </View>
-   //    );
-   //  }
-
    return (
-      <SafeAreaView style={styles.container}>
-         <MembersListHeader galleryId={galleryId} />
-         <FlatList
-            data={filteredMembers}
-            keyExtractor={(item) => String(item.id)}
-            renderItem={({ item }) => (
-               <MemberItem name={item.name} role={item.role} handle={item.handle} avatarUri={item.avatarUri} onPressLeft={() => handleMemberPress(item)}/>
+      <View style={styles.root}>
+         {/* Assuming MembersListHeader is your nav header. If not, swap with DefaultHeader */}
+         
+         <SafeAreaView style={styles.safeArea}>
+            {isLoading ? (
+                <View style={styles.center}>
+                    <ActivityIndicator size="small" color="#000" />
+                </View>
+            ) : (
+                <FlatList
+                    data={filteredMembers}
+                    keyExtractor={(item) => String(item.id)}
+                    renderItem={({ item }) => (
+                        <MemberItem 
+                            name={item.name} 
+                            role={item.role} 
+                            handle={item.handle} 
+                            avatarUri={item.avatarUri} 
+                            onPressLeft={() => handleMemberPress(item)}
+                        />
+                    )}
+                    ListHeaderComponent={ListHeader}
+                    contentContainerStyle={styles.listContent}
+                    keyboardShouldPersistTaps="handled"
+                    ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                            <Text style={styles.emptyText}>No members found.</Text>
+                        </View>
+                    }
+                />
             )}
-            ListHeaderComponent={ListHeader}
-            contentContainerStyle={[
-               styles.scrollContainer,
-               width < 400 ? styles.smallScreenPadding : {},
-            ]}
-            keyboardShouldPersistTaps="handled"
-         />
-         {selectedMember && (
-            <UserInfoCard
-               onDismiss={handleDismiss}
-               profilePicture={selectedMember.avatarUri}
-               name={selectedMember.name}
-               handle={selectedMember.handle}
-               bio={"No bio available."} // Pass data
-               groups={[]} // Pass data
-            />
-         )}
-      </SafeAreaView>
+
+            {/* Modal Overlay */}
+            {selectedMember && (
+                <UserInfoCard
+                    onDismiss={() => setSelectedMember(null)}
+                    profilePicture={selectedMember.avatarUri}
+                    name={selectedMember.name}
+                    handle={selectedMember.handle}
+                    bio={selectedMember.bio}
+                    groups={selectedMember.groups}
+                />
+            )}
+         </SafeAreaView>
+      </View>
    );
 };
 
+export default GalleryMembersScreen;
+
 const styles = StyleSheet.create({
-   container: {
+   root: {
       flex: 1,
-      backgroundColor: '#fff',
+      backgroundColor: '#FFFFFF',
    },
-   scrollContainer: {
-      paddingHorizontal: 20,
-      paddingTop: 6,
-      paddingBottom: 40,
+   safeArea: {
+       flex: 1,
    },
-   smallScreenPadding: {
-      paddingHorizontal: 14,
+   center: {
+       flex: 1, 
+       justifyContent: 'center', 
+       alignItems: 'center'
    },
-   title: {
-      fontSize: 22,
-      fontWeight: '700',
-      color: '#111',
-      marginBottom: 16,
+   
+   // Search Header
+   headerContainer: {
+       paddingHorizontal: 16,
+       paddingVertical: 12,
+       backgroundColor: '#FFFFFF',
+       borderBottomWidth: 1,
+       borderBottomColor: '#F2F2F7',
    },
    searchBar: {
-      backgroundColor: '#f1f1f1',
-      borderRadius: 10,
-      paddingVertical: 10,
-      paddingHorizontal: 14,
-      fontSize: 15,
-      color: '#333',
-      marginBottom: 14,
-      shadowColor: '#000',
-      shadowOpacity: 0.04,
-      shadowOffset: { width: 0, height: 1 },
-      shadowRadius: 2,
-      elevation: 1,
+       flexDirection: 'row',
+       alignItems: 'center',
+       backgroundColor: '#F2F2F7', // System Gray 6
+       borderRadius: 10,
+       height: 40,
+       paddingHorizontal: 12,
    },
-   inviteButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      alignSelf: 'center',
-      backgroundColor: '#fff',
-      borderWidth: 1,
-      borderColor: '#007AFF',
-      borderRadius: 20,
-      paddingVertical: 8,
-      paddingHorizontal: 16,
-      marginBottom: 24,
-      shadowColor: '#000',
-      shadowOpacity: 0.05,
-      shadowOffset: { width: 0, height: 1 },
-      shadowRadius: 2,
-      elevation: 1,
+   searchIcon: {
+       marginRight: 8,
    },
-   inviteButtonText: {
-      fontSize: 14,
-      fontWeight: '500',
-      color: '#007AFF',
-      marginLeft: 6,
-   }
-});
+   searchInput: {
+       flex: 1,
+       height: '100%',
+       fontSize: 16,
+       color: '#000',
+   },
 
-export default GalleryMembersScreen;
+   // List
+   listContent: {
+       paddingBottom: 40,
+   },
+   
+   // Empty State
+   emptyContainer: {
+       paddingTop: 60,
+       alignItems: 'center',
+   },
+   emptyText: {
+       fontSize: 16,
+       color: '#8E8E93',
+   },
+});

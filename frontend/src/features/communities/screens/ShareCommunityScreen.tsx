@@ -6,255 +6,253 @@ import {
   TouchableOpacity, 
   Share, 
   Alert, 
-  Dimensions 
+  Dimensions, 
+  SafeAreaView
 } from 'react-native';
-import { useRoute, useNavigation } from '@react-navigation/native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRoute, useNavigation, CommonActions } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { useGallery } from '../../../hooks/useGalleryData';
+import QRCode from "react-native-qrcode-svg";
 
-// Reusing your design system colors
+// Hooks
+import { useCommunity } from '../../../hooks/useCommunityData';
+
+// Components
+
+// --- Theme ---
 const COLORS = {
   background: '#FFFFFF',
-  cardBg: '#F2F2F7', // System Gray 6
   textPrimary: '#000000',
   textSecondary: '#8E8E93',
-  tint: '#007AFF',
+  cardBorder: '#F2F2F7',
   buttonPrimary: '#000000',
-  buttonPrimaryText: '#FFFFFF',
-  buttonSecondary: '#E5E5EA',
-  buttonSecondaryText: '#000000',
+  buttonText: '#FFFFFF',
+  secondaryBtnBg: '#F2F2F7',
 };
 
 const { width } = Dimensions.get('window');
-const QR_SIZE = width * 0.6; // Responsive QR size
+const QR_SIZE = width * 0.6; 
 
 const ShareCommunityScreen = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { galleryId } = (route.params || {}) as { galleryId?: string };
-  const { gallery } = useGallery(galleryId || null);
+  const { communityId } = (route.params || {}) as { communityId?: string };
+  
+  const { community } = useCommunity(communityId || null);
 
-  const inviteLink = useMemo(() => {
-    return (gallery as any)?.shareableLink || 'https://focal.app/join/xyz';
-  }, [gallery]);
-
+  // --- Logic ---
+  const inviteLink = `https://focal.app/community/${communityId}`;
+  
+  // Generate a mock PIN based on ID if real one doesn't exist yet
   const pin = useMemo(() => {
-    if (!galleryId) return '76867'; // Fallback for preview
-    const base = galleryId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    if (!communityId) return '----'; 
+    const base = communityId.replace(/[^0-9]/g, '');
     return base.slice(0, 5).padEnd(5, '0');
-  }, [galleryId]);
+  }, [communityId]);
 
   const onShare = async () => {
     try {
       const message = [
-        'Join my community on Focal:',
-        inviteLink ? `Link: ${inviteLink}` : undefined,
-        pin ? `PIN: ${pin}` : undefined,
-      ].filter(Boolean).join('\n');
+        `Join "${community?.name || 'my community'}" on Focal!`,
+        inviteLink,
+        `PIN: ${pin}`,
+      ].join('\n');
+      
       await Share.share({ message });
     } catch (e: any) {
-      Alert.alert('Share failed', e?.message ?? 'Please try again.');
+      console.error("Share failed", e);
     }
   };
 
-  const onContinue = () => {
-    navigation.navigate('Community');
+  const onDone = () => {
+    // Reset stack to ensure user cannot "go back" into the creation flow
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          { 
+            name: 'MainTabs', 
+            state: { routes: [{ name: 'Communities' }] }
+          },
+        ],
+      })
+    );
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
-      <View style={styles.container}>
-        
-        {/* --- Header --- */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Invite Members</Text>
-          <Text style={styles.headerSubtitle}>
-            Share this QR code or PIN to let friends join instantly.
-          </Text>
-        </View>
+    <View style={styles.root}>
 
-        {/* --- The "Pass" Card --- */}
-        <View style={styles.card}>
-          {/* QR Placeholder */}
-          <View style={styles.qrContainer}>
-            {/* Replace this View with <QRCode value={inviteLink} /> when ready */}
-            <Ionicons name="qr-code-outline" size={QR_SIZE * 0.6} color={COLORS.textPrimary} />
+      <SafeAreaView style={styles.safeArea}>
+          <View style={styles.container}>
+            
+            {/* 1. Success Message */}
+            <View style={styles.textContainer}>
+              <Text style={styles.subHeader}>COMMUNITY CREATED!</Text>
+              <Text style={styles.communityName} numberOfLines={2}>
+                {community?.name || "Loading..."}
+              </Text>
+            </View>
+
+            {/* 2. QR Card */}
+            <View style={styles.card}>
+                
+                {/* QR Code */}
+                <View style={styles.qrWrapper}>
+                    <QRCode 
+                        value={inviteLink} 
+                        size={QR_SIZE} 
+                        color="black" 
+                        backgroundColor="white" 
+                    />
+                </View>
+
+                {/* PIN Display */}
+                <View style={styles.pinContainer}>
+                    <Text style={styles.pinLabel}>ENTRY PIN</Text>
+                    <Text style={styles.pinValue}>{pin}</Text>
+                </View>
+
+            </View>
+
+            {/* 3. Share Action */}
+            <TouchableOpacity 
+                style={styles.shareBtn} 
+                onPress={onShare} 
+                activeOpacity={0.7}
+            >
+                <Ionicons name="share-outline" size={20} color="#000" />
+                <Text style={styles.shareText}>Share Invite</Text>
+            </TouchableOpacity>
+
           </View>
 
-          {/* PIN Section */}
-          <View style={styles.pinSection}>
-            <Text style={styles.pinLabel}>ENTRY PIN</Text>
-            <Text style={styles.pinValue}>{pin}</Text>
+          {/* 4. Footer */}
+          <View style={styles.footer}>
+            <TouchableOpacity 
+                style={styles.doneBtn} 
+                onPress={onDone} 
+                activeOpacity={0.9}
+            >
+                <Text style={styles.doneText}>Go to Community</Text>
+                <Ionicons name="arrow-forward" size={18} color="#FFF" />
+            </TouchableOpacity>
           </View>
-
-          {/* Link Section */}
-          {inviteLink ? (
-             <TouchableOpacity style={styles.linkPill} onPress={onShare} activeOpacity={0.7}>
-               <Ionicons name="link" size={14} color={COLORS.textSecondary} style={{marginRight: 6}}/>
-               <Text style={styles.linkText} numberOfLines={1} ellipsizeMode="middle">
-                 {inviteLink.replace('https://', '')}
-               </Text>
-             </TouchableOpacity>
-          ) : null}
-        </View>
-
-        {/* --- Action Buttons --- */}
-        <View style={styles.footer}>
-          
-          {/* Share Button (Secondary) */}
-          <TouchableOpacity 
-            style={styles.shareBtn} 
-            onPress={onShare} 
-            activeOpacity={0.8}
-          >
-            <Ionicons name="share-outline" size={22} color={COLORS.buttonSecondaryText} />
-            <Text style={styles.shareText}>Share Invite</Text>
-          </TouchableOpacity>
-
-          {/* Continue Button (Primary) */}
-          <TouchableOpacity 
-            style={styles.continueBtn} 
-            onPress={onContinue} 
-            activeOpacity={0.8}
-          >
-            <Text style={styles.continueText}>Done</Text>
-          </TouchableOpacity>
-        </View>
-
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
+  root: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  safeArea: {
+    flex: 1,
   },
   container: {
     flex: 1,
     paddingHorizontal: 24,
     alignItems: 'center',
+    paddingTop: 20,
   },
   
-  // Header
-  header: {
-    marginTop: 20,
-    marginBottom: 30,
+  // --- Text Header ---
+  textContainer: {
     alignItems: 'center',
+    marginBottom: 32,
   },
-  headerTitle: {
-    fontSize: 28,
+  subHeader: {
+    fontSize: 12,
     fontWeight: '700',
-    color: COLORS.textPrimary,
-    marginBottom: 8,
-    letterSpacing: -0.5,
-  },
-  headerSubtitle: {
-    fontSize: 15,
     color: COLORS.textSecondary,
+    letterSpacing: 1.5,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  communityName: {
+    fontSize: 28,
+    fontWeight: '800', // Heavy bold
+    color: COLORS.textPrimary,
     textAlign: 'center',
-    maxWidth: '80%',
-    lineHeight: 20,
+    lineHeight: 34,
   },
 
-  // The Card (Pass)
+  // --- Card ---
   card: {
     width: '100%',
-    backgroundColor: COLORS.cardBg,
-    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 30,
     paddingVertical: 32,
     alignItems: 'center',
-    // Subtle shadow
+    // Modern Drop Shadow
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    marginBottom: 32,
   },
-  qrContainer: {
-    width: QR_SIZE,
-    height: QR_SIZE,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-    // Shadow for the QR specifically (makes it pop off the card)
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+  qrWrapper: {
+      marginBottom: 24,
   },
   
-  // PIN Styling
-  pinSection: {
+  // --- PIN Section ---
+  pinContainer: {
     alignItems: 'center',
-    marginBottom: 20,
+    gap: 4,
   },
   pinLabel: {
     fontSize: 11,
     fontWeight: '700',
     color: COLORS.textSecondary,
     letterSpacing: 1,
-    marginBottom: 4,
     textTransform: 'uppercase',
   },
   pinValue: {
-    fontSize: 34,
-    fontWeight: '800', // Heavy weight for numbers looks great on iOS
+    fontSize: 32,
+    fontWeight: '800',
     color: COLORS.textPrimary,
-    letterSpacing: 4, // Wide tracking for PINs
-    fontVariant: ['tabular-nums'], // Monospace numbers if font supports it
+    letterSpacing: 6, // Wide spacing for PIN
+    fontVariant: ['tabular-nums'],
   },
 
-  // Link Pill
-  linkPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#E5E5EA80', // Transparent gray
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 100,
-    maxWidth: '80%',
-  },
-  linkText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontWeight: '500',
-  },
-
-  // Footer Actions
-  footer: {
-    width: '100%',
-    marginTop: 'auto',
-    marginBottom: 10,
-    gap: 12,
-  },
+  // --- Share Button ---
   shareBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.buttonSecondary,
-    paddingVertical: 16,
-    borderRadius: 14,
     gap: 8,
+    backgroundColor: COLORS.secondaryBtnBg,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 20,
   },
   shareText: {
-    color: COLORS.buttonSecondaryText,
-    fontSize: 17,
+    color: COLORS.textPrimary,
+    fontSize: 15,
     fontWeight: '600',
   },
-  continueBtn: {
+
+  // --- Footer ---
+  footer: {
+    paddingHorizontal: 24,
+    paddingBottom: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F2F2F7',
+    paddingTop: 16,
+  },
+  doneBtn: {
     backgroundColor: COLORS.buttonPrimary,
-    paddingVertical: 16,
-    borderRadius: 14,
+    height: 56,
+    borderRadius: 28,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 8,
   },
-  continueText: {
-    color: COLORS.buttonPrimaryText,
+  doneText: {
+    color: COLORS.buttonText,
     fontSize: 17,
     fontWeight: '700',
   },

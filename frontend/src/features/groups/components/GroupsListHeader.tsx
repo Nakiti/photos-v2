@@ -17,12 +17,12 @@ const GroupsHeader = () => {
                <View style={styles.actionsRow}>
                   <TouchableOpacity
                      style={styles.circleButton}
-                     onPress={() => (navigation as any).navigate("GroupFlow", {screen: "JoinEvent"})}
+                     onPress={() => (navigation as any).navigate("GroupFlow", {screen: "NotificationsHub"})}
                      activeOpacity={0.7}
                      accessibilityRole="button"
                      accessibilityLabel="Scan QR Code"
                   >
-                     <Ionicons name="scan-outline" size={20} color="#000" />
+                     <Ionicons name="notifications-outline" size={20} color="#000" />
                   </TouchableOpacity>
 
                   <TouchableOpacity

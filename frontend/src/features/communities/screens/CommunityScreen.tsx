@@ -108,8 +108,11 @@ const CommunityScreen = () => {
             </TouchableOpacity>
             
             <View style={styles.headerActions}>
-                <TouchableOpacity style={styles.glassButton} onPress={() => {}}>
+                <TouchableOpacity style={styles.glassButton} onPress={() => navigation.navigate("ShareCommunity")}>
                     <Ionicons name="share-outline" size={20} color="#FFF" />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.glassButton} onPress={() => navigation.navigate("CommunityMembers")}>
+                    <Ionicons name="people-outline" size={20} color="#FFF" />
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.glassButton} onPress={() => navigation.navigate("CommunityFlow", {
                     screen: "CommunitySettings",

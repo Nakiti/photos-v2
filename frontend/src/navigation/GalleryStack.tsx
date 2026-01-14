@@ -58,7 +58,7 @@ const GalleryStack = () => {
                 name="GalleryMembers" 
                 component={GalleryMembersScreen} 
                 options={{
-                    headerShown: false,
+                    headerShown: true,
                     header: () => <DefaultHeader title="Members"/>
                 }}
             />

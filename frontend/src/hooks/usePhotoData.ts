@@ -289,6 +289,7 @@ export const usePhotoUploadQueue = () => {
       onError: async (error, photo) => {
         console.error(`Failed to upload photo ${photo.id}:`, error);
         // Status already set in mutationFn, just log
+      }
     });
   
     // 3. Process the queue when it changes

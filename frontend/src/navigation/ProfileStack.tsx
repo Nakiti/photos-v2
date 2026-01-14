@@ -1,10 +1,12 @@
 import {createNativeStackNavigator} from "@react-navigation/native-stack";
-import ProfileScreen from "../features/profile/ProfileScreen";
-import FriendsScreen from "../features/profile/FriendsScreen";
-import EditProfileScreen from "../features/profile/EditProfileScreen";
-import ProfileSettingsScreen from "../features/profile/ProfileSettingsScreen";
+import ProfileScreen from "../features/profile/screens/ProfileScreen";
+import FriendsScreen from "../features/profile/screens/FriendsScreen";
+import EditProfileScreen from "../features/profile/screens/EditProfileScreen";
+import ProfileSettingsScreen from "../features/profile/screens/ProfileSettingsScreen";
 import DefaultHeader from "../components/DefaultHeader";
-import AddFriendsScreen from "../features/profile/AddFriendsScreen";
+import AddFriendsScreen from "../features/profile/screens/AddFriendsScreen";
+import DataSyncSettingsScreen from "../features/profile/screens/ProfileSettings/DataSyncSettingsScreen";
+import NotificationSettingsScreen from "../features/profile/screens/ProfileSettings/NotificationSettingsScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -44,6 +46,20 @@ const ProfileStack = () => {
                 component={ProfileSettingsScreen} 
                 options={{
                     header: () => <DefaultHeader title="Profile Settings" />
+                }}
+            />
+            <Stack.Screen 
+                name="NotificationSettings"
+                component={NotificationSettingsScreen}
+                options={{
+                    header: () => <DefaultHeader title="Notifications" />
+                }}
+            />
+            <Stack.Screen 
+                name="DataSyncSettings"
+                component={DataSyncSettingsScreen}
+                options={{
+                    header: () => <DefaultHeader title="Data Sync"/>
                 }}
             />
         </Stack.Navigator>
