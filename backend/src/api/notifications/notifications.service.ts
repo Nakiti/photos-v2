@@ -3,8 +3,33 @@ import { PrismaClient } from '@prisma/client';
 import { photoQueue } from '../../../libs/queue.js';
 import { redis } from '../../../libs/redis.js';
 
+type NotificationType = 'LIKE' | 'COMMENT' | 'INVITE' | 'SYSTEM';
+
 const expo = new Expo();
 const prisma = new PrismaClient();
+
+/**
+ * Creates a notification record in the database.
+ */
+export async function createNotificationRecord(
+  recipientId: string,
+  actorId: string,
+  type: NotificationType,
+  data?: Record<string, unknown>,
+  referenceId?: string,
+  referenceType?: string
+) {
+  return await prisma.notification.create({
+    data: {
+      recipientId,
+      actorId,
+      type,
+      data: data ? (data as any) : null,
+      referenceId: referenceId || null,
+      referenceType: referenceType || null,
+    },
+  });
+}
 
 /**
  * Sends push notifications via Expo and returns a list of invalid tokens
@@ -99,4 +124,106 @@ export async function smartThrottleNewPhoto(
       await redis.expire(bufferKey, 3600);
     }
   }
+}
+
+/**
+ * Get notifications for a user with pagination and filtering
+ */
+export async function getNotificationsForUser(
+  userId: string,
+  filters: {
+    limit?: number;
+    offset?: number;
+    isRead?: boolean;
+  }
+) {
+  const { limit = 20, offset = 0, isRead } = filters;
+
+  const where: any = {
+    recipientId: userId,
+  };
+
+  if (isRead !== undefined) {
+    where.isRead = isRead;
+  }
+
+  const [notifications, total] = await Promise.all([
+    prisma.notification.findMany({
+      where,
+      include: {
+        actor: {
+          select: {
+            id: true,
+            name: true,
+            handle: true,
+            avatarUrl: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: limit,
+      skip: offset,
+    }),
+    prisma.notification.count({ where }),
+  ]);
+
+  return {
+    notifications,
+    pagination: {
+      total,
+      limit,
+      offset,
+      hasMore: offset + notifications.length < total,
+    },
+  };
+}
+
+/**
+ * Mark a notification as read
+ */
+export async function markAsRead(userId: string, notificationId: string) {
+  const notification = await prisma.notification.findFirst({
+    where: {
+      id: notificationId,
+      recipientId: userId,
+    },
+  });
+
+  if (!notification) {
+    return null;
+  }
+
+  return await prisma.notification.update({
+    where: { id: notificationId },
+    data: { isRead: true },
+    include: {
+      actor: {
+        select: {
+          id: true,
+          name: true,
+          handle: true,
+          avatarUrl: true,
+        },
+      },
+    },
+  });
+}
+
+/**
+ * Mark all notifications as read for a user
+ */
+export async function markAllAsRead(userId: string) {
+  const result = await prisma.notification.updateMany({
+    where: {
+      recipientId: userId,
+      isRead: false,
+    },
+    data: {
+      isRead: true,
+    },
+  });
+
+  return result.count;
 }

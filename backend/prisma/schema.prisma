@@ -28,6 +28,8 @@ model User {
   receivedFriendRequests Friendship[] @relation("ReceivedFriendRequests")
   ownedCommunities    Community[]           @relation("OwnedCommunities")
   communityMemberships CommunityMembership[]
+  receivedNotifications Notification[] @relation("ReceivedNotifications")
+  sentNotifications Notification[] @relation("SentNotifications")
 }
 
 model Gallery {
@@ -239,5 +241,33 @@ enum FriendshipStatus {
   PENDING
   ACCEPTED
   BLOCKED
+}
+
+enum NotificationType {
+  LIKE
+  COMMENT
+  INVITE
+  SYSTEM
+}
+
+model Notification {
+  id            String          @id @default(uuid())
+  recipientId   String
+  actorId       String
+  type          NotificationType
+  referenceId   String?
+  referenceType String? // 'Photo' | 'Gallery' | etc.
+  data          Json? // JSONB field for snapshots: thumbnail_url, gallery_name, preview_text
+  isRead        Boolean         @default(false)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  recipient User @relation("ReceivedNotifications", fields: [recipientId], references: [id], onDelete: Cascade)
+  actor     User @relation("SentNotifications", fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId])
+  @@index([actorId])
+  @@index([isRead])
+  @@index([createdAt])
 }
 

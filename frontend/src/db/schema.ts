@@ -1,8 +1,8 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const mySchema = appSchema({
-  // Version 25: Added photo_attempts table, rate limit fields to galleries, retry_after to photos
-  version: 25,
+  // Version 26: Added notifications table
+  version: 26,
   tables: [
     tableSchema({
       name: 'users',
@@ -133,6 +133,20 @@ export const mySchema = appSchema({
         { name: 'photo_id', type: 'string', isOptional: true, isIndexed: true },
         { name: 'server_rejected', type: 'boolean', isOptional: true },
         { name: 'retry_after', type: 'number', isOptional: true },
+      ],
+    }),
+    tableSchema({
+      name: 'notifications',
+      columns: [
+        { name: 'recipient_id', type: 'string', isIndexed: true },
+        { name: 'actor_id', type: 'string', isIndexed: true },
+        { name: 'type', type: 'string', isIndexed: true }, // 'LIKE', 'COMMENT', 'INVITE', 'SYSTEM'
+        { name: 'reference_id', type: 'string', isOptional: true },
+        { name: 'reference_type', type: 'string', isOptional: true },
+        { name: 'data', type: 'string', isOptional: true }, // JSON string
+        { name: 'is_read', type: 'boolean', isIndexed: true },
+        { name: 'created_at', type: 'number', isIndexed: true },
+        { name: 'updated_at', type: 'number' },
       ],
     }),
   ],

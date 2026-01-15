@@ -1,9 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { 
   View, 
   Text, 
   StyleSheet, 
-  FlatList, 
   TouchableOpacity, 
   SafeAreaView, 
   ActivityIndicator,
@@ -12,92 +11,73 @@ import {
 import FastImage from 'react-native-fast-image';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
+import { useNotifications, useMarkNotificationAsRead, EnrichedNotification } from '../../../hooks/useNotificationData';
+import Notification from '../../../db/models/Notification';
 
 // --- Types ---
-type NotificationType = 'LIKE' | 'COMMENT' | 'INVITE' | 'REQUEST' | 'SYSTEM';
+type NotificationType = 'LIKE' | 'COMMENT' | 'INVITE' | 'SYSTEM';
 
-interface Notification {
-    id: string;
-    type: NotificationType;
-    actor: {
-        id: string;
-        name: string;
-        avatarUrl?: string;
-    };
-    context?: {
-        text?: string; // e.g., comment text or gallery name
-        thumbnailUrl?: string; // photo thumbnail
-    };
-    timestamp: string;
-    isRead: boolean;
-}
+// --- Helpers ---
+const formatTimestamp = (timestamp: number): string => {
+  const now = Date.now();
+  const diff = now - timestamp;
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
 
-// --- Mock Data ---
-const MOCK_NOTIFICATIONS: Notification[] = [
-    {
-        id: '1',
-        type: 'INVITE',
-        actor: { id: 'u1', name: 'Sarah Jenkins', avatarUrl: 'https://i.pravatar.cc/150?u=a042581f4e29026704d' },
-        context: { text: 'Summer Trip 2024' },
-        timestamp: '2m',
-        isRead: false,
-    },
-    {
-        id: '2',
-        type: 'LIKE',
-        actor: { id: 'u2', name: 'Mike Ross', avatarUrl: 'https://i.pravatar.cc/150?u=a042581f4e29026024d' },
-        context: { thumbnailUrl: 'https://picsum.photos/200' },
-        timestamp: '1h',
-        isRead: false,
-    },
-    {
-        id: '3',
-        type: 'COMMENT',
-        actor: { id: 'u3', name: 'Jessica Pearson', avatarUrl: 'https://i.pravatar.cc/150?u=a042581f4e29026703d' },
-        context: { text: 'This shot is incredible! 📸', thumbnailUrl: 'https://picsum.photos/201' },
-        timestamp: '3h',
-        isRead: true,
-    },
-    {
-        id: '4',
-        type: 'REQUEST',
-        actor: { id: 'u4', name: 'Louis Litt' },
-        context: { text: 'NYC Street Photography' }, // Gallery name they want to join
-        timestamp: '1d',
-        isRead: true,
-    },
-];
+  if (days > 0) return `${days}d`;
+  if (hours > 0) return `${hours}h`;
+  if (minutes > 0) return `${minutes}m`;
+  return 'now';
+};
 
 // --- Components ---
 
-const NotificationItem = ({ item }: { item: Notification }) => {
-    const isInvite = item.type === 'INVITE' || item.type === 'REQUEST';
+const NotificationItem = ({ item }: { item: EnrichedNotification }) => {
+    const { mutate: markAsRead } = useMarkNotificationAsRead();
+    const notification = item.notification;
+    const actor = item.actor;
+    const isInvite = notification.type === 'INVITE';
+    
+    // Parse notification data
+    const notificationData = notification.data ? JSON.parse(notification.data) : null;
+    const galleryName = notificationData?.galleryName;
+    const previewText = notificationData?.previewText;
+    const thumbnailUrl = notificationData?.thumbnailUrl;
+
+    const handlePress = () => {
+        if (!notification.isRead) {
+            markAsRead(notification.id);
+        }
+    };
     
     // Helper to render content based on type
     const renderContent = () => {
-        switch (item.type) {
+        const actorName = actor.name || actor.handle || 'Someone';
+        switch (notification.type) {
             case 'LIKE':
                 return (
                     <Text style={styles.text} numberOfLines={2}>
-                        <Text style={styles.name}>{item.actor.name}</Text> liked your photo.
+                        <Text style={styles.name}>{actorName}</Text> liked your photo.
                     </Text>
                 );
             case 'COMMENT':
                 return (
                     <Text style={styles.text} numberOfLines={2}>
-                        <Text style={styles.name}>{item.actor.name}</Text> commented: <Text style={styles.commentText}>"{item.context?.text}"</Text>
+                        <Text style={styles.name}>{actorName}</Text> commented: <Text style={styles.commentText}>"{previewText || '...'}"</Text>
                     </Text>
                 );
             case 'INVITE':
                 return (
                     <Text style={styles.text} numberOfLines={2}>
-                        <Text style={styles.name}>{item.actor.name}</Text> invited you to join <Text style={styles.galleryName}>{item.context?.text}</Text>.
+                        <Text style={styles.name}>{actorName}</Text> invited you to join <Text style={styles.galleryName}>{galleryName || 'a gallery'}</Text>.
                     </Text>
                 );
-            case 'REQUEST':
+            case 'SYSTEM':
                 return (
                     <Text style={styles.text} numberOfLines={2}>
-                        <Text style={styles.name}>{item.actor.name}</Text> requested to join <Text style={styles.galleryName}>{item.context?.text}</Text>.
+                        {previewText || 'New notification.'}
                     </Text>
                 );
             default:
@@ -105,33 +85,41 @@ const NotificationItem = ({ item }: { item: Notification }) => {
         }
     };
 
+    const actorName = actor.name || actor.handle || 'Someone';
+    const avatarUrl = actor.avatarUrl;
+    const initials = actorName[0]?.toUpperCase() || '?';
+
     return (
-        <TouchableOpacity style={[styles.itemContainer, !item.isRead && styles.unreadContainer]} activeOpacity={0.7}>
+        <TouchableOpacity 
+            style={[styles.itemContainer, !notification.isRead && styles.unreadContainer]} 
+            activeOpacity={0.7}
+            onPress={handlePress}
+        >
             {/* 1. Avatar */}
             <View style={styles.left}>
-                {item.actor.avatarUrl ? (
+                {avatarUrl ? (
                     <FastImage 
-                        source={{ uri: item.actor.avatarUrl }} 
+                        source={{ uri: avatarUrl }} 
                         style={styles.avatar} 
                     />
                 ) : (
                     <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                        <Text style={styles.initials}>{item.actor.name[0]}</Text>
+                        <Text style={styles.initials}>{initials}</Text>
                     </View>
                 )}
                 
                 {/* Type Badge (Icon overlay) */}
-                <View style={[styles.iconBadge, { backgroundColor: getIconColor(item.type) }]}>
-                    <Ionicons name={getIconName(item.type)} size={10} color="#FFF" />
+                <View style={[styles.iconBadge, { backgroundColor: getIconColor(notification.type) }]}>
+                    <Ionicons name={getIconName(notification.type)} size={10} color="#FFF" />
                 </View>
             </View>
 
             {/* 2. Content */}
             <View style={styles.center}>
                 {renderContent()}
-                <Text style={styles.timestamp}>{item.timestamp}</Text>
+                <Text style={styles.timestamp}>{formatTimestamp(notification.createdAt)}</Text>
                 
-                {/* Action Buttons for Invites/Requests */}
+                {/* Action Buttons for Invites */}
                 {isInvite && (
                     <View style={styles.actionsRow}>
                         <TouchableOpacity style={styles.acceptBtn}>
@@ -146,12 +134,12 @@ const NotificationItem = ({ item }: { item: Notification }) => {
 
             {/* 3. Right Side (Thumbnail or Dot) */}
             <View style={styles.right}>
-                {item.context?.thumbnailUrl ? (
+                {thumbnailUrl ? (
                     <FastImage 
-                        source={{ uri: item.context.thumbnailUrl }} 
+                        source={{ uri: thumbnailUrl }} 
                         style={styles.thumbnail} 
                     />
-                ) : !item.isRead && !isInvite ? (
+                ) : !notification.isRead && !isInvite ? (
                     <View style={styles.blueDot} />
                 ) : null}
             </View>
@@ -165,7 +153,7 @@ const getIconName = (type: NotificationType) => {
         case 'LIKE': return 'heart';
         case 'COMMENT': return 'chatbubble';
         case 'INVITE': return 'people';
-        case 'REQUEST': return 'key';
+        case 'SYSTEM': return 'notifications';
         default: return 'notifications';
     }
 };
@@ -175,7 +163,7 @@ const getIconColor = (type: NotificationType) => {
         case 'LIKE': return '#FF2D55'; // Red/Pink
         case 'COMMENT': return '#34C759'; // Green
         case 'INVITE': return '#007AFF'; // Blue
-        case 'REQUEST': return '#FF9500'; // Orange
+        case 'SYSTEM': return '#8E8E93'; // Gray
         default: return '#8E8E93';
     }
 };
@@ -183,24 +171,40 @@ const getIconColor = (type: NotificationType) => {
 // --- Main Screen ---
 const NotificationHubScreen = () => {
     const navigation = useNavigation();
+    const { notifications, isLoading, isSyncing } = useNotifications();
     
     // Grouping Logic (Simple Split)
-    const newNotifications = MOCK_NOTIFICATIONS.filter(n => !n.isRead);
-    const earlierNotifications = MOCK_NOTIFICATIONS.filter(n => n.isRead);
+    const newNotifications = useMemo(() => 
+        notifications.filter(n => !n.notification.isRead),
+        [notifications]
+    );
+    const earlierNotifications = useMemo(() => 
+        notifications.filter(n => n.notification.isRead),
+        [notifications]
+    );
+
+    if (isLoading) {
+        return (
+            <View style={styles.root}>
+                <SafeAreaView style={styles.safeArea}>
+                    <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="large" color="#007AFF" />
+                    </View>
+                </SafeAreaView>
+            </View>
+        );
+    }
 
     return (
         <View style={styles.root}>
             <SafeAreaView style={styles.safeArea}>
-                
-
                 <ScrollView contentContainerStyle={styles.scrollContent}>
-                    
                     {/* Section: NEW */}
                     {newNotifications.length > 0 && (
                         <View style={styles.section}>
                             <Text style={styles.sectionTitle}>New</Text>
                             {newNotifications.map(item => (
-                                <NotificationItem key={item.id} item={item} />
+                                <NotificationItem key={item.notification.id} item={item} />
                             ))}
                         </View>
                     )}
@@ -210,18 +214,17 @@ const NotificationHubScreen = () => {
                         <View style={styles.section}>
                             <Text style={styles.sectionTitle}>Earlier</Text>
                             {earlierNotifications.map(item => (
-                                <NotificationItem key={item.id} item={item} />
+                                <NotificationItem key={item.notification.id} item={item} />
                             ))}
                         </View>
                     )}
 
-                    {MOCK_NOTIFICATIONS.length === 0 && (
+                    {notifications.length === 0 && !isLoading && (
                         <View style={styles.emptyState}>
                             <Ionicons name="notifications-off-outline" size={48} color="#C7C7CC" />
                             <Text style={styles.emptyText}>No notifications yet</Text>
                         </View>
                     )}
-
                 </ScrollView>
             </SafeAreaView>
         </View>
@@ -387,6 +390,13 @@ const styles = StyleSheet.create({
         height: 8,
         borderRadius: 4,
         backgroundColor: '#007AFF',
+    },
+
+    // Loading State
+    loadingContainer: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 
     // Empty State

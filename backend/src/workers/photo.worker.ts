@@ -1,7 +1,7 @@
 import { Worker } from 'bullmq';
 import { PrismaClient } from '@prisma/client';
 import { redisConnection, redis } from '../../libs/redis.js';
-import { sendPushNotifications } from '../api/notifications/notifications.service.js';
+import { sendPushNotifications, createNotificationRecord } from '../api/notifications/notifications.service.js';
 
 const prisma = new PrismaClient();
 
@@ -39,6 +39,26 @@ export const worker = new Worker('photo-notifications', async (job) => {
 
             const tokens = membersToNotify.flatMap(m => m.user.devices).map(d => d.token);
             if (tokens.length === 0) return;
+
+            // Create notification records for each recipient
+            const notificationData = {
+                thumbnailUrl: null as string | null,
+                galleryName: galleryName || 'the gallery',
+                previewText: `${uploaderName} added ${count} photo${count === 1 ? '' : 's'}`,
+            };
+
+            await Promise.all(
+                membersToNotify.map(member =>
+                    createNotificationRecord(
+                        member.userId,
+                        uploaderId,
+                        'SYSTEM',
+                        notificationData,
+                        galleryId,
+                        'Gallery'
+                    )
+                )
+            );
 
             const deadTokens = await sendPushNotifications(
                 tokens,
@@ -86,6 +106,26 @@ export const worker = new Worker('photo-notifications', async (job) => {
         .map(d => d.token);
 
     if (tokens.length === 0) return;
+
+    // 4.5. Create notification records for each recipient
+    const notificationData = {
+        thumbnailUrl: null as string | null,
+        galleryName: photo.galleryName || 'the gallery',
+        previewText: `${photo.uploaderName} added a photo`,
+    };
+
+    await Promise.all(
+        membersToNotify.map(member =>
+            createNotificationRecord(
+                member.userId,
+                uploaderId,
+                'SYSTEM',
+                notificationData,
+                photo.id || galleryId,
+                photo.id ? 'Photo' : 'Gallery'
+            )
+        )
+    );
 
   // 5. Send Push (The expensive network call)
     console.log(`Sending push to ${tokens.length} devices...`);
