@@ -76,3 +76,4 @@ export const markAllNotificationsAsRead = async (): Promise<{ count: number }> =
   return response.data as { count: number };
 };
 
+

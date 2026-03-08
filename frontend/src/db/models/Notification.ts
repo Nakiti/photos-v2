@@ -23,3 +23,4 @@ export default class Notification extends Model {
   @relation('users', 'actor_id') actor!: any;
 }
 
+

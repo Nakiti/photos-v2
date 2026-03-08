@@ -34,3 +34,4 @@ router.put('/read-all', isAuthenticated, markAllAsRead);
 
 export default router;
 
+

@@ -18,3 +18,4 @@ export const markAsReadSchema = z.object({
 
 export type MarkAsReadDto = z.infer<typeof markAsReadSchema>['params'];
 
+

@@ -24,3 +24,4 @@ ALTER TABLE `Notification` ADD CONSTRAINT `Notification_recipientId_fkey` FOREIG
 -- AddForeignKey
 ALTER TABLE `Notification` ADD CONSTRAINT `Notification_actorId_fkey` FOREIGN KEY (`actorId`) REFERENCES `User`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
+
