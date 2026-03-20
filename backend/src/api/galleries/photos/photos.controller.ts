@@ -87,7 +87,7 @@ export async function confirmPhotoUpload(req: Request, res: Response) {
 
     const parsed = confirmBodySchema.parse({ body: req.body });
     const { s3Key, s3Url, tagIds, thumbnailKey, thumbnailUrl } = parsed.body as { s3Key: string; s3Url?: string; tagIds?: string[]; thumbnailKey: string; thumbnailUrl: string };
-    const photo = await photosService.confirmUploadedPhoto(userId, galleryId, s3Key, s3Url, tagIds, thumbnailUrl, thumbnailKey);
+    const photo = await photosService.confirmUploadedPhoto(userId, galleryId, s3Key, thumbnailUrl, thumbnailKey, s3Url, tagIds);
     return res.status(201).json(photo);
   } catch (error) {
     console.log(error)

@@ -4,11 +4,12 @@ import { useAuth } from "./useAuth";
 import {v4 as uuid} from "uuid"
 import Photo from "../db/models/Photo";
 import { uploadPhoto, deletePhoto, uploadPhotoFlow } from "../services/api/photos.service";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { updateOptimisticPhoto } from "../services/sync/photos.sync";
 import { recordLocalAttempt, findAttemptByPhotoId, markAttemptConfirmed, markAttemptRejected } from "../services/rateLimit.service";
 import { Q } from "@nozbe/watermelondb";
 import ImageResizer from 'react-native-image-resizer'; // 1. Import the resizer
+import RNFS from 'react-native-fs';
 import PhotoTag from "../db/models/PhotoTag";
 
 // Define our quality settings
@@ -206,15 +207,18 @@ export const useCreateOptimisticPhoto = () => {
  * This hook should be called from a high-level component (like GalleryScreen or App).
  * It will find queued photos and attempt to upload them.
  */
+const UPLOAD_CONCURRENCY = 3;
+
 export const usePhotoUploadQueue = () => {
     const database = useDatabase();
     const [queuedPhotos, setQueuedPhotos] = useState<Photo[]>([]);
-  
-    // 1. Observe queued photos
+    const activeUploadsRef = useRef(0);
+
+    // 1. Observe photos that need uploading (includes sync_pending for rate-limit retry)
     useEffect(() => {
       const photosCollection = database.collections.get<Photo>('photos');
       const query = photosCollection.query(
-        Q.where('status', Q.oneOf(['queued', 'upload_failed']))
+        Q.where('status', Q.oneOf(['queued', 'upload_failed', 'sync_pending']))
       );
       const subscription = query.observe().subscribe(setQueuedPhotos);
       return () => subscription.unsubscribe();
@@ -236,22 +240,30 @@ export const usePhotoUploadQueue = () => {
 
         console.log("photo before upoad queue ", photo)
 
+        // Capture local paths before the optimistic record is replaced
+        const localUri = photo.localUri;
+        const localThumbnailUri = photo.localThumbnailUri;
+
         try {
           const finalPhoto = await uploadPhotoFlow(
               photo.galleryId,
-              photo.localUri!,
-              photo.localThumbnailUri!,
+              localUri!,
+              localThumbnailUri!,
               tagIds
           )
-            
+
           // Sync the final data
           await updateOptimisticPhoto(database, photo.id, finalPhoto);
-          
+
           // Mark attempt as confirmed
           const attempt = await findAttemptByPhotoId(database, photo.id);
           if (attempt) {
             await markAttemptConfirmed(database, attempt.id, photo.id);
           }
+
+          // Clean up temporary resized files from device storage
+          if (localUri) RNFS.unlink(localUri).catch(() => {});
+          if (localThumbnailUri) RNFS.unlink(localThumbnailUri).catch(() => {});
         } catch (uploadError: any) {
           // Check if it's a 429 rate limit error
           if (uploadError?.response?.status === 429) {
@@ -292,17 +304,27 @@ export const usePhotoUploadQueue = () => {
       }
     });
   
-    // 3. Process the queue when it changes
-    // This is a simple implementation; a real-world app
-    // would use a network status listener and be more robust.
+    // 3. Process the queue when it changes — up to UPLOAD_CONCURRENCY in parallel
     useEffect(() => {
-      const uploadingPhotos = queuedPhotos.filter(p => p.status === 'uploading');
-      const pendingPhotos = queuedPhotos.filter(p => p.status === 'queued' || (p.status === 'sync_pending' && (!p.retryAfter || p.retryAfter <= Date.now())));
-  
-      // Only try to upload one photo at a time (for simplicity)
-      if (uploadingPhotos.length === 0 && pendingPhotos.length > 0) {
-        console.log(`[UploadQueue] Found ${pendingPhotos.length} photos to upload. Starting with one.`);
-        processUpload(pendingPhotos[0]);
+      const pendingPhotos = queuedPhotos.filter(p =>
+        p.status === 'queued' ||
+        p.status === 'upload_failed' ||
+        (p.status === 'sync_pending' && (!p.retryAfter || p.retryAfter <= Date.now()))
+      );
+
+      const slots = UPLOAD_CONCURRENCY - activeUploadsRef.current;
+      const toProcess = pendingPhotos.slice(0, Math.max(0, slots));
+
+      if (toProcess.length > 0) {
+        console.log(`[UploadQueue] ${pendingPhotos.length} pending, ${activeUploadsRef.current} active — starting ${toProcess.length}`);
+        toProcess.forEach(photo => {
+          activeUploadsRef.current++;
+          processUpload(photo, {
+            onSettled: () => {
+              activeUploadsRef.current--;
+            },
+          });
+        });
       }
     }, [queuedPhotos, processUpload]);
   };
@@ -324,7 +346,7 @@ export const usePhotoUploadQueue = () => {
           await photo.destroyPermanently();
         });
       },
-      onError: (error, photo) => {
+      onError: (_error, photo) => {
         // Rollback by invalidating
         queryClient.invalidateQueries({ queryKey: ['gallery', photo.galleryId] });
       },

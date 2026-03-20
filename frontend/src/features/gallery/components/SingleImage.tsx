@@ -1,7 +1,8 @@
-import { Image, Text, TouchableOpacity, View, StyleSheet } from "react-native";
+import { Text, TouchableOpacity, View, StyleSheet } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
 import FastImage from "react-native-fast-image";
 import { useNavigation } from "@react-navigation/native";
+import { useState } from "react";
 
 type GalleryImage = any;
 
@@ -17,6 +18,7 @@ type SingleImageProps = {
 
 const SingleImage = ({ imageSize, images, item, index, galleryId, selectedTagId }: SingleImageProps) => {
    const navigation = useNavigation()
+   const [imageError, setImageError] = useState(false);
 
     /**
      * Renders the appropriate icon based on the upload status.
@@ -55,15 +57,21 @@ const SingleImage = ({ imageSize, images, item, index, galleryId, selectedTagId 
 
    return (
       <TouchableOpacity style={[styles.imageContainer, { width: imageSize, height: imageSize }]} onPress={handlePress}>
-         <FastImage 
-            style={styles.image} 
-            source={{
-               uri: item.thumbnail,
-               priority: FastImage.priority.normal
-            }}
-            resizeMode={FastImage.resizeMode.cover}
-         />
-         {/* <Text>{item.thumbnail}</Text> */}
+         {imageError ? (
+            <View style={styles.errorPlaceholder}>
+               <Icon name="image-outline" size={20} color="#555" />
+            </View>
+         ) : (
+            <FastImage
+               style={styles.image}
+               source={{
+                  uri: item.thumbnail,
+                  priority: FastImage.priority.normal
+               }}
+               resizeMode={FastImage.resizeMode.cover}
+               onError={() => setImageError(true)}
+            />
+         )}
          
          {/* Gray overlay for in-review photos */}
          {item.visible === 'IN_REVIEW' && (
@@ -126,5 +134,13 @@ const styles = StyleSheet.create({
       right: 0,
       bottom: 0,
       backgroundColor: 'rgba(128, 128, 128, 0.5)', // Gray overlay with 50% opacity
+   },
+   errorPlaceholder: {
+      flex: 1,
+      width: '100%',
+      height: '100%',
+      backgroundColor: '#1a1a1a',
+      justifyContent: 'center',
+      alignItems: 'center',
    },
 });

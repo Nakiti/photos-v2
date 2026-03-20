@@ -48,12 +48,12 @@ import { TagApi } from "../api/tags.service";
     const galleryIds = Array.from(new Set(remotePhotos.map(p => p.galleryId)));
     const uploaderIds = Array.from(new Set(remotePhotos.map(p => p.uploaderId)));
     
-    // Fetch optimistic photos that might match
+    // Fetch optimistic photos that might match (includes sync_pending — rate-limited but not yet uploaded)
     const optimisticPhotos = await photosCollection
       .query(
         Q.where('gallery_id', Q.oneOf(galleryIds)),
         Q.where('uploader_id', Q.oneOf(uploaderIds)),
-        Q.where('status', Q.oneOf(['queued', 'uploading']))
+        Q.where('status', Q.oneOf(['queued', 'uploading', 'sync_pending']))
       )
       .fetch();
     
@@ -76,9 +76,9 @@ import { TagApi } from "../api/tags.service";
         // --- CONFLICT RESOLUTION: Don't update if photo is being uploaded ---
         // If the local photo is queued or uploading, it means the user is currently
         // uploading it. The upload queue will handle updating it when complete.
-        if (local.status === 'queued' || local.status === 'uploading') {
+        if (local.status === 'queued' || local.status === 'uploading' || local.status === 'sync_pending') {
           console.log(
-            `[Conflict][Sync] Skipping update for photo being uploaded: ` +
+            `[Conflict][Sync] Skipping update for photo pending upload: ` +
             `photoId=${remotePhoto.id} status=${local.status}`
           );
           continue; // Skip this photo, let upload queue handle it

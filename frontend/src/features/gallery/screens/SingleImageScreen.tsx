@@ -60,6 +60,7 @@ const SingleImageScreen = () => {
       .map((p: any) => ({
         id: p.id,
         uri: p.s3Url || p.localUri || p.thumbnailUrl || p.thumbnailUri || p.localThumbnailUri || "",
+        thumbnailUri: p.thumbnailUri || p.localThumbnailUri || "",
         createdAt: p.createdAt,
         uploaderId: p.uploaderId,
         visible: p.visible || 'VISIBLE',

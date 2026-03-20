@@ -201,6 +201,15 @@ export const useSocketEvents = () => {
 
     socket.on('photo_tagged', handlePhotoTagged);
 
+    // --- LISTENER 0: Reconnect — invalidate all gallery cache to recover missed events ---
+    const handleReconnect = () => {
+      console.log('[Socket] Reconnected — invalidating gallery cache to catch up on missed events');
+      queryClient.invalidateQueries({ queryKey: ['gallery'] });
+      queryClient.invalidateQueries({ queryKey: ['galleries'] });
+    };
+
+    socket.on('connect', handleReconnect);
+
     // --- LISTENER 5: Gallery metadata was updated ---
     const handleGalleryUpdated = async (gallery: any) => {
       console.log('[Cloud][Socket] gallery_updated received:', { id: gallery.id, name: gallery.name });
@@ -215,6 +224,7 @@ export const useSocketEvents = () => {
 
     // Clean up listeners on unmount
     return () => {
+      socket.off('connect', handleReconnect);
       socket.off('new_photo', handleNewPhoto);
       socket.off('photo_updated', handlePhotoUpdated);
       socket.off('photo_deleted', handlePhotoDeleted);

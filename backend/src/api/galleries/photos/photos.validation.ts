@@ -19,8 +19,8 @@ export const confirmBodySchema = z.object({
     s3Key: z.string().min(1),
     s3Url: z.string().url().optional(),
     tagIds: z.array(z.string().min(1)).optional(),
-    thumbnailKey: z.string().optional(),
-    thumbnailUrl: z.string().optional(),
+    thumbnailKey: z.string().min(1),
+    thumbnailUrl: z.string().url(),
   }),
 });
 

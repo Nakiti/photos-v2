@@ -6,7 +6,6 @@ import { photoQueue } from '../../../../libs/queue.js';
 import {v4 as uuidv4} from "uuid"
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
-import { thumbnailQueue } from '../../../../libs/thumbnail.queue.js';
 import { smartThrottleNewPhoto } from '../../notifications/notifications.service.js';
 import { recordUpload } from '../../../../libs/rateLimiter.js';
 
@@ -177,10 +176,10 @@ export async function confirmUploadedPhoto(
   uploaderId: string,
   galleryId: string,
   s3Key: string,
+  thumbnailUrl: string,
+  thumbnailKey: string,
   s3Url?: string,
   tagIds?: string[],
-  thumbnailUrl?: string,
-  thumbnailKey?: string,
 ) {
   const resolvedS3Url =
     s3Url ??
