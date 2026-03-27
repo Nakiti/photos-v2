@@ -1,317 +1,353 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import {
-    View,
-    Text,
-    TouchableOpacity,
-    StyleSheet,
-    ScrollView,
-    ActivityIndicator,
-    SafeAreaView,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  SafeAreaView,
+  Alert,
 } from 'react-native';
-import { useGallery } from '../../../hooks/useGalleryData';
+import { useDeleteGallery, useGallery } from '../../../hooks/useGalleryData';
 import { useUpdateMyMembership } from '../../../hooks/useMembershipData';
 import { useAuth } from '../../../hooks/useAuth';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import FastImage from 'react-native-fast-image';
 
-// --- Sleek Components ---
-
 const ActionButton = ({ icon, label, onPress, isActive }: any) => (
-    <TouchableOpacity 
-        style={styles.actionBtnWrapper} 
-        onPress={onPress}
-        activeOpacity={0.7}
-    >
-        {/* Matches the bottom bar logic: 
-            Active = Solid Black (Inverse of the dark mode glass)
-            Inactive = White with Thin Border
-        */}
-        <View style={[styles.actionBtnCircle, isActive && styles.actionBtnActive]}>
-            <Ionicons 
-                name={icon} 
-                size={22} 
-                color={isActive ? "#FFFFFF" : "#000000"} 
-            />
-        </View>
-        <Text style={styles.actionLabel}>{label}</Text>
-    </TouchableOpacity>
+  <TouchableOpacity style={styles.actionBtn} onPress={onPress} activeOpacity={0.6}>
+    <View style={[styles.actionBtnIcon, isActive && styles.actionBtnIconActive]}>
+      <Ionicons name={icon} size={18} color={isActive ? '#FFFFFF' : '#111111'} />
+    </View>
+    <Text style={[styles.actionBtnLabel, isActive && styles.actionBtnLabelActive]}>
+      {label}
+    </Text>
+  </TouchableOpacity>
 );
 
-const SleekListItem = ({ icon, label, value, onPress, isLast }: any) => (
-    <TouchableOpacity 
-        style={styles.listItem} 
-        onPress={onPress}
-        activeOpacity={0.6}
-    >
-        <View style={styles.listIconContainer}>
-            <Ionicons name={icon} size={22} color="#000000" />
-        </View>
-        
-        <View style={[styles.listContent, isLast && styles.listContentNoBorder]}>
-            <Text style={styles.listLabel}>{label}</Text>
-            {/* Optional Value Text (e.g., count of members) */}
-            {value && <Text style={styles.listValue}>{value}</Text>}
-            <Ionicons name="chevron-forward" size={16} color="#C7C7CC" />
-        </View>
-    </TouchableOpacity>
+const ListRow = ({ icon, label, value, onPress, isLast, isDestructive }: any) => (
+  <TouchableOpacity
+    style={[styles.row, isLast && styles.rowLast]}
+    onPress={onPress}
+    activeOpacity={0.5}
+    disabled={!onPress}
+  >
+    {icon ? (
+      <View style={styles.rowIconWrap}>
+        <Ionicons name={icon} size={17} color={isDestructive ? '#CC3333' : '#555555'} />
+      </View>
+    ) : null}
+    <Text style={[styles.rowLabel, !icon && styles.rowLabelIndent, isDestructive && styles.rowLabelDestructive]} numberOfLines={1}>
+      {label}
+    </Text>
+    {value ? <Text style={styles.rowValue}>{value}</Text> : null}
+    {onPress && !isDestructive && (
+      <Ionicons name="chevron-forward" size={14} color="#CECECE" />
+    )}
+  </TouchableOpacity>
 );
 
 const GalleryDetailsScreen = () => {
-   const navigation = useNavigation();
-   const route = useRoute();
-   const { galleryId } = route.params as { galleryId: string };
+  const navigation = useNavigation();
+  const route = useRoute();
+  const { galleryId } = route.params as { galleryId: string };
 
-   const { gallery, isLoading } = useGallery(galleryId);
-   const { mutate: updateMembership } = useUpdateMyMembership();
-   const { user } = useAuth();
+  const { gallery, isLoading } = useGallery(galleryId);
+  const { mutate: updateMembership } = useUpdateMyMembership();
+  const { user } = useAuth();
+  const deleteGalleryMutation = useDeleteGallery();
 
-   const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [isMuted, setIsMuted] = useState(false);
 
-   useEffect(() => {
-      if (gallery && typeof (gallery as any).is_muted === 'boolean') {
-         setIsMuted((gallery as any).is_muted);
-      }
-   }, [gallery]);
+  const isOwner = gallery?.ownerId === user?.id;
 
-   const handleMutePress = () => {
-      const next = !isMuted;
-      setIsMuted(next); 
-      updateMembership({ galleryId, isMuted: next }, { onError: () => setIsMuted(!next) });
-   };
-
-   if (isLoading) {
-      return (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="small" color="#000" />
-        </View>
-      );
+  useEffect(() => {
+    if (gallery && typeof (gallery as any).is_muted === 'boolean') {
+      setIsMuted((gallery as any).is_muted);
     }
+  }, [gallery]);
 
-   return (
-      <View style={styles.container}>
-          <SafeAreaView style={styles.safeArea}>
+  const handleMutePress = () => {
+    const next = !isMuted;
+    setIsMuted(next);
+    updateMembership({ galleryId, isMuted: next }, { onError: () => setIsMuted(!next) });
+  };
 
+  const confirmAndDeleteGallery = () => {
+    if (!gallery?.id) return;
+    Alert.alert(
+      'Delete Gallery',
+      'This will permanently delete this gallery and all photos.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteGalleryMutation.mutate(gallery.id, {
+              onSuccess: () => (navigation as any).navigate('TabNavigator', { screen: 'Groups' }),
+            });
+          },
+        },
+      ]
+    );
+  };
 
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                {gallery && (
-                    <>
-                    {/* --- Profile Header --- */}
-                    <View style={styles.header}>
-                        <View style={styles.imageWrapper}>
-                            <FastImage 
-                                source={{uri: gallery.iconUrl}} 
-                                style={styles.avatar} 
-                                resizeMode={FastImage.resizeMode.cover}
-                            />
-                        </View>
-                        <Text style={styles.title}>{gallery.name}</Text>
-                        <Text style={styles.subtitle}>GALLERY DETAILS</Text> 
-                    </View>
-        
-                    {/* --- Action Row --- */}
-                    <View style={styles.actionRow}>
-                            <ActionButton 
-                                icon="share-outline" 
-                                label="Share" 
-                                onPress={() => (navigation as any).navigate("ShareGallery", {galleryId})} 
-                            />
-                            <ActionButton 
-                                icon={isMuted ? "notifications-off" : "notifications-outline"} 
-                                label={isMuted ? "Muted" : "Mute"} 
-                                onPress={handleMutePress}
-                                isActive={isMuted}
-                            />
-                    </View>
-
-                    {/* --- Settings List --- */}
-                    <View style={styles.listSection}>
-                        {/* Section Label */}
-                        <Text style={styles.sectionHeader}>PREFERENCES</Text>
-                        
-                        <View style={styles.listContainer}>
-                            <SleekListItem 
-                                icon="people-outline" 
-                                label="Members" 
-                                onPress={() => navigation.navigate("GalleryMembers", {galleryId})}
-                            />
-                            <SleekListItem 
-                                icon="pricetags-outline" 
-                                label="Tags" 
-                                onPress={() => navigation.navigate("GalleryTags", {galleryId})}
-                            />
-                            {((gallery as any)?.ownerId === user?.id || (gallery as any)?.myMembership?.role === 'ADMIN') && (
-                                <SleekListItem 
-                                    icon="time-outline" 
-                                    label="Pending Images" 
-                                    onPress={() => navigation.navigate("PendingImages", {galleryId})}
-                                />
-                            )}
-                            <SleekListItem 
-                                icon="settings-outline" 
-                                label="Settings" 
-                                onPress={() => navigation.navigate("GallerySettings", {galleryId})}
-                                isLast={true}
-                            />
-                        </View>
-                    </View>
-                    </>
-                )}
-            </ScrollView>
-          </SafeAreaView>
+  if (isLoading) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="small" color="#999" />
       </View>
-   );
+    );
+  }
+
+  return (
+    <View style={styles.root}>
+      <SafeAreaView style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {gallery && (
+            <>
+              {/* Avatar + Identity */}
+              <View style={styles.profileSection}>
+                <View style={styles.avatarWrap}>
+                  <FastImage
+                    source={{ uri: gallery.iconUrl }}
+                    style={styles.avatar}
+                    resizeMode={FastImage.resizeMode.cover}
+                  />
+                </View>
+                <Text style={styles.name}>{gallery.name}</Text>
+                <Text style={styles.meta}>Gallery</Text>
+              </View>
+
+              {/* Actions */}
+              <View style={styles.actionRow}>
+                <ActionButton
+                  icon="share-outline"
+                  label="Share"
+                  onPress={() => (navigation as any).navigate('ShareGallery', { galleryId })}
+                />
+                <ActionButton
+                  icon={isMuted ? 'notifications-off-outline' : 'notifications-outline'}
+                  label={isMuted ? 'Muted' : 'Mute'}
+                  onPress={handleMutePress}
+                  isActive={isMuted}
+                />
+              </View>
+
+              {/* General */}
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>General</Text>
+                <View style={styles.card}>
+                  <ListRow
+                    icon="create-outline"
+                    label="Name"
+                    value={gallery.name}
+                    onPress={() => (navigation as any).navigate('EditGalleryDetails', { galleryId })}
+                  />
+                  <ListRow
+                    icon="people-outline"
+                    label="Members"
+                    onPress={() => (navigation as any).navigate('GalleryMembers', { galleryId })}
+                  />
+                  <ListRow
+                    icon="pricetags-outline"
+                    label="Tags"
+                    onPress={() => (navigation as any).navigate('GalleryTags', { galleryId })}
+                    isLast
+                  />
+                </View>
+              </View>
+
+              {/* Admin / Actions */}
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>{isOwner ? 'Admin' : 'Actions'}</Text>
+                <View style={styles.card}>
+                  {isOwner ? (
+                    <>
+                      <ListRow
+                        icon="swap-horizontal-outline"
+                        label="Transfer Ownership"
+                        onPress={() => {}}
+                      />
+                      <ListRow
+                        icon="trash-outline"
+                        label="Delete Gallery"
+                        onPress={confirmAndDeleteGallery}
+                        isDestructive
+                        isLast
+                      />
+                    </>
+                  ) : (
+                    <ListRow
+                      icon="exit-outline"
+                      label="Leave Gallery"
+                      onPress={() => {}}
+                      isDestructive
+                      isLast
+                    />
+                  )}
+                </View>
+              </View>
+            </>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </View>
+  );
 };
 
 const styles = StyleSheet.create({
-   container: {
-      flex: 1,
-      backgroundColor: '#FFFFFF',
-   },
-   safeArea: {
-       flex: 1,
-   },
-   loadingContainer: {
-      flex: 1,
-      backgroundColor: '#FFFFFF',
-      justifyContent: 'center',
-      alignItems: 'center'
-   },
-   navBar: {
-       paddingHorizontal: 24,
-       paddingVertical: 12,
-   },
-   scrollContent: {
-      paddingBottom: 60,
-   },
+  root: {
+    flex: 1,
+    backgroundColor: '#FAFAFA',
+  },
+  loading: {
+    flex: 1,
+    backgroundColor: '#FAFAFA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scrollContent: {
+    paddingBottom: 60,
+  },
 
-   // --- Header ---
-   header: {
-      alignItems: 'center',
-      marginTop: 10,
-      marginBottom: 32,
-      paddingHorizontal: 24,
-   },
-   imageWrapper: {
-      marginBottom: 20,
-      // Minimalist Shadow
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.12,
-      shadowRadius: 16,
-      elevation: 4,
-   },
-   avatar: {
-      width: 110,
-      height: 110,
-      borderRadius: 40, // Matches the "Squircle" look
-      backgroundColor: '#F5F5F5',
-      borderWidth: 1,
-      borderColor: '#F0F0F0',
-   },
-   title: {
-      fontSize: 24,
-      fontWeight: '700', 
-      color: '#000000',
-      marginBottom: 6,
-      textAlign: 'center',
-      letterSpacing: -0.6, // Tighter tracking for modern feel
-   },
-   subtitle: {
-       fontSize: 12,
-       color: '#8E8E93',
-       fontWeight: '600',
-       letterSpacing: 1, // Wide spacing for uppercase subtitles
-   },
+  // Profile
+  profileSection: {
+    alignItems: 'center',
+    paddingTop: 24,
+    paddingBottom: 28,
+    paddingHorizontal: 24,
+  },
+  avatarWrap: {
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  avatar: {
+    width: 88,
+    height: 88,
+    borderRadius: 28,
+    backgroundColor: '#EFEFEF',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.06)',
+  },
+  name: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111111',
+    letterSpacing: -0.4,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  meta: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#AAAAAA',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
 
-   // --- Actions ---
-   actionRow: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      gap: 40, 
-      marginBottom: 48,
-   },
-   actionBtnWrapper: {
-       alignItems: 'center',
-       gap: 10,
-   },
-   actionBtnCircle: {
-      width: 60,
-      height: 60,
-      borderRadius: 30,
-      backgroundColor: '#FFFFFF',
-      borderWidth: 1,
-      borderColor: '#E5E5EA', // Subtle border
-      justifyContent: 'center',
-      alignItems: 'center',
-      
-      // Very faint shadow to lift it off the white bg
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.05,
-      shadowRadius: 8,
-   },
-   actionBtnActive: {
-       backgroundColor: '#1C1C1E', // Matching the dark aesthetic of the bottom bar
-       borderColor: '#1C1C1E',
-   },
-   actionLabel: {
-      fontSize: 12,
-      fontWeight: '500',
-      color: '#1C1C1E',
-   },
+  // Actions
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 40,
+    marginBottom: 32,
+  },
+  actionBtn: {
+    alignItems: 'center',
+    gap: 7,
+  },
+  actionBtnIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: '#EFEFEF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionBtnIconActive: {
+    backgroundColor: '#111111',
+  },
+  actionBtnLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#AAAAAA',
+  },
+  actionBtnLabelActive: {
+    color: '#111111',
+    fontWeight: '600',
+  },
 
-   // --- List Section ---
-   listSection: {
-       paddingHorizontal: 24,
-   },
-   sectionHeader: {
-       fontSize: 11,
-       fontWeight: '600',
-       color: '#8E8E93',
-       marginBottom: 12,
-       marginLeft: 16, // Align with text start
-       textTransform: 'uppercase',
-       letterSpacing: 0.5,
-   },
-   listContainer: {
-       // Optional: Enclose in a subtle border if you want the "Grouped" look, 
-       // OR keep it open for "Minimalist" look. We'll go open but wide.
-   },
-   listItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: 4, // Inner padding is handled by listContent
-   },
-   listIconContainer: {
-       width: 40,
-       alignItems: 'center',
-       justifyContent: 'center',
-       marginRight: 12,
-   },
-   listContent: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingVertical: 18,
-      borderBottomWidth: 1,
-      borderBottomColor: '#F2F2F7', // Very light separator
-   },
-   listContentNoBorder: {
-       borderBottomWidth: 0,
-   },
-   listLabel: {
-      fontSize: 17,
-      fontWeight: '400',
-      color: '#000000',
-      letterSpacing: -0.3,
-   },
-   listValue: {
-       fontSize: 16,
-       color: '#8E8E93',
-       marginRight: 8,
-   },
+  // Section
+  section: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#AAAAAA',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E5E5E5',
+    overflow: 'hidden',
+  },
+
+  // Rows
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#EBEBEB',
+  },
+  rowLast: {
+    borderBottomWidth: 0,
+  },
+  rowIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: '#F4F4F4',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  rowLabel: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#111111',
+    letterSpacing: -0.1,
+  },
+  rowLabelIndent: {
+    paddingLeft: 4,
+  },
+  rowLabelDestructive: {
+    color: '#CC3333',
+  },
+  rowValue: {
+    fontSize: 13,
+    color: '#AAAAAA',
+    marginRight: 4,
+  },
 });
 
 export default GalleryDetailsScreen;

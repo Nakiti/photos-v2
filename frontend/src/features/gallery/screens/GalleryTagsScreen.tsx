@@ -1,5 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, SafeAreaView } from 'react-native';
+import {
+  View, Text, FlatList, TextInput, TouchableOpacity,
+  StyleSheet, KeyboardAvoidingView, Platform, SafeAreaView,
+} from 'react-native';
 import { useDatabase } from '@nozbe/watermelondb/react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useGalleryTags } from '../../../hooks/useGalleryTagData';
@@ -8,11 +11,10 @@ import { syncTags } from '../../../services/sync/tags.sync';
 import Tag from '../../../db/models/Tag';
 import { useRoute } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { useGallery } from '../../../hooks/useGalleryData';
-import { useUpdateGallery } from '../../../hooks/useGalleryData';
+import { useGallery, useUpdateGallery } from '../../../hooks/useGalleryData';
 
 const GalleryTagsScreen = () => {
-  const route = useRoute()
+  const route = useRoute();
   const { galleryId } = route.params as { galleryId: string };
   const database = useDatabase();
   const queryClient = useQueryClient();
@@ -22,7 +24,6 @@ const GalleryTagsScreen = () => {
   const updateGalleryMutation = useUpdateGallery();
 
   const [name, setName] = useState('');
-
   const canCreate = useMemo(() => name.trim().length > 0, [name]);
 
   const refreshTags = async () => {
@@ -32,12 +33,8 @@ const GalleryTagsScreen = () => {
   };
 
   const deleteMutation = useMutation({
-    mutationFn: async (tagId: string) => {
-      await deleteTagApi(galleryId, tagId);
-    },
-    onSuccess: async () => {
-      await refreshTags();
-    },
+    mutationFn: async (tagId: string) => { await deleteTagApi(galleryId, tagId); },
+    onSuccess: refreshTags,
   });
 
   const createMutation = useMutation({
@@ -46,10 +43,7 @@ const GalleryTagsScreen = () => {
       if (!tagName) return;
       await createTagApi(galleryId, { name: tagName });
     },
-    onSuccess: async () => {
-      setName('');
-      await refreshTags();
-    },
+    onSuccess: async () => { setName(''); await refreshTags(); },
   });
 
   const handleCreate = () => {
@@ -57,51 +51,46 @@ const GalleryTagsScreen = () => {
     createMutation.mutate();
   };
 
-  const renderItem = ({ item }: { item: Tag }) => {
+  const renderItem = ({ item, index }: { item: Tag; index: number }) => {
     const isDefault = gallery?.defaultTagId === item.id;
-    
+    const isLast = index === (tags?.length ?? 0) - 1;
+
     return (
-      <View style={styles.tagRow}>
-        {/* Left Side: Name + Badge */}
-        <View style={styles.tagLeft}>
-          <Text style={[styles.tagName, isDefault && styles.tagNameSelected]}>
+      <View style={[styles.row, isLast && styles.rowLast]}>
+        <View style={styles.rowLeft}>
+          <Text style={[styles.tagName, isDefault && styles.tagNameDefault]}>
             {item.name}
           </Text>
-          
           {isDefault && (
-            <View style={styles.defaultBadge}>
-              <Text style={styles.defaultBadgeText}>Default</Text>
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>Default</Text>
             </View>
           )}
         </View>
 
-        {/* Right Side: Actions */}
-        <View style={styles.tagRight}>
-          {!isDefault && (
+        <View style={styles.rowRight}>
+          {isDefault ? (
+            <Ionicons name="checkmark-circle" size={18} color="#111111" />
+          ) : (
             <>
               <TouchableOpacity
                 onPress={() => updateGalleryMutation.mutate({ galleryId, data: { defaultTagId: item.id } })}
                 disabled={updateGalleryMutation.isPending}
-                style={styles.actionBtn}
+                style={styles.textBtn}
               >
-                <Text style={styles.makeDefaultText}>Set Default</Text>
+                <Text style={styles.setDefaultText}>Set default</Text>
               </TouchableOpacity>
-              
-              <View style={styles.verticalDivider} />
+
+              <View style={styles.vDivider} />
 
               <TouchableOpacity
                 onPress={() => deleteMutation.mutate(item.id)}
-                disabled={updateGalleryMutation.isPending}
-                style={styles.actionBtn}
+                disabled={deleteMutation.isPending}
+                style={styles.iconBtn}
               >
-                <Ionicons name="trash-outline" size={18} color="#FF3B30" />
+                <Ionicons name="trash-outline" size={16} color="#CC3333" />
               </TouchableOpacity>
             </>
-          )}
-          
-          {/* If it is default, we can't delete it easily, maybe show a checkmark instead */}
-          {isDefault && (
-             <Ionicons name="checkmark-circle" size={20} color="#000" />
           )}
         </View>
       </View>
@@ -109,55 +98,54 @@ const GalleryTagsScreen = () => {
   };
 
   return (
-    <View style={styles.container}>
-
-      <SafeAreaView style={styles.safeArea}>
-        <KeyboardAvoidingView 
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-            style={{ flex: 1 }}
-            keyboardVerticalOffset={100}
+    <View style={styles.root}>
+      <SafeAreaView style={{ flex: 1 }}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+          keyboardVerticalOffset={100}
         >
-            
-            {/* 2. List */}
-            <FlatList
-                data={tags}
-                keyExtractor={(t) => t.id}
-                renderItem={renderItem}
-                contentContainerStyle={styles.listContent}
-                ListEmptyComponent={
-                !isLoading ? (
-                    <View style={styles.emptyContainer}>
-                        <Text style={styles.emptyText}>No tags yet.</Text> 
-                        <Text style={styles.emptySubText}>Create one to start organizing.</Text>
-                    </View>
-                ) : null
-                }
-            />
 
-            {/* 3. Input Form (Sticks to bottom of safe area) */}
-            <View style={styles.formContainer}>
-                <TextInput
-                    placeholder="New Tag Name..."
-                    placeholderTextColor="#999"
-                    value={name}
-                    onChangeText={setName}
-                    style={styles.inputField}
-                    returnKeyType="done"
-                    onSubmitEditing={handleCreate}
-                />
-                <TouchableOpacity
-                    disabled={!canCreate || createMutation.isPending}
-                    onPress={handleCreate}
-                    style={[styles.addBtn, (!canCreate || createMutation.isPending) && styles.addBtnDisabled]}
-                    activeOpacity={0.8}
-                >
-                    {createMutation.isPending ? (
-                        <Ionicons name="ellipsis-horizontal" size={24} color="#FFF" />
-                    ) : (
-                        <Ionicons name="arrow-up" size={24} color="#FFF" />
-                    )}
-                </TouchableOpacity>
-            </View>
+          {/* Input Header */}
+          <View style={styles.inputHeader}>
+            <TextInput
+              placeholder="New tag name…"
+              placeholderTextColor="#CCCCCC"
+              value={name}
+              onChangeText={setName}
+              style={styles.input}
+              returnKeyType="done"
+              onSubmitEditing={handleCreate}
+            />
+            <TouchableOpacity
+              disabled={!canCreate || createMutation.isPending}
+              onPress={handleCreate}
+              style={[styles.addBtn, (!canCreate || createMutation.isPending) && styles.addBtnDisabled]}
+              activeOpacity={0.7}
+            >
+              {createMutation.isPending ? (
+                <Ionicons name="ellipsis-horizontal" size={20} color="#FFF" />
+              ) : (
+                <Ionicons name="arrow-up" size={20} color="#FFF" />
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Tag List */}
+          <FlatList
+            data={tags}
+            keyExtractor={(t) => t.id}
+            renderItem={renderItem}
+            contentContainerStyle={styles.listContent}
+            ListEmptyComponent={
+              !isLoading ? (
+                <View style={styles.empty}>
+                  <Text style={styles.emptyTitle}>No tags yet</Text>
+                  <Text style={styles.emptySub}>Create one to start organizing.</Text>
+                </View>
+              ) : null
+            }
+          />
 
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -168,120 +156,140 @@ const GalleryTagsScreen = () => {
 export default GalleryTagsScreen;
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-  safeArea: {
-    flex: 1,
-  },
-  
-  // --- List Styles ---
-  listContent: {
-    paddingTop: 16,
-    paddingBottom: 40,
-  },
-  tagRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F5F5F5',
-  },
-  tagLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  tagName: {
-    fontSize: 16,
-    color: '#000000',
-    fontWeight: '400',
-  },
-  tagNameSelected: {
-      fontWeight: '600',
-  },
-  defaultBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: '#000000', // Black Badge
-  },
-  defaultBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  
-  // --- Right Actions ---
-  tagRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  actionBtn: {
-      padding: 8,
-  },
-  makeDefaultText: {
-    color: '#000000',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  verticalDivider: {
-      width: 1,
-      height: 14,
-      backgroundColor: '#E5E5EA',
-      marginHorizontal: 4,
-  },
-  
-  // --- Empty State ---
-  emptyContainer: {
-      alignItems: 'center',
-      marginTop: 60,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#000',
-    marginBottom: 4,
-  },
-  emptySubText: {
-      fontSize: 14,
-      color: '#8E8E93',
+    backgroundColor: '#FAFAFA',
   },
 
-  // --- Input Form ---
-  formContainer: {
+  // Input header
+  inputHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F9F9F9',
-    backgroundColor: '#FFFFFF', // Ensure opaque background
-  },
-  inputField: {
-    flex: 1,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#F5F5F5', // Light grey input
     paddingHorizontal: 20,
-    fontSize: 16,
-    color: '#000',
-    marginRight: 12,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E5E5',
+    backgroundColor: '#FAFAFA',
+  },
+  input: {
+    flex: 1,
+    height: 44,
+    borderRadius: 11,
+    backgroundColor: '#EFEFEF',
+    paddingHorizontal: 14,
+    fontSize: 14,
+    color: '#111111',
+    marginRight: 10,
   },
   addBtn: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#000000', // Solid Black Button
+    width: 44,
+    height: 44,
+    borderRadius: 13,
+    backgroundColor: '#111111',
     alignItems: 'center',
     justifyContent: 'center',
   },
   addBtnDisabled: {
-    backgroundColor: '#E5E5EA', // Grey when disabled
+    backgroundColor: '#EFEFEF',
+  },
+
+  // List
+  listContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 40,
+  },
+
+  // Rows
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#EBEBEB',
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderLeftColor: '#E5E5E5',
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: '#E5E5E5',
+  },
+  rowLast: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E5E5',
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
+  },
+
+  // Tag name + badge
+  rowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  tagName: {
+    fontSize: 15,
+    color: '#111111',
+    fontWeight: '400',
+    letterSpacing: -0.1,
+  },
+  tagNameDefault: {
+    fontWeight: '600',
+  },
+  badge: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: '#111111',
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  // Row actions
+  rowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  textBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  setDefaultText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#555555',
+  },
+  vDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 14,
+    backgroundColor: '#DDDDDD',
+    marginHorizontal: 4,
+  },
+  iconBtn: {
+    padding: 8,
+  },
+
+  // Empty state
+  empty: {
+    alignItems: 'center',
+    marginTop: 60,
+    gap: 4,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111111',
+  },
+  emptySub: {
+    fontSize: 13,
+    color: '#AAAAAA',
   },
 });

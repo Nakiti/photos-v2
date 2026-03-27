@@ -8,6 +8,7 @@ import CameraStack from "./CameraStack";
 import EventsStack from "./EventsStack";
 import CommunityStack from "./CommunityStack";
 import GroupsStack from "./GroupsStack";
+import ProfileStack from "./ProfileStack"
 
 const Stack = createNativeStackNavigator();
 
@@ -31,6 +32,7 @@ const RootStack = () => {
                     <Stack.Screen name="Events" component={EventsStack} />
                     <Stack.Screen name="CommunityFlow" component={CommunityStack} />
                     <Stack.Screen name="GroupFlow" component={GroupsStack} />
+                    <Stack.Screen name="ProfileFlow" component={ProfileStack} />
                 </>
             }
         </Stack.Navigator>

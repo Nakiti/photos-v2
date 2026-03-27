@@ -1,7 +1,6 @@
 import {createNativeStackNavigator} from "@react-navigation/native-stack";
 import GalleryScreen from "../features/gallery/screens/GalleryScreen";
 import GalleryDetailsScreen from "../features/gallery/screens/GalleryDetailsScreen";
-import GallerySettingsScreen from "../features/gallery/screens/GallerySettingsScreen";
 import GalleryPermissionScreen from "../features/gallery/screens/GalleryPermissionScreen";
 import GalleryMembersScreen from "../features/gallery/screens/GalleryMembersScreen";
 import AddGalleryMembersScreen from "../features/gallery/screens/AddGalleryMembersScreen";
@@ -43,14 +42,6 @@ const GalleryStack = () => {
                 options={{
                     headerShown: true,
                     header: () => <DefaultHeader title="Details"/>
-                }}
-            />
-            <Stack.Screen 
-                name="GallerySettings" 
-                component={GallerySettingsScreen} 
-                options={{
-                    headerShown: true,
-                    header: () => <DefaultHeader title="Settings"/>
                 }}
             />
             <Stack.Screen name="GalleryPermission" component={GalleryPermissionScreen} />

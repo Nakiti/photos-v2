@@ -1,45 +1,38 @@
 import React, { useMemo, useCallback } from 'react';
-import { View, StyleSheet, Text, FlatList, TouchableOpacity, Image, Alert, ActivityIndicator, SafeAreaView, StatusBar, Platform } from 'react-native';
+import {
+  View, StyleSheet, Text, FlatList, TouchableOpacity,
+  Alert, ActivityIndicator, SafeAreaView, StatusBar, Platform,
+} from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { launchImageLibrary, ImagePickerResponse } from 'react-native-image-picker';
 import FastImage from 'react-native-fast-image';
+import LinearGradient from 'react-native-linear-gradient';
 
-// Components
 import GroupListItem from '../../groups/components/GroupListItem';
-
-// Hooks
 import { useCommunity, useCommunityGalleries, useUpdateCommunityIcon } from '../../../hooks/useCommunityData';
-import { useCommunityMembers } from '../../../hooks/useCommunityMembershipData';
 import { useAuth } from '../../../hooks/useAuth';
 
 const CommunityScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute();
-  const { communityId } = (route.params as any) ?? { communityId: undefined };
-  
-  // Data Hooks
+  const { communityId } = (route.params as any) ?? {};
+
   const { community } = useCommunity(communityId);
   const { galleries, isLoading: isLoadingGalleries } = useCommunityGalleries(communityId);
   const { user } = useAuth();
   const { mutateAsync: updateIcon, isPending: isUpdatingIcon } = useUpdateCommunityIcon(communityId);
 
-  // Derived State
   const headerTitle = useMemo(() => community?.name ?? 'Community', [community?.name]);
   const isOwner = community?.ownerId === user?.id;
-  
-  // --- Handlers ---
+
   const onPickImage = () => {
-    if (!isOwner) {
-      Alert.alert('Permission Denied', 'Only the community owner can change the cover image.');
-      return;
-    }
-    
+    if (!isOwner) return;
     launchImageLibrary({ mediaType: 'photo', quality: 0.8 }, async (response: ImagePickerResponse) => {
-      if (response.assets && response.assets[0]?.uri) {
+      if (response.assets?.[0]?.uri) {
         try {
           await updateIcon(response.assets[0].uri);
-        } catch (error) {
+        } catch {
           Alert.alert('Error', 'Failed to update community icon.');
         }
       }
@@ -50,88 +43,98 @@ const CommunityScreen = () => {
     navigation.navigate('Gallery', { screen: 'Gallery', params: { galleryId } });
   }, [navigation]);
 
-  const onCreateEvent = () => {
-    navigation.navigate("GroupFlow", {screen: "CreateGalleryChoice", params: {communityId}})
-  }
+  const onCreateGallery = () => {
+    navigation.navigate('GroupFlow', { screen: 'CreateGroupDetails', params: { communityId } });
+  };
 
-  // --- Render Items ---
   const renderHeader = () => (
     <>
-      {/* 1. Banner Image Section */}
-      <View style={styles.bannerContainer}>
-        <TouchableOpacity 
-            activeOpacity={isOwner ? 0.8 : 1} 
-            onPress={isOwner ? onPickImage : undefined}
-            style={styles.bannerTouchable}
-        >
-            {community?.iconUrl ? (
-                <FastImage 
-                    source={{ uri: community.iconUrl }} 
-                    style={styles.bannerImage} 
-                    resizeMode={FastImage.resizeMode.cover}
-                />
-            ) : (
-                <View style={styles.bannerPlaceholder}>
-                    <Ionicons name="image-outline" size={48} color="rgba(255,255,255,0.5)" />
-                    {isOwner && <Text style={styles.bannerPlaceholderText}>Add Cover Photo</Text>}
-                </View>
-            )}
-            
-            {/* Gradient Overlay for Text Readability */}
-            <View style={styles.bannerOverlay}>
-                <View style={styles.titleWrapper}>
-                    <View style={styles.badgeContainer}>
-                        <Text style={styles.badgeText}>COMMUNITY</Text>
-                    </View>
-                    <Text style={styles.heroTitle} numberOfLines={2}>{headerTitle}</Text>
-                    <Text style={styles.heroMeta}>
-                        {community?.memberCount} {community?.memberCount === 1 ? 'member' : 'members'} • {community?.galleryCount || 0} Events
-                    </Text>
-                </View>
-            </View>
+      {/* Banner */}
+      <TouchableOpacity
+        style={styles.banner}
+        activeOpacity={isOwner ? 0.85 : 1}
+        onPress={isOwner ? onPickImage : undefined}
+      >
+        {community?.iconUrl ? (
+          <FastImage
+            source={{ uri: community.iconUrl }}
+            style={StyleSheet.absoluteFill}
+            resizeMode={FastImage.resizeMode.cover}
+          />
+        ) : (
+          <View style={styles.bannerPlaceholder}>
+            <Ionicons name="image-outline" size={36} color="rgba(255,255,255,0.3)" />
+            {isOwner && <Text style={styles.bannerPlaceholderText}>Add cover photo</Text>}
+          </View>
+        )}
 
-            {/* Loading Indicator for Image Upload */}
-            {isUpdatingIcon && (
-                <View style={styles.loadingOverlay}>
-                    <ActivityIndicator color="#FFF" />
-                </View>
-            )}
-        </TouchableOpacity>
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.18)', 'rgba(0,0,0,0.55)']}
+          locations={[0, 0.5, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
 
-        {/* Floating Navigation Header (Back/Settings) */}
-        <SafeAreaView style={styles.floatingHeader}>
-            <TouchableOpacity 
-                style={styles.glassButton} 
-                onPress={() => navigation.goBack()}
-            >
-                <Ionicons name="arrow-back" size={20} color="#FFF" />
-            </TouchableOpacity>
-            
-            <View style={styles.headerActions}>
-                <TouchableOpacity style={styles.glassButton} onPress={() => navigation.navigate("ShareCommunity")}>
-                    <Ionicons name="share-outline" size={20} color="#FFF" />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.glassButton} onPress={() => navigation.navigate("CommunityMembers")}>
-                    <Ionicons name="people-outline" size={20} color="#FFF" />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.glassButton} onPress={() => navigation.navigate("CommunityFlow", {
-                    screen: "CommunitySettings",
-                    params: {communityId}
-                    }
-                  )}>
-                    <Ionicons name="settings-outline" size={20} color="#FFF" />
-                </TouchableOpacity>
-            </View>
-        </SafeAreaView>
-      </View>
+        {/* Identity */}
+        <View style={styles.bannerIdentity}>
+          <Text style={styles.bannerTitle} numberOfLines={2}>{headerTitle}</Text>
+          <Text style={styles.bannerMeta}>
+            {community?.memberCount ?? 0} {community?.memberCount === 1 ? 'member' : 'members'} · {community?.galleryCount ?? 0} galleries
+          </Text>
+        </View>
 
-      {/* 2. Action Bar (Sticky-ish look) */}
-      <View style={styles.actionBar}>
-          <Text style={styles.sectionTitle}>Galleries</Text>
-          <TouchableOpacity style={styles.createButton} onPress={onCreateEvent}>
-             <Ionicons name="add" size={16} color="#FFF" style={{marginRight: 4}}/>
-             <Text style={styles.createButtonText}>Create</Text>
+        {/* Upload overlay */}
+        {isUpdatingIcon && (
+          <View style={styles.uploadOverlay}>
+            <ActivityIndicator color="#FFF" />
+          </View>
+        )}
+
+        {/* Floating nav */}
+        <SafeAreaView style={styles.floatingNav}>
+          <TouchableOpacity
+            style={styles.glassBtn}
+            onPress={() => navigation.goBack()}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="chevron-back" size={20} color="#FFF" />
           </TouchableOpacity>
+
+          <View style={styles.floatingNavRight}>
+            <TouchableOpacity
+              style={styles.glassBtn}
+              onPress={() => navigation.navigate('ShareCommunity')}
+            >
+              <Ionicons name="share-outline" size={18} color="#FFF" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.glassBtn}
+              onPress={() => navigation.navigate('CommunityMembers')}
+            >
+              <Ionicons name="people-outline" size={18} color="#FFF" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.glassBtn}
+              onPress={() => navigation.navigate('CommunityFlow', {
+                screen: 'CommunitySettings',
+                params: { communityId },
+              })}
+            >
+              <Ionicons name="settings-outline" size={18} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </TouchableOpacity>
+
+      {/* Action bar */}
+      <View style={styles.actionBar}>
+        <Text style={styles.actionBarTitle}>Galleries</Text>
+        <TouchableOpacity style={styles.createBtn} onPress={onCreateGallery} activeOpacity={0.7}>
+          <Ionicons name="add" size={15} color="#FFF" style={{ marginRight: 4 }} />
+          <Text style={styles.createBtnText}>Create</Text>
+        </TouchableOpacity>
       </View>
     </>
   );
@@ -141,7 +144,7 @@ const CommunityScreen = () => {
       id={item.id}
       title={item.name}
       icon={item.iconUrl || ''}
-      communityName={undefined} 
+      communityName={undefined}
       lastUploadedBy=""
       unseenCount={0}
       lastUpdated={item.lastPhotoAt ? new Date(item.lastPhotoAt).toISOString() : new Date().toISOString()}
@@ -149,11 +152,9 @@ const CommunityScreen = () => {
     />
   ), [handleGalleryPress]);
 
-
   return (
-    <View style={styles.container}>
+    <View style={styles.root}>
       <StatusBar barStyle="light-content" />
-      
       <FlatList
         data={galleries}
         keyExtractor={(item) => item.id}
@@ -162,17 +163,17 @@ const CommunityScreen = () => {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-            !isLoadingGalleries ? (
-                <View style={styles.emptyContainer}>
-                    <Ionicons name="calendar-outline" size={48} color="#E5E5EA" />
-                    <Text style={styles.emptyText}>No Galleries yet</Text>
-                    <Text style={styles.emptySubtext}>Start by creating a gallery for this community.</Text>
-                </View>
-            ) : (
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator color="#000" />
-                </View>
-            )
+          !isLoadingGalleries ? (
+            <View style={styles.empty}>
+              <Ionicons name="images-outline" size={36} color="#DDDDDD" />
+              <Text style={styles.emptyTitle}>No galleries yet</Text>
+              <Text style={styles.emptySub}>Create the first gallery for this community.</Text>
+            </View>
+          ) : (
+            <View style={styles.loadingWrap}>
+              <ActivityIndicator color="#999" />
+            </View>
+          )
         }
       />
     </View>
@@ -180,165 +181,137 @@ const CommunityScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#FFFFFF' 
+  root: {
+    flex: 1,
+    backgroundColor: '#FAFAFA',
   },
-  
-  // --- Banner ---
-  bannerContainer: {
-    height: 300, // Tall Banner
+
+  // Banner
+  banner: {
+    height: 280,
     width: '100%',
+    backgroundColor: '#1A1A1A',
     position: 'relative',
-    backgroundColor: '#1C1C1E',
-  },
-  bannerTouchable: {
-      flex: 1,
-  },
-  bannerImage: {
-    width: '100%',
-    height: '100%',
+    overflow: 'hidden',
   },
   bannerPlaceholder: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: '#2C2C2E',
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
   bannerPlaceholderText: {
-      color: 'rgba(255,255,255,0.5)',
-      marginTop: 8,
-      fontSize: 12,
-      fontWeight: '600',
-  },
-  bannerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.3)', // Overall dim
-    justifyContent: 'flex-end', // Text at bottom
-    paddingHorizontal: 20,
-    paddingBottom: 24,
-  },
-  loadingOverlay: {
-      ...StyleSheet.absoluteFillObject,
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      alignItems: 'center',
-      justifyContent: 'center',
-  },
-
-  // --- Floating Header (Back Button) ---
-  floatingHeader: {
-      position: 'absolute',
-      top: 0,
-      left: 10,
-      right: 10,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingTop: Platform.OS === 'android' ? 16 : 0, // Extra padding for Android status bar
-  },
-  headerActions: {
-      flexDirection: 'row',
-      gap: 12,
-  },
-  glassButton: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: 'rgba(0,0,0,0.3)', // Glassy
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.1)',
-  },
-
-  // --- Typography ---
-  titleWrapper: {
-      gap: 6,
-  },
-  badgeContainer: {
-      backgroundColor: 'rgba(255,255,255,0.2)',
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 4,
-      alignSelf: 'flex-start',
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.3)',
-  },
-  badgeText: {
-      color: '#FFF',
-      fontSize: 10,
-      fontWeight: '700',
-      letterSpacing: 0.8,
-  },
-  heroTitle: { 
-    fontSize: 32, 
-    fontWeight: '700', 
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: {width: 0, height: 2},
-    textShadowRadius: 4,
-  },
-  heroMeta: { 
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 12,
     fontWeight: '500',
   },
+  uploadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerIdentity: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    gap: 4,
+  },
+  bannerTitle: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+  },
+  bannerMeta: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.75)',
+    fontWeight: '400',
+  },
 
-  // --- Action Bar ---
+  // Floating nav
+  floatingNav: {
+    position: 'absolute',
+    top: 0,
+    left: 10,
+    right: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'android' ? 16 : 0,
+  },
+  floatingNavRight: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  glassBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+
+  // Action bar
   actionBar: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: 20,
-      paddingVertical: 16,
-      backgroundColor: '#FFFFFF',
-      borderBottomWidth: 1,
-      borderBottomColor: '#F2F2F7',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    backgroundColor: '#FAFAFA',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E5E5',
   },
-  sectionTitle: {
-      fontSize: 18,
-      fontWeight: '700',
-      color: '#000',
-      letterSpacing: -0.4,
+  actionBarTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111111',
+    letterSpacing: -0.3,
   },
-  createButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: '#000',
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 16,
+  createBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#111111',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 9,
   },
-  createButtonText: {
-      color: '#FFF',
-      fontSize: 13,
-      fontWeight: '600',
+  createBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
   },
 
-  // --- List & Empty State ---
+  // List
   listContent: {
-      paddingBottom: 40,
+    paddingBottom: 40,
   },
-  loadingContainer: {
-      paddingTop: 40,
+  loadingWrap: {
+    paddingTop: 40,
+    alignItems: 'center',
   },
-  emptyContainer: {
+  empty: {
     paddingTop: 60,
     alignItems: 'center',
     paddingHorizontal: 40,
+    gap: 8,
   },
-  emptyText: {
-    marginTop: 16,
-    color: '#000',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  emptySubtext: {
-    marginTop: 8,
-    color: '#8E8E93',
-    textAlign: 'center',
+  emptyTitle: {
     fontSize: 15,
+    fontWeight: '600',
+    color: '#111111',
+  },
+  emptySub: {
+    fontSize: 13,
+    color: '#AAAAAA',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
 

@@ -1,64 +1,75 @@
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
-const MembersListHeader = ({galleryId}: {galleryId: string}) => {
-    const navigation = useNavigation()
-
-    const handleBackPress = () => {
-        navigation.goBack();
-    }
+const MembersListHeader = ({ galleryId }: { galleryId: string }) => {
+    const navigation = useNavigation();
 
     return (
-        <View style={styles.header}>
-            <View style={styles.backContainer}>
-                <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
-                    <Ionicons name="chevron-back" size={24}  />
-                </TouchableOpacity>
-                <Text style={styles.title}>Members</Text>
-            </View>
-            <TouchableOpacity style={styles.addButton} onPress={() => navigation.navigate("AddGalleryMembers", {galleryId})}>
-                <Ionicons name="add" size={20} color="black" />
-            </TouchableOpacity>    
+        <View style={styles.root}>
+            <SafeAreaView>
+                <View style={styles.container}>
+                    <View style={styles.leftGroup}>
+                        <TouchableOpacity
+                            onPress={() => navigation.goBack()}
+                            style={styles.backButton}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            activeOpacity={0.7}
+                        >
+                            <Ionicons name="chevron-back" size={24} color="#1C1C1E" />
+                        </TouchableOpacity>
+                        <Text style={styles.title}>Members</Text>
+                    </View>
+                    <TouchableOpacity
+                        style={styles.circleButton}
+                        onPress={() => (navigation as any).navigate("AddGalleryMembers", { galleryId })}
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons name="add" size={22} color="#1C1C1E" />
+                    </TouchableOpacity>
+                </View>
+            </SafeAreaView>
         </View>
     );
-    
-}
+};
 
 export default MembersListHeader;
 
 const styles = StyleSheet.create({
-    header: {
-       flexDirection: "row",
-       justifyContent: "space-between",
-       alignItems: "center",
-       paddingHorizontal: 16,
-       paddingBottom: 8,
-       backgroundColor: "#fff",
-       // borderBottomWidth: 1,
-       // borderBottomColor: "#f0f0f0",
+    root: {
+        backgroundColor: '#FFFFFF',
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: '#F2F2F7',
     },
-    backContainer: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
+    container: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingVertical: 12,
+    },
+    leftGroup: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
     },
     backButton: {
         padding: 4,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
     title: {
-       fontSize: 22,
-       fontWeight: "600",
-       color: "#111",
+        fontSize: 20,
+        fontWeight: '600',
+        color: '#1C1C1E',
+        letterSpacing: -0.4,
     },
-    addButton: {
-       backgroundColor: "#f4f4f4",
-       borderRadius: 8,
-       padding: 4,
-       shadowColor: "#000",
-       shadowOffset: { width: 0, height: 1 },
-       shadowOpacity: 0.05,
-       shadowRadius: 2,
-       elevation: 1,
+    circleButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#F2F2F7',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
- });
+});

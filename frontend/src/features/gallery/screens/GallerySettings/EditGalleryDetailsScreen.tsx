@@ -1,285 +1,300 @@
 import { useRoute } from "@react-navigation/native";
 import React, { useState, useEffect, useMemo } from "react";
-import { 
-    View, Text, TouchableOpacity, StyleSheet, TextInput, 
-    TouchableWithoutFeedback, Keyboard, 
-    Alert
+import {
+  View, Text, TouchableOpacity, StyleSheet, TextInput,
+  TouchableWithoutFeedback, Keyboard, Alert, ActivityIndicator,
+  SafeAreaView, KeyboardAvoidingView, Platform,
 } from "react-native";
 import FastImage from "react-native-fast-image";
 import { launchImageLibrary, ImagePickerResponse } from "react-native-image-picker";
 import { useGallery, useUpdateGallery, useUpdateGalleryIcon } from "../../../../hooks/useGalleryData";
-import { ActivityIndicator } from "react-native-paper";
 import { useQueryClient } from "@tanstack/react-query";
-// Image upload handled via `useUpdateGalleryIcon`
-
-interface EditGalleryDetailsProps { galleryId: string | number }
+import Ionicons from "react-native-vector-icons/Ionicons";
 
 const EditGalleryDetailsScreen = () => {
-   const route = useRoute();
-   const queryClient = useQueryClient();
-   const { galleryId } = route.params as { galleryId: string };
+  const route = useRoute();
+  const queryClient = useQueryClient();
+  const { galleryId } = route.params as { galleryId: string };
 
-   // --- Data Fetching ---
-   const { gallery, isError, isLoading, error } = useGallery(galleryId);
+  const { gallery } = useGallery(galleryId);
+  const { mutate: updateGallery, isPending: isUpdating } = useUpdateGallery();
+  const { mutate: updateGalleryIcon, isPending: isUploadingIcon } = useUpdateGalleryIcon(galleryId);
 
-   // --- Mutations ---
-   const { mutate: updateGallery, isPending: isUpdating } = useUpdateGallery();
-   const { mutate: updateGalleryIcon, isPending: isUploadingIcon } = useUpdateGalleryIcon(galleryId);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [localImageUri, setLocalImageUri] = useState<string | null>(null);
+  const [initial, setInitial] = useState({ name: '', description: '', iconUrl: null as string | null });
 
-   // --- Local State for Editing ---
-   const [name, setName] = useState<string>('');
-   const [description, setDescription] = useState<string>('');
-   const [localImageUri, setLocalImageUri] = useState<string | null>(null);
-   const [initial, setInitial] = useState<{ name: string; description: string; iconUrl: string | null }>({ name: '', description: '', iconUrl: null });
+  useEffect(() => {
+    if (gallery) {
+      setName(gallery.name || '');
+      setDescription('');
+      setLocalImageUri(null);
+      setInitial({ name: gallery.name || '', description: '', iconUrl: gallery.iconUrl || null });
+    }
+  }, [galleryId, gallery]);
 
-   // Populate local state once gallery data is loaded
-   useEffect(() => {
-      if (gallery) {
-         setName(gallery.name || '');
-         // Description is not part of the Gallery model yet; keep local-only for now
-         setDescription('');
-         setLocalImageUri(null);
-         setInitial({ name: gallery.name || '', description: '', iconUrl: gallery.iconUrl || null });
+  const isDirty = useMemo(() =>
+    name !== initial.name || description !== initial.description || localImageUri !== null,
+    [name, description, localImageUri, initial]
+  );
+
+  const isLoading = isUpdating || isUploadingIcon;
+
+  const handleChangeImage = () => {
+    launchImageLibrary({ mediaType: 'photo', quality: 0.7 }, (response: ImagePickerResponse) => {
+      if (response.didCancel) return;
+      if (response.errorMessage) { Alert.alert('Error', response.errorMessage); return; }
+      if (response.assets?.[0]?.uri) {
+        const uri = response.assets[0].uri;
+        setLocalImageUri(uri);
+        updateGalleryIcon(uri, {
+          onSuccess: () => { setLocalImageUri(null); queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] }); },
+          onError: (err) => Alert.alert('Upload Failed', (err as Error)?.message || 'Unable to update image'),
+        });
       }
-   }, [galleryId, gallery]);
+    });
+  };
 
-   // Dirty tracking (similar to profile screen)
-   const isDirty = useMemo(() => {
-      return (
-         name !== initial.name ||
-         description !== initial.description ||
-         localImageUri !== null
-      );
-   }, [name, description, localImageUri, initial]);
+  const handleSave = () => {
+    if (!isDirty || isUpdating) return;
+    updateGallery(
+      { galleryId, data: { name: name.trim() || initial.name } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });
+          queryClient.invalidateQueries({ queryKey: ['galleries'] });
+          setInitial(prev => ({ ...prev, name: name.trim() || prev.name, description }));
+          setLocalImageUri(null);
+        },
+        onError: () => Alert.alert('Error', 'Failed to update gallery.'),
+      }
+    );
+  };
 
-   // --- Handlers ---
-   const handleChangeImage = () => {
-      launchImageLibrary({ mediaType: 'photo', quality: 0.7 }, (response: ImagePickerResponse) => {
-         if (response.didCancel) {
-           return;
-         }
-         if (response.errorMessage) {
-           Alert.alert('Error', response.errorMessage);
-           return;
-         }
-         if (response.assets && response.assets[0]?.uri) {
-           const uri = response.assets[0].uri;
-           setLocalImageUri(uri); // Local preview
-           // Upload immediately and sync
-           updateGalleryIcon(uri, {
-             onSuccess: () => {
-               setLocalImageUri(null);
-               queryClient.invalidateQueries({queryKey: ['gallery', galleryId]})
-             },
-             onError: (err) => {
-               Alert.alert('Upload Failed', (err as Error)?.message || 'Unable to update image');
-             },
-           });
-         }
-      });
-   };
+  const coverUri = localImageUri || initial.iconUrl || undefined;
 
-   const handleSave = () => {
-      if (!isDirty || isUpdating) return;
+  return (
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={styles.root}>
+        <SafeAreaView style={{ flex: 1 }}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1 }}
+          >
+            <View style={styles.container}>
 
-      // Only update fields supported today (name). Image upload will be added later via TODO hook.
-      updateGallery(
-         { galleryId, data: { name: name.trim() || initial.name } },
-         {
-            onSuccess: () => {
-               Alert.alert('Success', 'Gallery updated!');
-               queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });
-               queryClient.invalidateQueries({ queryKey: ['galleries'] });
-               // Reset local state to reflect saved data (description kept local-only for now)
-               setInitial((prev) => ({ ...prev, name: name.trim() || prev.name, description }));
-               setLocalImageUri(null);
-            },
-            onError: () => {
-               Alert.alert('Error', 'Failed to update gallery.');
-            },
-         }
-      );
-   };
-
-   // if (isLoading) {
-   //    return (
-   //      <View style={[styles.container, styles.center]}>
-   //        <ActivityIndicator size="large" color="#0000ff" />
-   //      </View>
-   //    );
-   //  }
-  
-   // if (isError) {
-   //    return (
-   //      <View style={[styles.container, styles.center]}>
-   //        <Text style={styles.errorText}>Failed to load groups: {error?.message || 'Unknown error'}</Text>
-   //      </View>
-   //    );
-   //  }
-
-   return (
-      <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-         <View style={styles.container}>
-            <View style={styles.avatarContainer}>
-               {(() => {
-                  const coverUri = localImageUri || initial.iconUrl || undefined;
-                  return (
-                     <TouchableOpacity onPress={handleChangeImage} disabled={isUpdating || isUploadingIcon}>
-                        {coverUri ? (
-                           <FastImage
-                              style={styles.avatar}
-                              source={{ uri: coverUri, priority: FastImage.priority.high }}
-                              resizeMode={FastImage.resizeMode.cover}
-                           />
-                        ) : (
-                           <View style={styles.avatarPlaceholder} />
-                        )}
-                     </TouchableOpacity>
-                  );
-               })()}
-               <TouchableOpacity 
-                  style={styles.changeImageButton}
+              {/* Avatar */}
+              <View style={styles.avatarSection}>
+                <TouchableOpacity
                   onPress={handleChangeImage}
-                  disabled={isUpdating || isUploadingIcon}
-               >
-                  <Text style={styles.changeImageText}>Change Image</Text>
-               </TouchableOpacity>
+                  disabled={isLoading}
+                  activeOpacity={0.7}
+                  style={styles.avatarWrap}
+                >
+                  {coverUri ? (
+                    <FastImage
+                      style={styles.avatar}
+                      source={{ uri: coverUri, priority: FastImage.priority.high }}
+                      resizeMode={FastImage.resizeMode.cover}
+                    />
+                  ) : (
+                    <View style={styles.avatarPlaceholder} />
+                  )}
+                  <View style={styles.editBadge}>
+                    {isUploadingIcon ? (
+                      <ActivityIndicator size="small" color="#FFF" />
+                    ) : (
+                      <Ionicons name="camera" size={13} color="#FFF" />
+                    )}
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleChangeImage} disabled={isLoading}>
+                  <Text style={styles.changePhotoText}>Change photo</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Fields */}
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>Details</Text>
+                <View style={styles.card}>
+                  <View style={styles.inputRow}>
+                    <Text style={styles.inputLabel}>Name</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={name}
+                      onChangeText={setName}
+                      placeholder="Gallery name"
+                      placeholderTextColor="#CCCCCC"
+                      editable={!isLoading}
+                    />
+                  </View>
+                  <View style={[styles.inputRow, styles.noBorder]}>
+                    <Text style={styles.inputLabel}>Description</Text>
+                    <TextInput
+                      style={[styles.input, styles.multilineInput]}
+                      value={description}
+                      onChangeText={setDescription}
+                      placeholder="Add a description…"
+                      placeholderTextColor="#CCCCCC"
+                      multiline
+                      textAlignVertical="top"
+                      editable={!isLoading}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              {/* Save */}
+              <View style={styles.footer}>
+                <TouchableOpacity
+                  style={[styles.saveBtn, (!isDirty || isLoading) && styles.saveBtnDisabled]}
+                  onPress={handleSave}
+                  disabled={!isDirty || isLoading}
+                  activeOpacity={0.7}
+                >
+                  {isUpdating ? (
+                    <ActivityIndicator color="#FFF" />
+                  ) : (
+                    <Text style={[styles.saveBtnText, (!isDirty || isLoading) && styles.saveBtnTextDisabled]}>
+                      Save changes
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+
             </View>
-
-            {/* Name Input */}
-            <View style={styles.infoContainer}>
-               <Text style={styles.label}>Group Name</Text>
-               <TextInput
-                  style={styles.input}
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Enter Name"
-                  placeholderTextColor="gray"
-                  editable={!isUpdating}
-               />
-            </View>
-
-            {/* Description Input */}
-            <TextInput
-               style={styles.description}
-               value={description}
-               onChangeText={setDescription}
-               placeholder="Add Description"
-               placeholderTextColor="gray"
-               numberOfLines={12}
-               multiline
-               editable={!isUpdating}
-            />
-
-            {/* Save Button */}
-            <TouchableOpacity 
-               style={[styles.saveButton, (!isDirty || isUpdating || isUploadingIcon) && styles.disabledButton]} 
-               onPress={handleSave}
-               disabled={!isDirty || isUpdating || isUploadingIcon}
-            >
-               <Text style={styles.saveButtonText}>Save</Text>
-            </TouchableOpacity>
-         </View>
-      </TouchableWithoutFeedback>
-   );
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </View>
+    </TouchableWithoutFeedback>
+  );
 };
 
 export default EditGalleryDetailsScreen;
 
 const styles = StyleSheet.create({
-   container: {
-      flex: 1,
-      backgroundColor: "#fff",
-      paddingHorizontal: 20,
-   },
-   center: {
-      justifyContent: 'center',
-      alignItems: 'center',
-   },
-   avatarContainer: {
-      alignItems: "center",
-      marginTop: 20,
-      marginBottom: 30, // Added margin for spacing
-   },
-   avatar: {
-      width: 150,
-      height: 150,
-      borderRadius: 75, // Made into a perfect circle
-      backgroundColor: "#f2f2f2",
-   },
-   avatarPlaceholder: {
-      width: 150,
-      height: 150,
-      borderRadius: 75,
-      backgroundColor: '#f2f2f2',
-   },
-   changeImageButton: {
-      marginTop: 10,
-      backgroundColor: "#007bff",
-      paddingVertical: 8,
-      paddingHorizontal: 15,
-      borderRadius: 8,
-      marginBottom: 20,
-      minWidth: 140,
-      alignItems: 'center',
-   },
-   changeImageText: {
-      color: "#fff",
-      fontSize: 14,
-      fontWeight: "bold",
-   },
-   // Style for the camera icon overlay
-   editOverlay: {
-      position: 'absolute',
-      bottom: 5,
-      right: 5,
-      backgroundColor: 'rgba(0,0,0,0.6)',
-      padding: 8,
-      borderRadius: 20,
-   },
-   infoContainer: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      backgroundColor: "#f9f9f9",
-      padding: 15,
-      borderRadius: 10,
-      alignItems: "center",
-   },
-   label: {
-      fontSize: 16,
-      fontWeight: "bold",
-   },
-   input: {
-      fontSize: 16,
-      color: "#000",
-      flex: 1,
-      textAlign: "right", 
-   },
-   description: {
-      backgroundColor: "#f9f9f9",
-      padding: 15,
-      borderRadius: 10,
-      marginTop: 15,
-      height: 150,
-      textAlignVertical: "top",
-   },
-   saveButton: {
-      backgroundColor: "#007bff",
-      paddingVertical: 12,
-      borderRadius: 10,
-      alignItems: "center",
-      marginTop: 30,
-   },
-   disabledButton: {
-      backgroundColor: "#b0c4de",
-   },
-   saveButtonText: {
-      color: "#fff",
-      fontSize: 16,
-      fontWeight: "bold",
-   },
-   errorText: {
-      color: 'red',
-   },
-});
+  root: {
+    flex: 1,
+    backgroundColor: '#FAFAFA',
+  },
+  container: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
 
+  // Avatar
+  avatarSection: {
+    alignItems: 'center',
+    paddingVertical: 28,
+  },
+  avatarWrap: {
+    position: 'relative',
+    marginBottom: 10,
+  },
+  avatar: {
+    width: 88,
+    height: 88,
+    borderRadius: 28,
+    backgroundColor: '#EFEFEF',
+  },
+  avatarPlaceholder: {
+    width: 88,
+    height: 88,
+    borderRadius: 28,
+    backgroundColor: '#EFEFEF',
+  },
+  editBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    backgroundColor: '#111111',
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2.5,
+    borderColor: '#FAFAFA',
+  },
+  changePhotoText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#888888',
+  },
+
+  // Section
+  section: {
+    marginBottom: 24,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#AAAAAA',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E5E5E5',
+    overflow: 'hidden',
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#EBEBEB',
+  },
+  noBorder: {
+    borderBottomWidth: 0,
+  },
+  inputLabel: {
+    width: 90,
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111111',
+  },
+  input: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111111',
+    padding: 0,
+  },
+  multilineInput: {
+    minHeight: 72,
+    paddingTop: 2,
+  },
+
+  // Footer
+  footer: {
+    marginTop: 'auto',
+    paddingTop: 16,
+    paddingBottom: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E5E5E5',
+  },
+  saveBtn: {
+    backgroundColor: '#111111',
+    height: 48,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveBtnDisabled: {
+    backgroundColor: '#EFEFEF',
+  },
+  saveBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+  },
+  saveBtnTextDisabled: {
+    color: '#BBBBBB',
+  },
+});

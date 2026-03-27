@@ -2,7 +2,6 @@ import {createNativeStackNavigator} from "@react-navigation/native-stack";
 import ProfileScreen from "../features/profile/screens/ProfileScreen";
 import FriendsScreen from "../features/profile/screens/FriendsScreen";
 import EditProfileScreen from "../features/profile/screens/EditProfileScreen";
-import ProfileSettingsScreen from "../features/profile/screens/ProfileSettingsScreen";
 import DefaultHeader from "../components/DefaultHeader";
 import AddFriendsScreen from "../features/profile/screens/AddFriendsScreen";
 import DataSyncSettingsScreen from "../features/profile/screens/ProfileSettings/DataSyncSettingsScreen";
@@ -41,14 +40,7 @@ const ProfileStack = () => {
                     header: () => <DefaultHeader title="Edit Profile" />
                 }}
             />
-            <Stack.Screen 
-                name="ProfileSettings" 
-                component={ProfileSettingsScreen} 
-                options={{
-                    header: () => <DefaultHeader title="Profile Settings" />
-                }}
-            />
-            <Stack.Screen 
+            <Stack.Screen
                 name="NotificationSettings"
                 component={NotificationSettingsScreen}
                 options={{

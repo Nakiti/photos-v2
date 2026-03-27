@@ -1,138 +1,275 @@
 import React from 'react';
-import { View, StyleSheet, Text, Image, TouchableOpacity } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Switch,
+  SafeAreaView,
+  Alert,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useUser } from '../../../hooks/useUser';
-import { ActivityIndicator } from 'react-native-paper';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import FastImage from 'react-native-fast-image';
+import { useUser } from '../../../hooks/useUser';
+
+const SectionLabel = ({ title }: { title: string }) => (
+  <Text style={styles.sectionLabel}>{title}</Text>
+);
+
+const SettingsRow = ({
+  label,
+  value,
+  onPress,
+  isSwitch,
+  isDestructive,
+  hasChevron = true,
+  isLast = false,
+}: any) => (
+  <TouchableOpacity
+    style={[styles.row, isLast && styles.rowLast]}
+    onPress={onPress}
+    activeOpacity={isSwitch ? 1 : 0.5}
+    disabled={!onPress && !isSwitch}
+  >
+    <Text style={[styles.rowLabel, isDestructive && styles.rowLabelDestructive]}>
+      {label}
+    </Text>
+    <View style={styles.rowRight}>
+      {isSwitch ? (
+        <Switch
+          value={value}
+          onValueChange={onPress}
+          trackColor={{ false: '#E5E5E5', true: '#111111' }}
+          thumbColor="#FFFFFF"
+          ios_backgroundColor="#E5E5E5"
+        />
+      ) : (
+        <>
+          {value && <Text style={styles.rowValue}>{value}</Text>}
+          {hasChevron && !isDestructive && (
+            <Ionicons name="chevron-forward" size={14} color="#CECECE" style={{ marginLeft: 4 }} />
+          )}
+        </>
+      )}
+    </View>
+  </TouchableOpacity>
+);
 
 const ProfileScreen = () => {
-   const navigation = useNavigation();
-   const {user, isError, isLoading, isSyncing, error} = useUser()
-
-   // if (isLoading) {
-   //    return (
-   //      <View style={[styles.container, styles.center]}>
-   //        <ActivityIndicator size="large" color="#0000ff" />
-   //      </View>
-   //    );
-   // }
-  
-   // if (isError) {
-   //    return (
-   //       <View style={[styles.container, styles.center]}>
-   //          <Text style={styles.errorText}>Failed to load groups: {error?.message}</Text>
-   //       </View>
-   //    );
-   // }
+  const navigation = useNavigation<any>();
+  const { user } = useUser();
+  const [showHidden, setShowHidden] = React.useState(false);
 
   return (
-    <View style={styles.container}>
-         {user && (
-            <View style={styles.profileContainer}>
-               <View style={styles.avatar}>
-                  {!user.avatarUrl ? (
-                     <Text style={styles.avatarText}>
-                        {user.name[0]}
-                     </Text>
-                  ) : (
-                     <FastImage source={{ uri: user.avatarUrl }} style={styles.avatarImage} />
-                  )}
-               </View>
-               <Text style={styles.name}>{user.name}</Text>
-               <Text style={styles.handle}>@{user.handle}</Text>
+    <SafeAreaView style={styles.root}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Avatar + Identity */}
+        {user && (
+          <View style={styles.profileSection}>
+            <View style={styles.avatar}>
+              {user.avatarUrl ? (
+                <FastImage
+                  source={{ uri: user.avatarUrl }}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode={FastImage.resizeMode.cover}
+                />
+              ) : (
+                <Text style={styles.avatarInitial}>{user.name[0]}</Text>
+              )}
             </View>
-         )}
+            <Text style={styles.name}>{user.name}</Text>
+            <Text style={styles.handle}>@{user.handle}</Text>
+          </View>
+        )}
 
-        <View style={styles.buttonsContainer}>
-            {[
-               { name: "Edit Profile", icon: "person-outline", route: "EditProfile" },
-               { name: "Friends", icon: "people-outline", route: "Friends" },
-               { name: "Settings", icon: "settings-outline", route: "ProfileSettings" },
-               { name: "Help Center", icon: "help-circle-outline", route: "HelpCenter" },
-               { name: "Sign out", icon: "log-out-outline", action: null, type: "action" },
-            ].map((item, index) => (
-               <TouchableOpacity
-                  key={index}
-                  style={item.action ? styles.action : styles.button}
-                  onPress={() => (item.action ? item.action() : navigation.navigate(item.route))}
-               >
-                  <Ionicons name={item.icon} size={24} color="black" />
-                  <Text style={styles.buttonText}>{item.name}</Text>
-               </TouchableOpacity>
-            ))}
-         </View>
-    </View>
+        {/* Account */}
+        <View style={styles.section}>
+          <SectionLabel title="Account" />
+          <View style={styles.card}>
+            <SettingsRow
+              label="Edit Profile"
+              onPress={() => navigation.navigate('ProfileFlow', { screen: 'EditProfile' })}
+            />
+            <SettingsRow
+              label="Appearance"
+              value="System"
+              onPress={() => {}}
+              isLast
+            />
+          </View>
+        </View>
+
+        {/* Preferences */}
+        <View style={styles.section}>
+          <SectionLabel title="Preferences" />
+          <View style={styles.card}>
+            <SettingsRow
+              label="Notifications & Sounds"
+              value="On"
+              onPress={() => navigation.navigate('ProfileFlow', { screen: 'NotificationSettings' })}
+            />
+            <SettingsRow
+              label="Sync & Data Usage"
+              value="High Quality"
+              onPress={() => navigation.navigate('ProfileFlow', { screen: 'DataSyncSettings' })}
+              isLast
+            />
+          </View>
+        </View>
+
+        {/* Gallery */}
+        <View style={styles.section}>
+          <SectionLabel title="Gallery" />
+          <View style={styles.card}>
+            <SettingsRow
+              label="Show Hidden Galleries"
+              isSwitch
+              value={showHidden}
+              onPress={() => setShowHidden(!showHidden)}
+            />
+            <SettingsRow
+              label="Clear Cache"
+              value="1.2 GB"
+              onPress={() => Alert.alert('Cache Cleared')}
+              hasChevron={false}
+              isLast
+            />
+          </View>
+        </View>
+
+        {/* Support */}
+        <View style={styles.section}>
+          <SectionLabel title="Support" />
+          <View style={styles.card}>
+            <SettingsRow
+              label="Help Center"
+              onPress={() => navigation.navigate('ProfileFlow', { screen: 'HelpCenter' })}
+              isLast
+            />
+          </View>
+        </View>
+
+        {/* Sign Out */}
+        <View style={styles.section}>
+          <View style={styles.card}>
+            <SettingsRow
+              label="Sign out"
+              isDestructive
+              hasChevron={false}
+              onPress={() => {}}
+              isLast
+            />
+          </View>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-    container: {
-       flex: 1,
-       backgroundColor: 'white',
-       alignItems: 'center',
-       paddingTop: 100,
-    },
-    profileContainer: {
-       alignItems: 'center',
-       marginBottom: 40,
-    },
-    avatar: {
-       width: 150,
-       height: 150,
-       borderRadius: 75,
-       backgroundColor: '#e0e0e0',
-       justifyContent: 'center',
-       alignItems: 'center',
-       marginBottom: 12,
-    },
-    avatarText: {
-       fontSize: 36,
-       fontWeight: 'bold',
-       color: 'gray',
-    },
-    avatarImage: {
-       width: '100%',
-       height: '100%',
-       borderRadius: 75,
-    },
-    name: {
-       fontSize: 30,
-       fontWeight: 'bold',
-       color: 'black',
-       marginBottom: 2
-    },
-    handle: {
-       fontSize: 18,
-       color: 'gray',
-    },
-    buttonsContainer: {
-       width: '90%',
-    },
-    button: {
-       flexDirection: 'row',
-       alignItems: 'center',
-       paddingVertical: 16,
-       paddingHorizontal: 20,
-       borderRadius: 10,
-       backgroundColor: '#f8f8f8',
-       marginBottom: 10,
-    },
-    action: {
-       flexDirection: 'row',
-       alignItems: 'center',
-       paddingVertical: 16,
-       paddingHorizontal: 20,
-       borderRadius: 10,
-       backgroundColor: '#4A90E2',
-       marginBottom: 10,
-    },
-    buttonText: {
-       fontSize: 15,
-       marginLeft: 16,
-       fontWeight: '500',
-       color: 'black',
-    },
- });
+  root: {
+    flex: 1,
+    backgroundColor: '#FAFAFA',
+  },
+  scrollContent: {
+    paddingTop: 8,
+    paddingBottom: 60,
+    paddingHorizontal: 20,
+  },
+
+  // Profile header
+  profileSection: {
+    alignItems: 'center',
+    paddingVertical: 28,
+    marginBottom: 12,
+  },
+  avatar: {
+    width: 88,
+    height: 88,
+    borderRadius: 28,
+    backgroundColor: '#EFEFEF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+    overflow: 'hidden',
+  },
+  avatarInitial: {
+    fontSize: 30,
+    fontWeight: '600',
+    color: '#AAAAAA',
+  },
+  name: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111111',
+    letterSpacing: -0.3,
+    marginBottom: 3,
+  },
+  handle: {
+    fontSize: 14,
+    color: '#AAAAAA',
+    fontWeight: '400',
+  },
+
+  // Section
+  section: {
+    marginBottom: 24,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#AAAAAA',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+
+  // Card
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E5E5E5',
+    overflow: 'hidden',
+  },
+
+  // Row
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#EBEBEB',
+  },
+  rowLast: {
+    borderBottomWidth: 0,
+  },
+  rowLabel: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#111111',
+    letterSpacing: -0.1,
+  },
+  rowLabelDestructive: {
+    color: '#CC3333',
+  },
+  rowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  rowValue: {
+    fontSize: 14,
+    color: '#AAAAAA',
+    fontWeight: '400',
+    marginRight: 2,
+  },
+});
 
 export default ProfileScreen;
