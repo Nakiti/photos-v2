@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "500392747773",
+    "project_id": "photos-182e1",
+    "storage_bucket": "photos-182e1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:500392747773:android:79004e83a036701565d494",
+        "android_client_info": {
+          "package_name": "com.nikhilakiti.photos"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC_i-4SJ7o3-Qt4BZmHK5e1J5jM_8WODvs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

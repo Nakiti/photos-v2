@@ -120,3 +120,5 @@ dependencies {
 
 // Ensure vector icon fonts are bundled with the Android app
 apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
+
+apply plugin: "com.google.gms.google-services"

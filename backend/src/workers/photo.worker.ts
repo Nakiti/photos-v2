@@ -4,148 +4,140 @@ import { redisConnection, redis } from '../../libs/redis.js';
 import { sendPushNotifications, createNotificationRecord } from '../api/notifications/notifications.service.js';
 
 const prisma = new PrismaClient();
+const MEMBER_BATCH_SIZE = 100;
+
+type MemberWithDevices = {
+  id: string;
+  userId: string;
+  user: { devices: { token: string }[] };
+};
+
+/**
+ * Iterates gallery members in batches, filtering out muted and excluded users,
+ * creates notification records, and sends push notifications — all without loading
+ * the full member list into memory at once.
+ */
+async function notifyGalleryMembers(
+  galleryId: string,
+  excludeUserIds: Set<string>,
+  title: string,
+  body: string,
+  pushData: Record<string, unknown>,
+  notificationData: Record<string, unknown>,
+) {
+  let cursor: string | undefined;
+
+  while (true) {
+    const batch: MemberWithDevices[] = await prisma.membership.findMany({
+      where: {
+        galleryId,
+        userId: { notIn: Array.from(excludeUserIds) },
+        status: 'ACCEPTED',
+        isMuted: false,
+      },
+      select: {
+        id: true,
+        userId: true,
+        user: { select: { devices: { select: { token: true } } } },
+      },
+      take: MEMBER_BATCH_SIZE,
+      orderBy: { id: 'asc' },
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+    } as any);
+
+    if (batch.length === 0) break;
+
+    const tokens = batch.flatMap(m => m.user.devices).map(d => d.token);
+
+    if (tokens.length > 0) {
+      await Promise.all(
+        batch.map(member =>
+          createNotificationRecord(
+            member.userId,
+            member.userId, // actorId not meaningful for system notifications
+            'SYSTEM',
+            notificationData as any,
+            galleryId,
+            'Gallery',
+          )
+        )
+      );
+
+      const deadTokens = await sendPushNotifications(tokens, title, body, pushData);
+      if (deadTokens.length > 0) {
+        await prisma.device.deleteMany({ where: { token: { in: deadTokens } } });
+      }
+    }
+
+    if (batch.length < MEMBER_BATCH_SIZE) break;
+    cursor = batch[batch.length - 1].id;
+  }
+}
 
 export const worker = new Worker('photo-notifications', async (job) => {
-    console.log(`Job ${job.id}: ${job.name}`);
+  console.log(`Job ${job.id}: ${job.name}`);
 
-    if (job.name === 'check-buffer') {
-        const { galleryId, uploaderId, uploaderName, galleryName } = job.data;
-        const bufferKey = `photo:buffer:${galleryId}:${uploaderId}`;
-        const raw = await redis.get(bufferKey);
-        const count = raw ? parseInt(raw, 10) : 0;
-        if (count > 0) {
-            // Reset buffer first to avoid double sends
-            await redis.del(bufferKey);
+  if (job.name === 'check-buffer') {
+    const { galleryId, galleryName } = job.data;
+    const bufferKey = `photo:buffer:${galleryId}`;
+    const jobIdKey  = `photo:buffer:job:${galleryId}`;
 
-            // Get users currently in the gallery room (should not receive push notifications)
-            const roomKey = `gallery:${galleryId}:users`;
-            const activeUserIds = await redis.smembers(roomKey);
-            const activeUserIdsSet = new Set(activeUserIds);
-            console.log(`[Notification] ${activeUserIds.length} users currently viewing gallery ${galleryId}, excluding from push notifications`);
+    const raw = await redis.get(bufferKey);
+    const count = raw ? parseInt(raw, 10) : 0;
 
-            const memberships = await prisma.membership.findMany({
-                where: {
-                galleryId,
-                userId: { not: uploaderId },
-                status: 'ACCEPTED',
-                isMuted: false
-                },
-                include: { user: { include: { devices: true } } }
-            });
+    // Clean up the job ID key regardless
+    await redis.del(jobIdKey);
 
-            // Filter out members who are currently viewing the gallery
-            const membersToNotify = memberships.filter(m => !activeUserIdsSet.has(m.userId));
-            console.log(`[Notification] Filtered ${memberships.length} members to ${membersToNotify.length} (excluding ${activeUserIds.length} active viewers)`);
+    if (count > 0) {
+      await redis.del(bufferKey);
 
-            const tokens = membersToNotify.flatMap(m => m.user.devices).map(d => d.token);
-            if (tokens.length === 0) return;
+      const roomKey = `gallery:${galleryId}:users`;
+      const activeUserIds = await redis.hkeys(roomKey);
+      const excludeIds = new Set(activeUserIds);
 
-            // Create notification records for each recipient
-            const notificationData = {
-                thumbnailUrl: null as string | null,
-                galleryName: galleryName || 'the gallery',
-                previewText: `${uploaderName} added ${count} photo${count === 1 ? '' : 's'}`,
-            };
-
-            await Promise.all(
-                membersToNotify.map(member =>
-                    createNotificationRecord(
-                        member.userId,
-                        uploaderId,
-                        'SYSTEM',
-                        notificationData,
-                        galleryId,
-                        'Gallery'
-                    )
-                )
-            );
-
-            const deadTokens = await sendPushNotifications(
-                tokens,
-                galleryName || 'New Photos',
-                `${uploaderName} added ${count} photo${count === 1 ? '' : 's'} to ${galleryName || 'the gallery'}`,
-                { galleryId }
-            );
-
-            if (deadTokens.length > 0) {
-                await prisma.device.deleteMany({
-                where: { token: { in: deadTokens } }
-                });
-            }
-        }
-        return;
-    }
-
-    // Default immediate processing for 'process-new-photo'
-    const { galleryId, uploaderId, photo } = job.data;
-
-    // 1. Get users currently in the gallery room (should not receive push notifications)
-    const roomKey = `gallery:${galleryId}:users`;
-    const activeUserIds = await redis.smembers(roomKey);
-    const activeUserIdsSet = new Set(activeUserIds);
-    console.log(`[Notification] ${activeUserIds.length} users currently viewing gallery ${galleryId}, excluding from push notifications`);
-
-    // 2. Find who to notify
-    const members = await prisma.membership.findMany({
-        where: { 
+      const photoText = `${count} new photo${count === 1 ? '' : 's'}`;
+      await notifyGalleryMembers(
         galleryId,
-        userId: { not: uploaderId }, // Don't notify self
-        status: 'ACCEPTED',
-        isMuted: false
-        },
-        include: { user: { include: { devices: true } } }
-    });
-
-    // 3. Filter out members who are currently viewing the gallery
-    const membersToNotify = members.filter(m => !activeUserIdsSet.has(m.userId));
-    console.log(`[Notification] Filtered ${members.length} members to ${membersToNotify.length} (excluding ${activeUserIds.length} active viewers)`);
-
-    // 4. Extract tokens
-    const tokens = membersToNotify
-        .flatMap(m => m.user.devices)
-        .map(d => d.token);
-
-    if (tokens.length === 0) return;
-
-    // 4.5. Create notification records for each recipient
-    const notificationData = {
-        thumbnailUrl: null as string | null,
-        galleryName: photo.galleryName || 'the gallery',
-        previewText: `${photo.uploaderName} added a photo`,
-    };
-
-    await Promise.all(
-        membersToNotify.map(member =>
-            createNotificationRecord(
-                member.userId,
-                uploaderId,
-                'SYSTEM',
-                notificationData,
-                photo.id || galleryId,
-                photo.id ? 'Photo' : 'Gallery'
-            )
-        )
-    );
-
-  // 5. Send Push (The expensive network call)
-    console.log(`Sending push to ${tokens.length} devices...`);
-    const deadTokens = await sendPushNotifications(
-        tokens, 
-        photo.galleryName || 'New Photo', 
-        `${photo.uploaderName} added a photo to ${photo.galleryName || 'the gallery'}`,
-        { galleryId, photoId: photo.id }
-    );
-    
-    // 6. Cleanup (Maintenance)
-    if (deadTokens.length > 0) {
-        console.log(`Removing ${deadTokens.length} dead tokens...`);
-        await prisma.device.deleteMany({
-        where: {
-            token: { in: deadTokens }
-        }
-        });
+        excludeIds,
+        galleryName || 'New Photos',
+        `${photoText} ${count === 1 ? 'was' : 'were'} added to ${galleryName || 'the gallery'}`,
+        { galleryId },
+        { galleryName: galleryName || 'the gallery', previewText: photoText },
+      );
     }
+    return;
+  }
 
-}, { 
-  connection: redisConnection // Connect to same Redis
+  if (job.name === 'cleanup-old-notifications') {
+    const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000); // 90 days
+    const { count } = await prisma.notification.deleteMany({
+      where: { isRead: true, createdAt: { lt: cutoff } },
+    });
+    console.log(`[Cleanup] Deleted ${count} old read notifications`);
+    return;
+  }
+
+  // 'process-new-photo' — immediate notification for the first upload in a window
+  const { galleryId, photo } = job.data;
+  const { uploaderName, galleryName, id: photoId } = photo;
+
+  const roomKey = `gallery:${galleryId}:users`;
+  const activeUserIds = await redis.hkeys(roomKey);
+  const excludeIds = new Set(activeUserIds);
+
+  const notificationData = {
+    galleryName: galleryName || 'the gallery',
+    previewText: `${uploaderName} added a photo`,
+  };
+
+  await notifyGalleryMembers(
+    galleryId,
+    excludeIds,
+    galleryName || 'New Photo',
+    `${uploaderName} added a photo to ${galleryName || 'the gallery'}`,
+    { galleryId, photoId },
+    notificationData,
+  );
+}, {
+  connection: redisConnection,
 });

@@ -23,6 +23,7 @@ model User {
   ownedGalleries Gallery[]     @relation("OwnedGalleries")
   memberships    Membership[]
   photos         Photo[]
+  photoLikes     PhotoLike[]
   devices        Device[]
   sentFriendRequests Friendship[] @relation("SentFriendRequests")
   receivedFriendRequests Friendship[] @relation("ReceivedFriendRequests")
@@ -48,14 +49,14 @@ model Gallery {
   shareableLink String?   @unique
 
   joinRequiresApproval Boolean @default(false)
-  requirePictureReview Boolean @default(false)
   addPermission        GalleryAddPermission      @default(ADMIN)
   deletePermission     GalleryDeletePermission   @default(ADMINS_AUTHORS)
   editPermission       GalleryEditPermission     @default(ADMIN)
 
-  defaultTagId String? @unique
-  photoCount   Int      @default(0)
-  memberCount  Int      @default(0)
+  defaultTagId       String? @unique
+  photoCount         Int      @default(0)
+  memberCount        Int      @default(0)
+  uploadLimitPerHour Int      @default(10)
 
   communityId String? 
   community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
@@ -173,14 +174,30 @@ model Photo {
   thumbnailKey String?
   visible     PhotoVisibility @default(VISIBLE)
   createdAt   DateTime @default(now())
+  deletedAt   DateTime?
 
-  gallery  Gallery    @relation(fields: [galleryId], references: [id], onDelete: Cascade) // Cascade delete if gallery is deleted
-  uploader User       @relation(fields: [uploaderId], references: [id], onDelete: Cascade) // Cascade delete if uploader is deleted (adjust if needed)
+  gallery  Gallery    @relation(fields: [galleryId], references: [id], onDelete: Cascade)
+  uploader User       @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
   photoTags PhotoTag[]
+  likes     PhotoLike[]
 
-  @@index([galleryId])
+  @@index([galleryId, deletedAt])
   @@index([uploaderId])
   @@index([visible])
+}
+
+model PhotoLike {
+  id        String   @id @default(uuid())
+  photoId   String
+  userId    String
+  createdAt DateTime @default(now())
+
+  photo Photo @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([photoId, userId])
+  @@index([photoId])
+  @@index([userId])
 }
 
 model Tag {

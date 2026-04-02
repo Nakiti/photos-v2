@@ -1,12 +1,23 @@
-import { Expo, type ExpoPushMessage } from 'expo-server-sdk';
+import admin from 'firebase-admin';
 import { PrismaClient } from '@prisma/client';
 import { photoQueue } from '../../../libs/queue.js';
 import { redis } from '../../../libs/redis.js';
 
 type NotificationType = 'LIKE' | 'COMMENT' | 'INVITE' | 'SYSTEM';
 
-const expo = new Expo();
 const prisma = new PrismaClient();
+
+// Initialise Firebase Admin once (no-op if already initialised)
+if (!admin.apps.length) {
+  const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+  if (serviceAccountPath) {
+    const serviceAccount = (await import(serviceAccountPath, { assert: { type: 'json' } })).default;
+    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+  } else {
+    // Falls back to GOOGLE_APPLICATION_CREDENTIALS env var or GCP metadata server
+    admin.initializeApp();
+  }
+}
 
 /**
  * Creates a notification record in the database.
@@ -32,7 +43,7 @@ export async function createNotificationRecord(
 }
 
 /**
- * Sends push notifications via Expo and returns a list of invalid tokens
+ * Sends push notifications via FCM and returns a list of invalid tokens
  * that should be removed from the Device table.
  */
 export async function sendPushNotifications(
@@ -41,88 +52,96 @@ export async function sendPushNotifications(
   body: string,
   data: Record<string, unknown>
 ): Promise<string[]> {
+  if (tokens.length === 0) return [];
+
   const invalidTokens: string[] = [];
 
-  // Validate tokens
-  const validTokens = tokens.filter((t) => Expo.isExpoPushToken(t));
-  if (validTokens.length === 0) return invalidTokens;
-
-  // Build messages
-  const messages: ExpoPushMessage[] = validTokens.map((token) => ({
-    to: token,
-    sound: 'default',
-    title,
-    body,
-    data,
-  }));
-
-  // Chunk and send
-  const chunks = expo.chunkPushNotifications(messages);
-  for (const chunk of chunks) {
+  // FCM sendEachForMulticast handles up to 500 tokens per call
+  const CHUNK_SIZE = 500;
+  for (let i = 0; i < tokens.length; i += CHUNK_SIZE) {
+    const chunk = tokens.slice(i, i + CHUNK_SIZE);
     try {
-      const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
-      ticketChunk.forEach((ticket, index) => {
-        if (ticket.status === 'error') {
-          const errorCode = ticket.details && (ticket.details as any).error;
-          if (errorCode === 'DeviceNotRegistered') {
-            const message = chunk[index];
-            if (message && typeof message.to === 'string') {
-              invalidTokens.push(message.to);
-            }
+      const response = await admin.messaging().sendEachForMulticast({
+        tokens: chunk,
+        notification: { title, body },
+        data: Object.fromEntries(
+          Object.entries(data).map(([k, v]) => [k, String(v)])
+        ),
+        apns: { payload: { aps: { sound: 'default' } } },
+        android: { priority: 'high' },
+      });
+
+      response.responses.forEach((res, index) => {
+        if (!res.success) {
+          const code = res.error?.code;
+          if (
+            code === 'messaging/registration-token-not-registered' ||
+            code === 'messaging/invalid-registration-token'
+          ) {
+            invalidTokens.push(chunk[index]);
+          } else {
+            console.error(`FCM error for token ${chunk[index]}:`, res.error);
           }
         }
       });
     } catch (error) {
-      console.error('Error sending push notification chunk', error);
+      console.error('FCM sendEachForMulticast error:', error);
     }
   }
 
   return invalidTokens;
 }
 
+const BUFFER_DELAY_MS = 60_000; // 60s quiet period after the last upload
+
 /**
- * Throttle-aware enqueue for new photo notifications.
- * - First event in a 60s window enqueues an immediate push job and schedules a trailing check.
- * - Subsequent events within the window only increment a buffer counter.
+ * Throttle-aware enqueue for new photo notifications, keyed per gallery.
+ * - First upload in a gallery window: send an immediate notification.
+ * - Subsequent uploads within the window: buffer the count and debounce the
+ *   trailing check. The "X more photos" notification fires 60s after the LAST
+ *   upload in the gallery, preventing per-uploader notification storms.
  */
 export async function smartThrottleNewPhoto(
   galleryId: string,
-  uploaderId: string,
   uploaderName: string,
   galleryName?: string,
-  photoId?: string
+  photoId?: string,
 ) {
-  const lockKey = `photo:lock:${galleryId}:${uploaderId}`;
-  const bufferKey = `photo:buffer:${galleryId}:${uploaderId}`;
+  // Keys are per-gallery so all uploaders share one throttle window per gallery.
+  const lockKey  = `photo:lock:${galleryId}`;
+  const bufferKey = `photo:buffer:${galleryId}`;
+  const jobIdKey  = `photo:buffer:job:${galleryId}`;
+  const jobPayload = { galleryId, galleryName: galleryName || '' };
 
   const isLocked = await redis.get(lockKey);
 
   if (!isLocked) {
-    // Immediate path: enqueue now, set lock, schedule trailing check
+    // First upload in this gallery window — send immediately and open the window.
     await photoQueue.add('process-new-photo', {
       galleryId,
-      uploaderId,
-      photo: {
-        id: photoId,
-        uploaderName,
-        galleryName: galleryName || 'New Photo'
-      }
+      photo: { id: photoId, uploaderName, galleryName: galleryName || '' },
     });
 
-    await redis.set(lockKey, '1', 'EX', 60);
+    await redis.set(lockKey, '1', 'EX', Math.ceil(BUFFER_DELAY_MS / 1000) + 10);
 
-    await photoQueue.add(
-      'check-buffer',
-      { galleryId, uploaderId, uploaderName, galleryName: galleryName || 'New Photos' },
-      { delay: 60000 }
-    );
+    const job = await photoQueue.add('check-buffer', jobPayload, { delay: BUFFER_DELAY_MS });
+    await redis.set(jobIdKey, job.id as string, 'EX', 3600);
   } else {
-    // Buffer path: increment counter and ensure it expires eventually
+    // Subsequent upload — increment gallery buffer and debounce the trailing check.
     const newCount = await redis.incr(bufferKey);
     if (newCount === 1) {
-      // Set an expiry so buffers don't persist forever
       await redis.expire(bufferKey, 3600);
     }
+
+    await redis.expire(lockKey, Math.ceil(BUFFER_DELAY_MS / 1000) + 10);
+
+    const existingJobId = await redis.get(jobIdKey);
+    if (existingJobId) {
+      const existingJob = await photoQueue.getJob(existingJobId);
+      await existingJob?.remove().catch(() => {});
+    }
+    const newJob = await photoQueue.add('check-buffer', jobPayload, { delay: BUFFER_DELAY_MS });
+    await redis.set(jobIdKey, newJob.id as string, 'EX', 3600);
   }
 }
 

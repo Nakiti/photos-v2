@@ -35,7 +35,7 @@
         
         <key>NSExceptionDomains</key>
         <dict>
-            <key>192.168.86.42</key> 
+            <key>100.83.37.150</key> 
             <dict>
                 <key>NSExceptionAllowsInsecureHTTPLoads</key>
                 <true/>
@@ -74,6 +74,10 @@
 		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>

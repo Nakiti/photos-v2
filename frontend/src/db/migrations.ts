@@ -26,5 +26,33 @@ export default schemaMigrations({
         }),
       ],
     },
+    {
+      toVersion: 27,
+      steps: [
+        addColumns({
+          table: 'galleries',
+          columns: [
+            { name: 'edit_permission', type: 'string', isOptional: true },
+          ],
+        }),
+      ],
+    },
+    {
+      toVersion: 28,
+      steps: [
+        addColumns({
+          table: 'galleries',
+          columns: [
+            { name: 'upload_limit_per_hour', type: 'number', isOptional: true },
+            { name: 'rate_limit_state_token', type: 'string', isOptional: true },
+            { name: 'rate_limit_last_synced', type: 'number', isOptional: true },
+          ],
+        }),
+      ],
+    },
+    {
+      toVersion: 29,
+      steps: [],
+    },
   ],
 });

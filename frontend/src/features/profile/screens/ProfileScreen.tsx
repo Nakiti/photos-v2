@@ -13,6 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import FastImage from 'react-native-fast-image';
 import { useUser } from '../../../hooks/useUser';
+import { useAuth } from '../../../hooks/useAuth';
 
 const SectionLabel = ({ title }: { title: string }) => (
   <Text style={styles.sectionLabel}>{title}</Text>
@@ -60,7 +61,15 @@ const SettingsRow = ({
 const ProfileScreen = () => {
   const navigation = useNavigation<any>();
   const { user } = useUser();
+  const { logout } = useAuth();
   const [showHidden, setShowHidden] = React.useState(false);
+
+  const handleSignOut = () => {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign Out', style: 'destructive', onPress: logout },
+    ]);
+  };
 
   return (
     <SafeAreaView style={styles.root}>
@@ -161,7 +170,7 @@ const ProfileScreen = () => {
               label="Sign out"
               isDestructive
               hasChevron={false}
-              onPress={() => {}}
+              onPress={handleSignOut}
               isLast
             />
           </View>

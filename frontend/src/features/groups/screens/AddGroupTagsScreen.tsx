@@ -82,7 +82,7 @@ const AddGroupTagsScreen = () => {
       CommonActions.reset({
         index: 1,
         routes: [
-          { name: 'MainTabs' },
+          { name: 'TabNavigator' },
           // Optional: Navigate directly to the new gallery
           // { name: 'CommunityFlow', params: { screen: 'Gallery', params: { galleryId } } } 
         ],

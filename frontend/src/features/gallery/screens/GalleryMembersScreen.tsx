@@ -8,13 +8,17 @@ import {
   ActivityIndicator,
   Text,
   TouchableOpacity,
+  ActionSheetIOS,
+  Alert,
+  Platform,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useRoute } from '@react-navigation/native';
-import { useMemberships } from '../../../hooks/useMembershipData';
+import { useMemberships, useMyMembership, useDenyOrRemoveMember } from '../../../hooks/useMembershipData';
+import { useGallery } from '../../../hooks/useGalleryData';
+import { useAuth } from '../../../hooks/useAuth';
 import MemberItem from '../components/MemberItem';
 import UserInfoCard from '../../../components/UserInfoCard';
-import MembersListHeader from '../components/MembersListHeader';
 
 type DisplayUser = {
   id: string;
@@ -34,6 +38,16 @@ const GalleryMembersScreen = () => {
   const [selectedMember, setSelectedMember] = useState<DisplayUser | null>(null);
 
   const { acceptedMembers, isLoading } = useMemberships(galleryId);
+  const { data: myMembership } = useMyMembership(galleryId);
+  const { gallery } = useGallery(galleryId);
+  const { user: currentUser } = useAuth();
+  const { mutate: removeMember } = useDenyOrRemoveMember();
+
+  const isAdminOrOwner = useMemo(() => {
+    if (!currentUser || !gallery) return false;
+    if (gallery.ownerId === currentUser.id) return true;
+    return myMembership?.role === 'ADMIN' && myMembership?.status === 'ACCEPTED';
+  }, [currentUser, gallery, myMembership]);
 
   const displayMembers = useMemo(() =>
     acceptedMembers.map(m => ({
@@ -42,8 +56,8 @@ const GalleryMembersScreen = () => {
       handle: m.user.handle,
       avatarUri: m.user.avatarUrl,
       role: m.membership.role,
-      bio: "No bio available.",
-      groups: ["React Native", "Photography"],
+      bio: undefined,
+      groups: undefined,
     })),
     [acceptedMembers]
   );
@@ -55,6 +69,45 @@ const GalleryMembersScreen = () => {
       m.name.toLowerCase().includes(q) || m.handle.toLowerCase().includes(q)
     );
   }, [displayMembers, searchText]);
+
+  const handleRightPress = (member: DisplayUser) => {
+    const isSelf = member.id === currentUser?.id;
+    const isOwner = member.id === gallery?.ownerId;
+
+    // Can't remove yourself (use "Leave gallery") or the owner
+    if (isSelf || isOwner) return;
+
+    const memberName = member.name;
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Remove from gallery'],
+          destructiveButtonIndex: 1,
+          cancelButtonIndex: 0,
+          title: memberName,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 1) {
+            removeMember({ galleryId, userId: member.id });
+          }
+        }
+      );
+    } else {
+      Alert.alert(
+        'Remove Member',
+        `Remove ${memberName} from this gallery?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Remove',
+            style: 'destructive',
+            onPress: () => removeMember({ galleryId, userId: member.id }),
+          },
+        ]
+      );
+    }
+  };
 
   const ListHeader = () => (
     <View style={styles.searchWrap}>
@@ -88,15 +141,21 @@ const GalleryMembersScreen = () => {
           <FlatList
             data={filteredMembers}
             keyExtractor={(item) => String(item.id)}
-            renderItem={({ item }) => (
-              <MemberItem
-                name={item.name}
-                role={item.role}
-                handle={item.handle}
-                avatarUri={item.avatarUri}
-                onPressLeft={() => setSelectedMember(item)}
-              />
-            )}
+            renderItem={({ item }) => {
+              const isSelf = item.id === currentUser?.id;
+              const isOwner = item.id === gallery?.ownerId;
+              const canRemove = isAdminOrOwner && !isSelf && !isOwner;
+              return (
+                <MemberItem
+                  name={item.name}
+                  role={item.role}
+                  handle={item.handle}
+                  avatarUri={item.avatarUri}
+                  onPressLeft={() => setSelectedMember(item)}
+                  onPressRight={canRemove ? () => handleRightPress(item) : undefined}
+                />
+              );
+            }}
             ListHeaderComponent={ListHeader}
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"

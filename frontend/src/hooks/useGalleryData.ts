@@ -3,18 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Q, Database } from '@nozbe/watermelondb';
 import Gallery from '../db/models/Gallery';
-import { deleteGallery, fetchMyGalleries, updateGallery } from '../services/api/gallery.service';
+import { deleteGallery, fetchMyGalleries, updateGallery, transferGalleryOwnership } from '../services/api/gallery.service';
 import { uploadNewGalleryIcon } from '../services/api/gallery.service';
 import { syncGalleries, syncGalleryDetails } from '../services/sync/gallery.sync';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createGallery, getGalleryDetails } from '../services/api/gallery.service';
 import { UpdateGalleryRequest } from '../types/gallery.types';
-import { Photo as PhotoApi} from '../types';
-import { fetchPhotoIdsForSync, fetchPhotos } from '../services/api/photos.service';
+import { fetchPhotoIdsForSync, fetchPhotos, fetchDeletedPhotoIds } from '../services/api/photos.service';
 import { getRateLimitState } from '../services/api/gallery.service';
-import { switchMap } from '@nozbe/watermelondb/utils/rx';
-import { of } from '@nozbe/watermelondb/utils/rx';
-import { syncPhotos, reconcileDeletedPhotos } from '../services/sync/photos.sync';
+import { syncPhotos, reconcileDeletedPhotos, reconcileDeletedPhotosSince } from '../services/sync/photos.sync';
 import Photo from '../db/models/Photo';
 import { CreateGalleryRequest } from '../services/api/gallery.service';
 
@@ -55,44 +52,16 @@ export const useGalleries = (
       Q.sortBy('last_photo_at', Q.desc),
       Q.sortBy('created_at', Q.desc)
     );
-    const subscription = query.observe().subscribe(async (galleriesList) => {
-      // Sort by lastPhotoAt (descending), then by createdAt (descending) for null lastPhotoAt
+    const subscription = query.observe().subscribe((galleriesList) => {
       const sorted = [...galleriesList].sort((a, b) => {
         const aTime = a.lastPhotoAt ?? 0;
         const bTime = b.lastPhotoAt ?? 0;
         if (aTime !== bTime) {
-          return bTime - aTime; // Descending
+          return bTime - aTime;
         }
-        // If lastPhotoAt is the same (or both null), sort by createdAt
         return (b.createdAt || 0) - (a.createdAt || 0);
       });
       setGalleries(sorted);
-      
-      // Dump local galleries for debugging
-      console.log('=== LOCAL GALLERIES DUMP ===');
-      console.log(`Found ${galleriesList.length} galleries in local DB (type=${type ?? 'all'}, search="${searchQuery ?? ''}")`);
-      for (const gallery of galleriesList) {
-        const galleryData = {
-          id: gallery.id,
-          name: gallery.name,
-          type: gallery.type,
-          ownerId: gallery.ownerId,
-          communityId: gallery.communityId,
-          communityName: gallery.communityName,
-          iconUrl: gallery.iconUrl,
-          startDate: gallery.startDate,
-          endDate: gallery.endDate,
-          location: gallery.location,
-          shareableLink: gallery.shareableLink,
-          joinRequiresApproval: gallery.joinRequiresApproval,
-          addPermission: gallery.addPermission,
-          deletePermission: gallery.deletePermission,
-          createdAt: gallery.createdAt,
-          updatedAt: gallery.updatedAt,
-        };
-        console.log(`Gallery:`, JSON.stringify(galleryData, null, 2));
-      }
-      console.log('=== END GALLERIES DUMP ===');
     });
 
     return () => subscription.unsubscribe();
@@ -127,12 +96,15 @@ export const useGalleries = (
 };
 
 /**
- * Hook to get a live, observable record for a *single* gallery AND its photos.
- * It provides local data instantly, then syncs with the server in the background.
- *
- * @param galleryId The ID of the gallery to fetch.
+ * Local-only hook: observes a single gallery + its photos from WatermelonDB without
+ * triggering any server sync queries. Use this in screens (e.g. SingleImageScreen)
+ * that are mounted on top of a screen already running useGallery, so we don't
+ * spawn a second set of network requests.
  */
-export const useGallery = (galleryId: string | null, options?: { tagId?: string | null; uploaderId?: string | null }) => {
+export const useLocalGallery = (
+  galleryId: string | null,
+  options?: { tagId?: string | null; uploaderId?: string | null },
+) => {
   const database = useDatabase();
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -147,11 +119,62 @@ export const useGallery = (galleryId: string | null, options?: { tagId?: string 
     }
 
     const galleryCollection = database.collections.get<Gallery>('galleries');
-    const galleryObservable = galleryCollection.findAndObserve(galleryId);
+    const gallerySub = galleryCollection.findAndObserve(galleryId).subscribe(setGallery);
 
-    const gallerySubscription = galleryObservable.subscribe(setGallery);
+    const photosCollection = database.collections.get<Photo>('photos');
+    const conditions = [Q.where('gallery_id', galleryId)] as any[];
+    if (selectedTagId) conditions.push(Q.on('photo_tags', 'tag_id', selectedTagId));
+    if (selectedUploaderId) conditions.push(Q.where('uploader_id', selectedUploaderId));
 
-    // Observe photos for this gallery, optionally filtered by tag and/or uploader (local-first)
+    const photosSub = photosCollection
+      .query(...conditions, Q.sortBy('created_at', Q.desc))
+      .observe()
+      .subscribe((list) => setPhotos(list as unknown as Photo[]));
+
+    return () => {
+      gallerySub.unsubscribe();
+      photosSub.unsubscribe();
+    };
+  }, [database, galleryId, selectedTagId, selectedUploaderId]);
+
+  return { gallery, photos };
+};
+
+// Module-level cache: survives component re-mounts within the same app session.
+// Keyed by galleryId → timestamp of last successful deletion reconciliation (ms).
+// Avoids re-running the expensive full-ID fetch on every gallery navigation.
+const reconciliationCache = new Map<string, number>();
+
+/**
+ * Hook to get a live, observable record for a *single* gallery AND its photos.
+ * It provides local data instantly, then syncs with the server in the background.
+ *
+ * Two queries run independently:
+ *   - ['gallery', galleryId, 'meta']  — gallery details + rate limit (slow-changing)
+ *   - ['gallery', galleryId, 'photos'] — photo sync + deletion reconciliation (fast-changing)
+ *
+ * Socket events only invalidate the photos query, keeping metadata fetches rare.
+ *
+ * @param galleryId The ID of the gallery to fetch.
+ */
+export const useGallery = (galleryId: string | null, options?: { tagId?: string | null; uploaderId?: string | null }) => {
+  const database = useDatabase();
+  const [gallery, setGallery] = useState<Gallery | null>(null);
+  const [photos, setPhotos] = useState<Photo[]>([]);
+  const selectedTagId = options?.tagId ?? null;
+  const selectedUploaderId = options?.uploaderId ?? null;
+
+  // 1. OBSERVE LOCAL DATA
+  useEffect(() => {
+    if (!galleryId) {
+      setGallery(null);
+      setPhotos([]);
+      return;
+    }
+
+    const galleryCollection = database.collections.get<Gallery>('galleries');
+    const gallerySubscription = galleryCollection.findAndObserve(galleryId).subscribe(setGallery);
+
     const photosCollection = database.collections.get<Photo>('photos');
     const conditions = [Q.where('gallery_id', galleryId)] as any[];
     if (selectedTagId) {
@@ -160,16 +183,12 @@ export const useGallery = (galleryId: string | null, options?: { tagId?: string 
     if (selectedUploaderId) {
       conditions.push(Q.where('uploader_id', selectedUploaderId));
     }
-    const photosQuery = photosCollection.query(
-      ...conditions,
-      Q.sortBy('created_at', Q.desc)
-    );
-    const photosSubscription = photosQuery.observe().subscribe((list) => {
-      setPhotos(list as unknown as Photo[]);
-      console.log(
-        `[Local][Gallery ${galleryId}] observed ${(list as any).length} photos (tag=${selectedTagId ?? 'all'}, uploader=${selectedUploaderId ?? 'all'})`
-      );
-    });
+    const photosSubscription = photosCollection
+      .query(...conditions, Q.sortBy('created_at', Q.desc))
+      .observe()
+      .subscribe((list) => {
+        setPhotos(list as unknown as Photo[]);
+      });
 
     return () => {
       gallerySubscription.unsubscribe();
@@ -177,69 +196,103 @@ export const useGallery = (galleryId: string | null, options?: { tagId?: string 
     };
   }, [database, galleryId, selectedTagId, selectedUploaderId]);
 
-
-  // 2. FETCH & SYNC REMOTE DATA ("Inbox" and "Deletion" Sync)
-  const { isLoading, isError, error, isFetching } = useQuery({
-    queryKey: ['gallery', galleryId], 
+  // 2. GALLERY META QUERY — details + rate limit
+  // Invalidated by: gallery_updated socket events, window focus, reconnect.
+  // Not invalidated by new_photo events, keeping this fetch rare.
+  const metaQuery = useQuery({
+    queryKey: ['gallery', galleryId, 'meta'],
     queryFn: async () => {
       if (!galleryId) return null;
 
-      const photosCollection = database.collections.get<Photo>('photos');
-      const latestLocalPhoto = await photosCollection.query(
-        Q.where('gallery_id', galleryId),
-        Q.where('status', 'synced'), 
-        Q.sortBy('created_at', Q.desc),
-        Q.take(1)
-      ).fetch();
-      
-      const lastSyncedTimestamp = latestLocalPhoto[0]?.createdAt;
-      console.log(`[Local][Gallery ${galleryId}] lastSynced=${lastSyncedTimestamp ?? 'none'}`);
-
-      // 2. Fetch all data from the server
-      const [remoteDetails, newPhotos, remotePhotoIds, rateLimitState] = await Promise.all([
+      const [remoteDetails, rateLimitState] = await Promise.all([
         getGalleryDetails(galleryId),
-        fetchPhotos(galleryId, lastSyncedTimestamp),
-        fetchPhotoIdsForSync(galleryId),
-        getRateLimitState(galleryId).catch(() => null) // Don't fail if rate limit fetch fails
+        getRateLimitState(galleryId).catch(() => null),
       ]);
 
-      console.log(
-        `[Cloud][Gallery ${galleryId}] fetched photos=${newPhotos.length} idsForSync=${remotePhotoIds.length}`
-      );
-
-      // 3. Sync gallery details (including rate limit state if available)
-      const galleryWithRateLimit = rateLimitState ? {
-        ...remoteDetails,
-        uploadLimitPerHour: rateLimitState.uploadLimitPerHour,
-        rateLimitStateToken: rateLimitState.stateToken,
-        rateLimitLastSynced: Date.now(),
-      } : remoteDetails;
+      const galleryWithRateLimit = rateLimitState
+        ? {
+            ...remoteDetails,
+            uploadLimitPerHour: rateLimitState.uploadLimitPerHour,
+            rateLimitStateToken: rateLimitState.stateToken,
+            rateLimitLastSynced: Date.now(),
+          }
+        : remoteDetails;
       await syncGalleryDetails(database, galleryWithRateLimit);
-      
-      // 4. Sync the new photos
-      await syncPhotos(database, newPhotos);
-
-      // 5. Reconcile deletions
-      await reconcileDeletedPhotos(database, galleryId, remotePhotoIds);
 
       return remoteDetails;
     },
     enabled: !!galleryId,
-    refetchOnWindowFocus: true, 
-    staleTime: 60 * 1000,
-    // Don't retry on network errors - we have local data to show
+    refetchOnWindowFocus: true,
+    staleTime: 5 * 60 * 1000, // gallery meta changes infrequently
     retry: false,
-    // Don't retry when component remounts if we already have local data
+    retryOnMount: false,
+  });
+
+  // 3. PHOTO SYNC QUERY — new photos + deletion reconciliation
+  // Invalidated by: new_photo socket events, reconnect, window focus.
+  const photosQuery = useQuery({
+    queryKey: ['gallery', galleryId, 'photos'],
+    queryFn: async () => {
+      if (!galleryId) return null;
+
+      const photosCollection = database.collections.get<Photo>('photos');
+      const latestLocalPhoto = await photosCollection
+        .query(
+          Q.where('gallery_id', galleryId),
+          Q.where('status', 'synced'),
+          Q.sortBy('created_at', Q.desc),
+          Q.take(1),
+        )
+        .fetch();
+
+      const lastSyncedTimestamp = latestLocalPhoto[0]?.createdAt;
+
+      // Subtract a 5-second overlap buffer so near-simultaneous uploads whose
+      // server createdAt is slightly earlier than the cursor are never missed.
+      // syncPhotos handles duplicates idempotently so re-fetching a few photos is harmless.
+      const since = lastSyncedTimestamp ? lastSyncedTimestamp - 5000 : undefined;
+
+      const lastReconciledAt = reconciliationCache.get(galleryId) ?? 0;
+      const needsReconciliation = lastReconciledAt === 0;
+      const isDeltaReconciliation = !needsReconciliation;
+
+      const [newPhotos, reconciliationData] = await Promise.all([
+        fetchPhotos(galleryId, since),
+        needsReconciliation
+          ? fetchPhotoIdsForSync(galleryId)
+          : fetchDeletedPhotoIds(galleryId, lastReconciledAt),
+      ]);
+
+      console.log(
+        `[Cloud][Gallery ${galleryId}] photos=${newPhotos.length} reconcile=${needsReconciliation} delta=${isDeltaReconciliation}`,
+      );
+
+      await syncPhotos(database, newPhotos);
+
+      const now = Date.now();
+      if (needsReconciliation) {
+        await reconcileDeletedPhotos(database, galleryId, reconciliationData as string[]);
+      } else {
+        await reconcileDeletedPhotosSince(database, galleryId, reconciliationData as string[]);
+      }
+      reconciliationCache.set(galleryId, now);
+
+      return newPhotos.length;
+    },
+    enabled: !!galleryId,
+    refetchOnWindowFocus: true,
+    staleTime: 30 * 1000,
+    retry: false,
     retryOnMount: false,
   });
 
   return {
-    gallery, 
-    photos,  
-    isLoading: isLoading && !gallery,
-    isSyncing: isFetching,
-    isError,
-    error,
+    gallery,
+    photos,
+    isLoading: (metaQuery.isLoading && !gallery) || (photosQuery.isLoading && photos.length === 0),
+    isSyncing: metaQuery.isFetching || photosQuery.isFetching,
+    isError: metaQuery.isError || photosQuery.isError,
+    error: metaQuery.error ?? photosQuery.error,
   };
 };
 
@@ -250,28 +303,30 @@ interface CreateGalleryWithIconParams {
 
 export const useCreateGallery = () => {
   const queryClient = useQueryClient();
+  const database = useDatabase();
 
   return useMutation({
     mutationFn: async ({ galleryData, imageUri }: CreateGalleryWithIconParams) => {
       
       if (!imageUri) {
         // --- Flow 1: No icon selected ---
-        const { gallery } = await createGallery(galleryData);
-        return gallery;
+        const result = (await createGallery(galleryData as any)) as any;
+        // Server may return either `{ gallery }` or the gallery object directly.
+        return result?.gallery ?? result;
       }
 
       // --- Flow 2: Icon is selected ---
-      const result = await createGallery({
-        ...galleryData,
-        wantsIconUpload: true, 
-      });
+      const result = (await createGallery({
+        ...(galleryData as any),
+        wantsIconUpload: true,
+      } as any)) as any;
 
-      if (!('uploadInfo' in result)) {
+      if (!result?.uploadInfo) {
         // This should never happen if wantsIconUpload is true
         throw new Error('Server did not return upload info.');
       }
 
-      const { gallery, uploadInfo } = result;
+      const { gallery, uploadInfo } = result as any;
 
       // 2. Get the image blob from the device
       const imageFetchResponse = await fetch(imageUri);
@@ -298,9 +353,9 @@ export const useCreateGallery = () => {
       };
     },
 
-    onSuccess: (newGallery) => {
+    onSuccess: async (newGallery) => {
+      await syncGalleryDetails(database, newGallery as any);
       queryClient.invalidateQueries({ queryKey: ['galleries'] });
-
       queryClient.setQueryData(['gallery', newGallery.id], newGallery);
     },
 
@@ -312,11 +367,16 @@ export const useCreateGallery = () => {
 
 export const useUpdateGallery = () => {
   const queryClient = useQueryClient();
+  const database = useDatabase();
 
   return useMutation({
     mutationFn: ({ galleryId, data }: { galleryId: string; data: UpdateGalleryRequest }) => updateGallery(galleryId, data),
-    onSuccess: () => {
+    onSuccess: async (updatedGallery, { galleryId }) => {
+      // Keep local WatermelonDB in sync so screens that render from local (e.g. GalleryDetails)
+      // update immediately after the user saves changes.
+      await syncGalleryDetails(database, updatedGallery as any);
       queryClient.invalidateQueries({ queryKey: ['galleries'] });
+      queryClient.invalidateQueries({ queryKey: ['gallery', galleryId, 'meta'] });
     },
   });
 };
@@ -328,6 +388,22 @@ export const useDeleteGallery = () => {
     mutationFn: (galleryId: string) => deleteGallery(galleryId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['galleries'] });
+    },
+  });
+};
+
+export const useTransferGalleryOwnership = () => {
+  const queryClient = useQueryClient();
+  const database = useDatabase();
+
+  return useMutation({
+    mutationFn: ({ galleryId, newOwnerId }: { galleryId: string; newOwnerId: string }) =>
+      transferGalleryOwnership(galleryId, newOwnerId),
+    onSuccess: async (updatedGallery, { galleryId }) => {
+      await syncGalleryDetails(database, updatedGallery);
+      queryClient.invalidateQueries({ queryKey: ['galleries'] });
+      queryClient.invalidateQueries({ queryKey: ['gallery', galleryId, 'meta'] });
+      queryClient.invalidateQueries({ queryKey: ['memberships', galleryId] });
     },
   });
 };

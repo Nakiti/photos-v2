@@ -5,7 +5,6 @@ export type MembershipStatus = 'PENDING' | 'ACCEPTED' | 'INVITED' | 'BLOCKED';
 export const getMembers = async (galleryId: string, status?: MembershipStatus) => {
   const query = status ? `?status=${encodeURIComponent(status)}` : '';
   const response = await apiClient.get(`/api/v1/galleries/${galleryId}/members${query}`);
-  console.log("memebrs ", response.data)
   return response.data;
 };
 

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { View, StyleSheet, TouchableOpacity, Text, Alert, SafeAreaView } from 'react-native';
 import { launchImageLibrary, ImagePickerResponse } from 'react-native-image-picker';
 import ImagesDisplay from '../components/ImagesDisplay';
@@ -6,12 +6,12 @@ import GalleryBottomBar from '../components/GalleryBottomBar';
 import GalleryHeader from '../components/GalleryHeader';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useGallery } from '../../../hooks/useGalleryData';
+import { useQueryClient } from '@tanstack/react-query';
 import { useGalleryTags } from '../../../hooks/useGalleryTagData';
 import { useCreateOptimisticPhotos } from '../../../hooks/usePhotoData';
 import { useGallerySocket } from '../../../hooks/useGallerySocket';
-import { useAuth } from '../../../hooks/useAuth';
-import { useMyMembership } from '../../../hooks/useMembershipData';
 import { useDatabase } from '@nozbe/watermelondb/react';
+import { Q } from '@nozbe/watermelondb';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import User from '../../../db/models/User';
 
@@ -20,8 +20,8 @@ type GalleryImage = {
   fullsize: string;
   thumbnail: string;
   is_uploaded: number;
-  visible?: 'IN_REVIEW' | 'VISIBLE';
   uploaderId?: string;
+  uploaderInitials: string;
 };
 
 const GalleryScreen = () => {
@@ -31,13 +31,24 @@ const GalleryScreen = () => {
 
   // Data Hooks
   const database = useDatabase();
+  const queryClient = useQueryClient();
   const { tags } = useGalleryTags(galleryId);
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
   const [selectedUploaderId, setSelectedUploaderId] = useState<string | null>(null);
-  const { gallery, photos } = useGallery(galleryId, { tagId: selectedTagId, uploaderId: selectedUploaderId });
+  const { gallery, photos, isSyncing } = useGallery(galleryId, { tagId: selectedTagId, uploaderId: selectedUploaderId });
   const { mutate: createOptimisticPhotos } = useCreateOptimisticPhotos();
-  const { user } = useAuth();
-  const { data: myMembership } = useMyMembership(galleryId);
+
+  // Pull-to-refresh
+  const [refreshing, setRefreshing] = useState(false);
+  const prevIsSyncing = useRef(isSyncing);
+  useEffect(() => {
+    if (refreshing && prevIsSyncing.current && !isSyncing) setRefreshing(false);
+    prevIsSyncing.current = isSyncing;
+  }, [refreshing, isSyncing]);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    queryClient.invalidateQueries({ queryKey: ['gallery', galleryId, 'photos'] });
+  }, [queryClient, galleryId]);
   
   // Real-time
   useGallerySocket(galleryId);
@@ -65,18 +76,14 @@ const GalleryScreen = () => {
       }
       try {
         const usersCollection = database.collections.get<User>('users');
-        const userPromises = users.map(async (userId) => {
-          try {
-            const user = await usersCollection.find(userId);
-            return {
-              id: userId,
-              name: user?.name || user?.handle || 'Unknown',
-            };
-          } catch {
-            return { id: userId, name: 'Unknown' };
-          }
-        });
-        const loadedUsers = await Promise.all(userPromises);
+        // Single batch query instead of N individual find() calls.
+        const userRecords = await usersCollection
+          .query(Q.where('id', Q.oneOf(users)))
+          .fetch();
+        const nameMap = new Map(
+          userRecords.map(u => [u.id, u.name || u.handle || 'Unknown'])
+        );
+        const loadedUsers = users.map(id => ({ id, name: nameMap.get(id) ?? 'Unknown' }));
         if (!cancelled) setUsersWithNames(loadedUsers);
       } catch {
         if (!cancelled) setUsersWithNames([]);
@@ -88,32 +95,33 @@ const GalleryScreen = () => {
     };
   }, [database, users]);
 
-  // Compute images with visibility filtering
+  // Build a fast lookup: uploaderId → display initials
+  const initialsMap = useMemo(() => {
+    const map = new Map<string, string>();
+    usersWithNames.forEach(({ id, name }) => {
+      const initials = name
+        .split(' ')
+        .map((w: string) => w[0] ?? '')
+        .join('')
+        .slice(0, 2)
+        .toUpperCase();
+      map.set(id, initials || '?');
+    });
+    return map;
+  }, [usersWithNames]);
+
   const images: GalleryImage[] = useMemo(() => {
-    const isOwner = gallery?.ownerId === user?.id;
-    const isAdmin = myMembership?.role === 'ADMIN';
-    
     return (photos || [])
-      .filter((p: any) => {
-        // Server already filters, but we do client-side filtering for consistency
-        // Show VISIBLE to all, IN_REVIEW only to uploader, owner, or admin
-        if (p.visible === 'VISIBLE') return true;
-        if (p.visible === 'IN_REVIEW') {
-          return isOwner || isAdmin || p.uploaderId === user?.id;
-        }
-        // Default to showing if visibility is not set (backward compatibility)
-        return true;
-      })
       .map((p: any) => ({
         id: p.id,
-        fullsize: p.s3Url || '',
-        thumbnail: p.thumbnailUrl || p.thumbnailUri || p.localThumbnailUri || '',
+        fullsize: p.s3Url || p.localUri || '',
+        thumbnail: p.thumbnailUri || p.localThumbnailUri || '',
         is_uploaded: p.status === 'synced' ? 1 : 0,
-        visible: p.visible || 'VISIBLE',
         uploaderId: p.uploaderId,
+        uploaderInitials: initialsMap.get(p.uploaderId) ?? '',
       }))
       .filter(img => !!img.fullsize || !!img.thumbnail);
-  }, [photos, gallery, user, myMembership]);
+  }, [photos, initialsMap]);
 
   // Handlers
   const handlePressHeader = () => navigation.navigate('GalleryDetails', { galleryId });
@@ -162,10 +170,12 @@ const GalleryScreen = () => {
                 </Text>
             </View>
           ) : (
-            <ImagesDisplay 
-                images={images} 
-                galleryId={galleryId} 
+            <ImagesDisplay
+                images={images}
+                galleryId={galleryId}
                 selectedTagId={selectedTagId ?? ''}
+                refreshing={refreshing}
+                onRefresh={onRefresh}
             />
           )}
       </View>

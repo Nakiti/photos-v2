@@ -22,7 +22,6 @@ export interface Gallery {
     
     // Permission and settings fields (optional)
     joinRequiresApproval?: boolean;
-    requirePictureReview?: boolean;
     addPermission?: string;
     deletePermission?: string;
     defaultTagId?: string | null;
@@ -46,7 +45,6 @@ export interface Photo {
     uploaderId: string;
     s3Key: string;
     s3Url: string;
-    visible?: 'IN_REVIEW' | 'VISIBLE';
     createdAt: string; 
     
 

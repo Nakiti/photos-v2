@@ -13,9 +13,7 @@ interface AuthResponse {
  * @returns A promise that resolves to an AuthResponse object.
  */
 export const register = async (data: any): Promise<AuthResponse> => {
-  console.log(data)
   const response = await apiClient.post('/api/v1/auth/register', data);
-  console.log("response ", response)
   return response.data;
 };
 
@@ -25,7 +23,6 @@ export const register = async (data: any): Promise<AuthResponse> => {
  * @returns A promise that resolves to an AuthResponse object.
  */
 export const login = async (data: any): Promise<AuthResponse> => {
-  console.log(data)
   const response = await apiClient.post('/api/v1/auth/login', data);
   return response.data;
 };

@@ -1,6 +1,7 @@
 import http from "http";
 import { PrismaClient } from "@prisma/client";
 import httpServer from "./server.js";
+import "./src/workers/photo.worker.js";
 
 const prisma = new PrismaClient();
 

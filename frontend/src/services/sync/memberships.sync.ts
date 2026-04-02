@@ -65,13 +65,13 @@ export const syncMembers = async (
         // UPDATE USER
         if (
           localUser.name !== user.name ||
-          localUser.avatar_url !== user.avatarUrl ||
-          localUser.handle !== user.handle 
+          localUser.avatarUrl !== user.avatarUrl ||
+          localUser.handle !== user.handle
         ) {
           operations.push(
             localUser.prepareUpdate((record) => {
               record.name = user.name;
-              record.avatar_url = user.avatarUrl;
+              record.avatarUrl = user.avatarUrl;
               record.handle = user.handle;
             }),
           );
@@ -80,9 +80,9 @@ export const syncMembers = async (
         // CREATE USER
         operations.push(
           usersCollection.prepareCreate((record) => {
-            record._raw.id = user.id; // Set server ID
+            record._raw.id = user.id;
             record.name = user.name;
-            record.avatar_url = user.avatarUrl;
+            record.avatarUrl = user.avatarUrl;
             record.handle = user.handle;
           }),
         );
@@ -111,11 +111,11 @@ export const syncMembers = async (
       operations.push(
         membershipsCollection.prepareCreate((record) => {
           record._raw.id = membershipApi.id;
-          record.gallery.id = galleryId;
-          record.user.id = user.id;
-          record.joinedAt = membershipApi.joinedAt 
-          ? new Date(membershipApi.joinedAt).getTime() 
-          : Date.now();
+          record.galleryId = galleryId;
+          record.userId = user.id;
+          record.joinedAt = membershipApi.joinedAt
+            ? new Date(membershipApi.joinedAt).getTime()
+            : Date.now();
           record.status = membershipApi.status;
           record.role = membershipApi.role;
           record.isMuted = membershipApi.isMuted;

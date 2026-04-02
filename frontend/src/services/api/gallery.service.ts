@@ -109,6 +109,11 @@ export const removeMember = async (galleryId: string, userId: string): Promise<v
  * @param galleryId The gallery id
  * @returns Promise resolving to an array of photo ids
  */
+export const getGalleryShareLink = async (galleryId: string): Promise<string> => {
+  const response = await apiClient.get(`/api/v1/galleries/${galleryId}/share-link`);
+  return response.data.shareLink as string;
+};
+
 export const getGalleryPhotoIdsForSync = async (
   galleryId: string
 ): Promise<string[]> => {
@@ -201,6 +206,21 @@ export const uploadNewGalleryIcon = async (
   console.log('6. Gallery icon upload complete.');
   return updatedGallery;
 }
+
+/**
+ * Transfer gallery ownership to another accepted member (owner only).
+ *
+ * @param galleryId The gallery id
+ * @param newOwnerId The user id of the new owner
+ * @returns Promise resolving to the updated gallery
+ */
+export const transferGalleryOwnership = async (
+  galleryId: string,
+  newOwnerId: string
+): Promise<GalleryApiResponse> => {
+  const response = await apiClient.put(`/api/v1/galleries/${galleryId}/transfer-ownership`, { newOwnerId });
+  return response.data;
+};
 
 /**
  * Get all galleries that belong to a specific community.

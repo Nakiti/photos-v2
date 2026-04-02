@@ -1,52 +1,69 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl, Text, TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { useQueryClient } from '@tanstack/react-query';
 import EventsListHeader from '../components/EventsListHeader';
 import SearchBar from '../../../components/SearchBar';
 import EventListItem from '../components/EventListItem';
-
-
-type Event = { id: string; title: string; lastUploadedBy: string; unseenCount: number; lastUpdated: string; icon: string };
-
-const DUMMY_EVENTS: Event[] = [];
+import { useGalleries } from '../../../hooks/useGalleryData';
+import Gallery from '../../../db/models/Gallery';
 
 const EventsListScreen = () => {
+  const navigation = useNavigation<any>();
+  const queryClient = useQueryClient();
   const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<'ACTIVE' | 'ARCHIVED'>('ACTIVE');
 
-  const filteredEvents = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return DUMMY_EVENTS;
-    return DUMMY_EVENTS.filter(e =>
-      e.title.toLowerCase().includes(q) || e.lastUploadedBy.toLowerCase().includes(q)
-    );
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(handler);
   }, [query]);
 
-  const displayEvents = useMemo(() => {
-    // Presentational: using same dummy list for both tabs
-    return tab === 'ACTIVE' ? filteredEvents : filteredEvents;
-  }, [filteredEvents, tab]);
+  const { galleries, isSyncing } = useGalleries('EVENT', debouncedQuery);
+
+  const prevIsSyncing = useRef(isSyncing);
+  useEffect(() => {
+    if (refreshing && prevIsSyncing.current && !isSyncing) setRefreshing(false);
+    prevIsSyncing.current = isSyncing;
+  }, [refreshing, isSyncing]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
-  }, []);
+    queryClient.invalidateQueries({ queryKey: ['galleries'] });
+  }, [queryClient]);
 
-  const renderItem = useCallback(({ item }: { item: Event }) => (
+  const now = Date.now();
+  const displayGalleries = useMemo(() => {
+    return galleries.filter((g) => {
+      if (tab === 'ACTIVE') return !g.endDate || g.endDate >= now;
+      return !!g.endDate && g.endDate < now;
+    });
+  }, [galleries, tab, now]);
+
+  const renderItem = useCallback(({ item }: { item: Gallery }) => (
     <EventListItem
       id={item.id}
-      icon={item.icon}
-      title={item.title}
-      lastUploadedBy={item.lastUploadedBy}
-      unseenCount={item.unseenCount}
-      lastUpdated={item.lastUpdated}
-      onPress={() => {}}
+      icon={item.iconUrl || ''}
+      title={item.name}
+      lastUploadedBy=""
+      unseenCount={0}
+      lastUpdated={
+        item.lastPhotoAt
+          ? new Date(item.lastPhotoAt).toISOString()
+          : new Date(item.createdAt).toISOString()
+      }
+      onPress={() =>
+        navigation.navigate('Gallery', {
+          screen: 'Gallery',
+          params: { galleryId: item.id },
+        })
+      }
     />
-  ), []);
+  ), [navigation]);
 
-  const keyExtractor = useCallback((item: Event) => item.id, []);
+  const keyExtractor = useCallback((item: Gallery) => item.id, []);
 
   const ListHeaderComponent = useCallback(() => (
     <View>
@@ -89,10 +106,17 @@ const EventsListScreen = () => {
   return (
     <View style={styles.container}>
       <FlatList
-        data={displayEvents}
+        data={displayGalleries}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#999"
+            colors={['#999']}
+          />
+        }
         ListHeaderComponent={ListHeaderComponent}
         ListEmptyComponent={ListEmptyComponent}
         ItemSeparatorComponent={() => <View style={styles.separator} />}

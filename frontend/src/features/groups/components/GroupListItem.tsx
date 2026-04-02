@@ -17,25 +17,27 @@ export type GroupListItemProps = {
 };
 
 const getTimeAgo = (dateString: string) => {
-  if (!dateString) return "";
+  if (!dateString) return '';
   const diffMins = Math.floor((Date.now() - new Date(dateString).getTime()) / 60000);
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m`;
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
   const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h`;
+  if (diffHours < 24) return `${diffHours}h ago`;
   const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 7) return `${diffDays}d`;
-  return new Date(dateString).toLocaleDateString();
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return new Date(dateString).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
 const GroupListItem = ({
   id, icon, title, lastUploadedBy, unseenCount,
-  lastUpdated, communityName, photoCount, memberCount, onPress,
+  lastUpdated, onPress,
 }: GroupListItemProps) => {
   const timeLabel = useMemo(() => getTimeAgo(lastUpdated), [lastUpdated]);
   const hasUnread = unseenCount > 0;
 
-  const statusText = `${lastUploadedBy} added a photo`
+  const preview = lastUploadedBy
+    ? `${lastUploadedBy} added a photo`
+    : 'No photos yet';
 
   return (
     <TouchableOpacity
@@ -43,47 +45,46 @@ const GroupListItem = ({
       onPress={() => onPress?.(id)}
       activeOpacity={0.5}
     >
-      {/* Avatar */}
-      <View style={styles.avatarWrap}>
-        <FastImage
-          source={{ uri: icon, priority: FastImage.priority.normal }}
-          style={styles.avatar}
-          resizeMode={FastImage.resizeMode.cover}
-        />
-        {hasUnread && <View style={styles.unreadRing} />}
+      {/* Unread indicator */}
+      <View style={styles.unreadIndicatorWrap}>
+        {hasUnread && <View style={styles.unreadDot} />}
       </View>
+
+      {/* Avatar */}
+      <FastImage
+        source={{ uri: icon, priority: FastImage.priority.normal }}
+        style={styles.avatar}
+        resizeMode={FastImage.resizeMode.cover}
+      />
 
       {/* Content */}
       <View style={styles.content}>
-        <View style={styles.topRow}>
 
-          <Text style={[styles.timeLabel, hasUnread && styles.timeLabelUnread]}>
+        {/* Row 1: title + timestamp + chevron */}
+        <View style={styles.topRow}>
+          <Text
+            style={[styles.title, hasUnread && styles.titleUnread]}
+            numberOfLines={1}
+          >
+            {title}
+          </Text>
+          <Text style={[styles.time, hasUnread && styles.timeUnread]}>
             {timeLabel}
           </Text>
         </View>
 
-        <View style={styles.titleRow}>
-          <Text style={[styles.title, hasUnread && styles.titleUnread]} numberOfLines={1}>
-            {title}
-          </Text>
-          {hasUnread && (
-            <View style={styles.unreadBadge}>
-              <Text style={styles.unreadBadgeText}>{unseenCount}</Text>
-            </View>
-          )}
-        </View>
+        {/* Row 2: preview only */}
+        <Text
+          style={[styles.preview, hasUnread && styles.previewUnread]}
+          numberOfLines={2}
+        >
+          {preview}
+        </Text>
 
-        <View style={styles.statusRow}>
-
-          <Text style={styles.statusText} numberOfLines={1}>
-            {lastUploadedBy
-              ? <><Text style={styles.statusSender}>{lastUploadedBy}</Text> added a photo</>
-              : statusText}
-          </Text>
-        </View>
       </View>
 
-      <Ionicons name="chevron-forward" size={14} color="#CECECE" style={{ marginLeft: 6 }} />
+        <Ionicons name="chevron-forward" size={14} color="#CECECE" style={styles.chevron} />
+
     </TouchableOpacity>
   );
 };
@@ -92,29 +93,32 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingRight: 16,
     paddingVertical: 13,
     backgroundColor: '#FAFAFA',
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#EBEBEB',
   },
 
-  avatarWrap: {
-    position: 'relative',
-    marginRight: 14,
+  // Unread dot sits in a fixed-width column to the left of the avatar
+  unreadIndicatorWrap: {
+    width: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  unreadDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: '#111111',
+  },
+
   avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: '#EFEFEF',
-  },
-  unreadRing: {
-    position: 'absolute',
-    top: -2, left: -2, right: -2, bottom: -2,
-    borderWidth: 2,
-    borderColor: '#111111',
+    width: 54,
+    height: 54,
     borderRadius: 16,
+    backgroundColor: '#EFEFEF',
+    marginRight: 13,
   },
 
   content: {
@@ -123,67 +127,42 @@ const styles = StyleSheet.create({
   },
   topRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  communityLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#AAAAAA',
-    letterSpacing: 0.6,
-  },
-  timeLabel: {
-    fontSize: 11.5,
-    color: '#CCCCCC',
-    fontWeight: '400',
-  },
-  timeLabelUnread: {
-    color: '#111111',
-    fontWeight: '600',
-  },
-
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
   title: {
+    flex: 1,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '500',
     color: '#111111',
     letterSpacing: -0.2,
-    flex: 1,
-    marginRight: 8,
+    marginRight: 6,
   },
   titleUnread: {
     fontWeight: '700',
   },
-  unreadBadge: {
-    backgroundColor: '#111111',
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 8,
-    minWidth: 20,
-    alignItems: 'center',
+  time: {
+    fontSize: 12,
+    color: '#BBBBBB',
+    fontWeight: '400',
+    flexShrink: 0,
   },
-  unreadBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
+  timeUnread: {
+    color: '#888888',
+    fontWeight: '500',
+  },
+  chevron: {
+    marginLeft: 4,
   },
 
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  statusText: {
-    fontSize: 12.5,
-    color: '#AAAAAA',
+  preview: {
+    fontSize: 13,
+    color: '#BBBBBB',
     fontWeight: '400',
+    lineHeight: 18,
   },
-  statusSender: {
-    color: '#555555',
-    fontWeight: '500',
+  previewUnread: {
+    color: '#666666',
+    fontWeight: '400',
   },
 });
 

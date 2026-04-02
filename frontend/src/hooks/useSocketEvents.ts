@@ -1,15 +1,13 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useDatabase } from '@nozbe/watermelondb/react';
 import { useQueryClient } from '@tanstack/react-query';
 import { socket } from '../services/socketClient'; // Assume you have a central socket client
 import { Photo as PhotoApi } from '../types';
 import { syncPhotos } from '../services/sync/photos.sync';
 import { syncGalleryDetails } from '../services/sync/gallery.sync';
-import { updateOptimisticPhoto } from '../services/sync/photos.sync';
 import { Database, Q } from '@nozbe/watermelondb';
 import Photo from '../db/models/Photo';
 import PhotoTag from '../db/models/PhotoTag';
-import { useAuthStore } from '../stores/auth.store';
 
 /**
  * This hook manages all incoming Socket.IO event listeners for the app.
@@ -18,6 +16,9 @@ import { useAuthStore } from '../stores/auth.store';
 export const useSocketEvents = () => {
   const database = useDatabase();
   const queryClient = useQueryClient();
+  // Skip invalidation on the very first 'connect' event (initial connection).
+  // Only refetch on actual reconnects to recover missed socket events.
+  const isInitialConnectRef = useRef(true);
 
   useEffect(() => {
     const syncPhotoThumbnail = async (db: Database, photoId: string, thumbnailUrl: string) => {
@@ -36,78 +37,21 @@ export const useSocketEvents = () => {
       }
     };
 
-    // --- LISTENER 1: A new photo was created by someone else ---
-    const handleNewPhoto = async (newPhoto: PhotoApi) => {
-      console.log('[Cloud][Socket] new_photo received:', {
-        id: newPhoto.id,
-        galleryId: (newPhoto as any).galleryId,
-        createdAt: (newPhoto as any).createdAt,
-        uploaderId: (newPhoto as any).uploaderId,
-      });
-
-      const currentUserId = useAuthStore.getState().user?.id;
-      const galleryId = (newPhoto as any).galleryId;
-      const uploaderId = (newPhoto as any).uploaderId;
-
-      // --- CONFLICT RESOLUTION: Check if this is our own photo we're uploading ---
-      // If the uploader is the current user, check if we have an optimistic photo
-      // that matches (same gallery, same user, status queued/uploading)
-      if (currentUserId && uploaderId === currentUserId) {
-        try {
-          const photosCollection = database.collections.get<Photo>('photos');
-          const optimisticPhotos = await photosCollection
-            .query(
-              Q.where('gallery_id', galleryId),
-              Q.where('uploader_id', currentUserId),
-              Q.where('status', Q.oneOf(['queued', 'uploading']))
-            )
-            .fetch();
-
-          // Check if there's an optimistic photo that could be this one
-          // We match by gallery and uploader, and check if the timestamp is close
-          // (within 5 minutes, since uploads should complete quickly)
-          const photoCreatedAt = new Date((newPhoto as any).createdAt).getTime();
-          const now = Date.now();
-          const timeWindow = 5 * 60 * 1000; // 5 minutes
-
-          for (const optimisticPhoto of optimisticPhotos) {
-            const optimisticCreatedAt = optimisticPhoto.createdAt;
-            // Compare absolute difference between timestamps
-            // Both are relative to "now", so we compare their relative ages
-            const optimisticAge = now - optimisticCreatedAt;
-            const photoAge = now - photoCreatedAt;
-            const timeDiff = Math.abs(optimisticAge - photoAge);
-            
-            // If timestamps are close (within time window), this is likely the same photo
-            if (timeDiff < timeWindow) {
-              console.log(
-                `[Conflict][Socket] Matched socket photo to optimistic photo: ` +
-                `optimistic=${optimisticPhoto.id} final=${newPhoto.id}`
-              );
-              // Update the optimistic photo instead of creating a duplicate
-              await updateOptimisticPhoto(database, optimisticPhoto.id, newPhoto);
-              return; // Don't sync as new photo
-            }
-          }
-        } catch (error) {
-          console.warn('[Conflict][Socket] Error checking for optimistic photo match:', error);
-          // Fall through to normal sync if check fails
-        }
-      }
-
-      // Normal case: sync the new photo (either from another user, or no optimistic match found)
-      syncPhotos(database, [newPhoto]);
+    // --- LISTENER 1: A new photo arrived ---
+    // The server sends a minimal payload { id, galleryId, uploaderId, clientId }.
+    // Only the photos query is invalidated — gallery metadata doesn't need refreshing.
+    const handleNewPhoto = (data: { id: string; galleryId: string; uploaderId: string; clientId?: string }) => {
+      console.log('[Cloud][Socket] new_photo received:', data);
+      queryClient.invalidateQueries({ queryKey: ['gallery', data.galleryId, 'photos'], refetchType: 'active' });
     };
-    
+
     socket.on('new_photo', handleNewPhoto);
 
-    // --- LISTENER 2: A photo was updated (thumbnail or visibility) ---
+    // --- LISTENER 2: A single photo was updated (thumbnail ready) ---
     const handlePhotoUpdated = async (updatedPhoto: PhotoApi) => {
       console.log('[Cloud][Socket] photo_updated received:', updatedPhoto);
-      // Sync the updated photo (handles both thumbnail and visibility updates)
       await syncPhotos(database, [updatedPhoto]);
-      // Invalidate queries to refresh UI
-      queryClient.invalidateQueries({ queryKey: ['gallery', updatedPhoto.galleryId] });
+      queryClient.invalidateQueries({ queryKey: ['gallery', updatedPhoto.galleryId, 'photos'] });
     };
 
     socket.on('photo_updated', handlePhotoUpdated);
@@ -153,8 +97,14 @@ export const useSocketEvents = () => {
           // Check if photo exists locally first
           const photosCollection = database.collections.get<Photo>('photos');
           try {
-            await photosCollection.find(data.photoId);
-            
+            const photo = await photosCollection.find(data.photoId);
+            // Skip if the photo is mid-upload — tags will be reconciled once the
+            // upload completes and the permanent record is created.
+            if (photo.status === 'queued' || photo.status === 'uploading') {
+              console.warn('[Local][Socket] tag add skipped; photo is being uploaded:', { photoId: data.photoId });
+              return;
+            }
+
             // Check if tag already exists (idempotent)
             const existing = await photoTagsCollection
               .query(
@@ -201,11 +151,17 @@ export const useSocketEvents = () => {
 
     socket.on('photo_tagged', handlePhotoTagged);
 
-    // --- LISTENER 0: Reconnect — invalidate all gallery cache to recover missed events ---
+    // --- LISTENER 0: Reconnect — refetch active gallery queries to recover missed events ---
     const handleReconnect = () => {
-      console.log('[Socket] Reconnected — invalidating gallery cache to catch up on missed events');
-      queryClient.invalidateQueries({ queryKey: ['gallery'] });
-      queryClient.invalidateQueries({ queryKey: ['galleries'] });
+      if (isInitialConnectRef.current) {
+        isInitialConnectRef.current = false;
+        return;
+      }
+      console.log('[Socket] Reconnected — refetching active gallery queries to recover missed events');
+      // refetchType: 'active' forces an immediate refetch of any mounted gallery queries,
+      // which will call fetchPhotos(since=lastSyncedTimestamp) to pull in missed photos.
+      queryClient.invalidateQueries({ queryKey: ['gallery'], refetchType: 'active' });
+      queryClient.invalidateQueries({ queryKey: ['galleries'], refetchType: 'active' });
     };
 
     socket.on('connect', handleReconnect);
@@ -213,10 +169,9 @@ export const useSocketEvents = () => {
     // --- LISTENER 5: Gallery metadata was updated ---
     const handleGalleryUpdated = async (gallery: any) => {
       console.log('[Cloud][Socket] gallery_updated received:', { id: gallery.id, name: gallery.name });
-      // Sync the updated gallery details to local DB
       await syncGalleryDetails(database, gallery);
-      // Invalidate gallery queries to refresh UI
-      queryClient.invalidateQueries({ queryKey: ['gallery', gallery.id] });
+      // Only the meta query needs refreshing — photos are unaffected.
+      queryClient.invalidateQueries({ queryKey: ['gallery', gallery.id, 'meta'] });
       queryClient.invalidateQueries({ queryKey: ['galleries'] });
     };
 

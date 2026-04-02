@@ -4,11 +4,9 @@ import CommunityDetailsScreen from "../features/communities/screens/CommunityDet
 import CommunityMemberScreen from "../features/communities/screens/CommunityMemberScreen";
 import CommunitySettingsScreen from "../features/communities/screens/CommunitySettingsScreen";
 import CreateCommunityDetailsScreen from "../features/communities/screens/CreateCommunityDetailsScreen";
-import CreateCommunitySettingsScreen from "../features/communities/screens/CreateCommunitySettingsScreen";
 import ShareCommunityScreen from "../features/communities/screens/ShareCommunityScreen";
-import DefaultHeader from "../components/DefaultHeader";
-import DefaultNoBackHeader from "../components/DefaultNoBackHeader";
 import AddCommunityMembersScreen from "../features/communities/screens/AddCommunityMembersScreen";
+import DefaultHeader from "../components/DefaultHeader";
 import EditCommunityDetailsScreen from "../features/communities/screens/CommunitySettings/EditCommunityDetailsScreen";
 import EditDeletePermissionScreen from "../features/communities/screens/CommunitySettings/EditDeleteMemberPermissionScreen";
 import EditJoinPermissionScreen from "../features/communities/screens/CommunitySettings/EditJoinPermissionScreen";
@@ -32,7 +30,7 @@ const CommunityStack = () => {
         name="CommunityDetails"
         component={CommunityDetailsScreen}
         options={{
-          header: () => <DefaultHeader title="Community Details" />,
+          header: () => <DefaultHeader title="Group Details" />,
         }}
       />
       <Stack.Screen
@@ -54,21 +52,14 @@ const CommunityStack = () => {
         name="CreateCommunityDetails"
         component={CreateCommunityDetailsScreen}
         options={{
-          header: () => <DefaultHeader title="Create Community" />,
-        }}
-      />
-      <Stack.Screen
-        name="CreateCommunitySettings"
-        component={CreateCommunitySettingsScreen}
-        options={{
-          header: () => <DefaultHeader title="Community Settings" />,
+          header: () => <DefaultHeader title="Create Group" />,
         }}
       />
       <Stack.Screen
         name="ShareCommunity"
         component={ShareCommunityScreen}
         options={{
-          header: () => <DefaultHeader title="Share" />,
+          header: () => <DefaultHeader title="Share Group" />,
         }}
       />
       <Stack.Screen
@@ -78,7 +69,7 @@ const CommunityStack = () => {
           header: () => <DefaultHeader title="Add Members" />,
         }}
       />
-      <Stack.Screen 
+      <Stack.Screen
         name="EditAddPermission"
         component={EditAddPermissionScreen}
         options={{

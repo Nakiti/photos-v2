@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  SafeAreaView, Alert, KeyboardAvoidingView, Platform, ScrollView,
+  SafeAreaView, Alert, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
 } from "react-native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { launchImageLibrary, ImagePickerResponse } from "react-native-image-picker";
 import FastImage from "react-native-fast-image";
+import { useCreateGallery } from "../../../hooks/useGalleryData";
 
 const CreateGroupDetailsScreen = () => {
   const [name, setName] = useState("");
@@ -14,7 +15,9 @@ const CreateGroupDetailsScreen = () => {
   const [imageUri, setImageUri] = useState<string | undefined>(undefined);
   const route = useRoute();
   const { communityId } = route.params as any || {};
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
+
+  const { mutateAsync: createGallery, isPending: isCreating } = useCreateGallery();
 
   const onPickImage = () => {
     launchImageLibrary({ mediaType: 'photo', quality: 0.8 }, (response: ImagePickerResponse) => {
@@ -24,17 +27,23 @@ const CreateGroupDetailsScreen = () => {
     });
   };
 
-  const onContinue = () => {
+  const onContinue = async () => {
     if (!name.trim()) return;
-    (navigation as any).navigate("CreateGroupSettings", {
-      name: name.trim(),
-      description: description.trim(),
-      imageUri: imageUri ?? null,
-      communityId,
-    });
+    try {
+      const newGallery = await createGallery({
+        galleryData: { name: name.trim(), type: 'GROUP', communityId: communityId || undefined },
+        imageUri: imageUri ?? null,
+      });
+      navigation.navigate("ShareGroup", {
+        galleryId: newGallery.id,
+        fromCreateFlow: true,
+      });
+    } catch (e: any) {
+      Alert.alert('Failed to create group', e?.message ?? 'Please try again.');
+    }
   };
 
-  const isDisabled = !name.trim();
+  const isDisabled = !name.trim() || isCreating;
 
   return (
     <View style={styles.root}>
@@ -108,11 +117,17 @@ const CreateGroupDetailsScreen = () => {
             disabled={isDisabled}
             activeOpacity={0.7}
           >
-            <Text style={[styles.continueBtnText, isDisabled && styles.continueBtnTextDisabled]}>
-              Continue
-            </Text>
-            {!isDisabled && (
-              <Ionicons name="arrow-forward" size={16} color="#FFF" style={{ marginLeft: 6 }} />
+            {isCreating ? (
+              <ActivityIndicator color="#FFF" size="small" />
+            ) : (
+              <>
+                <Text style={[styles.continueBtnText, isDisabled && styles.continueBtnTextDisabled]}>
+                  Create Group
+                </Text>
+                {!isDisabled && (
+                  <Ionicons name="arrow-forward" size={16} color="#FFF" style={{ marginLeft: 6 }} />
+                )}
+              </>
             )}
           </TouchableOpacity>
         </SafeAreaView>

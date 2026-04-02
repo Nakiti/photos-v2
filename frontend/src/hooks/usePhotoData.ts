@@ -45,7 +45,7 @@ export const useCreateOptimisticPhoto = () => {
             0, // Rotation
             undefined // Output path
           );
-  
+
           // Create the "thumbnail" 30KB version
           const thumbnail = await ImageResizer.createResizedImage(
             localUri,
@@ -57,6 +57,10 @@ export const useCreateOptimisticPhoto = () => {
             undefined
           );
           // --- End Resizing ---
+
+          if (!fullImage?.uri || !thumbnail?.uri) {
+            throw new Error('Image resizing failed: invalid output URI');
+          }
   
           // --- 3. OPTIMISTIC LOCAL CREATION ---
           const temporaryId = uuid();
@@ -152,14 +156,23 @@ export const useCreateOptimisticPhoto = () => {
           const resizeResults = await Promise.all(resizePromises);
           // resizeResults is an array of [fullImage, thumbnail] pairs
 
+          for (let i = 0; i < resizeResults.length; i++) {
+            const [full, thumb] = resizeResults[i];
+            if (!full?.uri || !thumb?.uri) {
+              throw new Error(`Image resizing failed for item ${i}: invalid output URI`);
+            }
+          }
+
           // --- 2. PREPARE ALL DATABASE OPERATIONS ---
           const photosCollection = database.collections.get<Photo>('photos');
           const photoTagsCollection = database.collections.get<PhotoTag>('photo_tags');
           const operations: any[] = [];
+          const temporaryIds: string[] = [];
 
           for (let i = 0; i < resizeResults.length; i++) {
             const [fullImage, thumbnail] = resizeResults[i];
             const temporaryId = uuid();
+            temporaryIds.push(temporaryId);
 
             // Prepare photo creation
             const newPhotoOp = photosCollection.prepareCreate(record => {
@@ -189,6 +202,11 @@ export const useCreateOptimisticPhoto = () => {
             await database.batch(...operations);
           });
 
+          // --- 4. RECORD UPLOAD ATTEMPTS FOR RATE-LIMIT TRACKING ---
+          await Promise.all(
+            temporaryIds.map(id => recordLocalAttempt(database, galleryId, user.id, id))
+          );
+
           console.log(`[Batch] Created ${resizeResults.length} optimistic photos`);
           return { count: resizeResults.length };
         } catch (error) {
@@ -213,6 +231,9 @@ export const usePhotoUploadQueue = () => {
     const database = useDatabase();
     const [queuedPhotos, setQueuedPhotos] = useState<Photo[]>([]);
     const activeUploadsRef = useRef(0);
+    // Exponential backoff: track next-allowed retry time per photo ID
+    const retryDelayRef = useRef<Map<string, number>>(new Map());
+    const retryNotBeforeRef = useRef<Map<string, number>>(new Map());
 
     // 1. Observe photos that need uploading (includes sync_pending for rate-limit retry)
     useEffect(() => {
@@ -249,7 +270,16 @@ export const usePhotoUploadQueue = () => {
               photo.galleryId,
               localUri!,
               localThumbnailUri!,
-              tagIds
+              tagIds,
+              photo.id, // clientId for socket deduplication
+              async (s3Key) => {
+                // Persist the assigned s3Key on the optimistic record so that the
+                // syncPhotos conflict-detection guard can match it if the socket
+                // event triggers a gallery refetch before the confirm response arrives.
+                await database.write(async () => {
+                  await photo.update(record => { record.s3Key = s3Key; });
+                });
+              },
           )
 
           // Sync the final data
@@ -260,6 +290,10 @@ export const usePhotoUploadQueue = () => {
           if (attempt) {
             await markAttemptConfirmed(database, attempt.id, photo.id);
           }
+
+          // Successful upload — clear backoff state
+          retryDelayRef.current.delete(photo.id);
+          retryNotBeforeRef.current.delete(photo.id);
 
           // Clean up temporary resized files from device storage
           if (localUri) RNFS.unlink(localUri).catch(() => {});
@@ -288,7 +322,12 @@ export const usePhotoUploadQueue = () => {
 
             throw uploadError; // Re-throw to trigger onError
           } else {
-            // Other errors: mark as upload_failed
+            // Other errors: mark as upload_failed with exponential backoff
+            const prevDelay = retryDelayRef.current.get(photo.id) || 1000;
+            const nextDelay = Math.min(30000, prevDelay * 2);
+            retryDelayRef.current.set(photo.id, nextDelay);
+            retryNotBeforeRef.current.set(photo.id, Date.now() + nextDelay);
+
             await database.write(async () => {
               await photo.update(record => {
                 record.status = 'upload_failed';
@@ -300,17 +339,24 @@ export const usePhotoUploadQueue = () => {
       },
       onError: async (error, photo) => {
         console.error(`Failed to upload photo ${photo.id}:`, error);
-        // Status already set in mutationFn, just log
+        // Backoff state already set in mutationFn
       }
     });
   
     // 3. Process the queue when it changes — up to UPLOAD_CONCURRENCY in parallel
     useEffect(() => {
-      const pendingPhotos = queuedPhotos.filter(p =>
-        p.status === 'queued' ||
-        p.status === 'upload_failed' ||
-        (p.status === 'sync_pending' && (!p.retryAfter || p.retryAfter <= Date.now()))
-      );
+      const now = Date.now();
+      const pendingPhotos = queuedPhotos.filter(p => {
+        if (p.status === 'queued') return true;
+        if (p.status === 'upload_failed') {
+          const notBefore = retryNotBeforeRef.current.get(p.id) || 0;
+          return now >= notBefore;
+        }
+        if (p.status === 'sync_pending') {
+          return !p.retryAfter || p.retryAfter <= now;
+        }
+        return false;
+      });
 
       const slots = UPLOAD_CONCURRENCY - activeUploadsRef.current;
       const toProcess = pendingPhotos.slice(0, Math.max(0, slots));

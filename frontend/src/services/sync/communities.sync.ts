@@ -48,8 +48,19 @@ export const syncCommunities = async (
     };
 
     if (local) {
-      // Basic change detection; could compare updatedAt if available
-      operations.push(local.prepareUpdate(mapRemoteToLocal));
+      const needsUpdate =
+        local.name !== rc.name ||
+        local.description !== (rc.description ?? null) ||
+        local.iconUrl !== (rc.iconUrl ?? null) ||
+        local.ownerId !== rc.ownerId ||
+        local.joinRequiresApproval !== rc.joinRequiresApproval ||
+        local.addPermission !== rc.addPermission ||
+        local.deletePermission !== rc.deletePermission ||
+        local.memberCount !== (rc.memberCount ?? 0) ||
+        local.galleryCount !== (rc.galleryCount ?? 0);
+      if (needsUpdate) {
+        operations.push(local.prepareUpdate(mapRemoteToLocal));
+      }
     } else {
       operations.push(
         communitiesCollection.prepareCreate(record => {

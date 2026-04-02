@@ -45,7 +45,7 @@ function AppContent() {
   const { checkAuthStatus } = useAuth();
 
   // Global socket event handlers - must be mounted for live updates
-  // useSocketEvents();
+  useSocketEvents();
   
   // Photo upload queue processor
   usePhotoUploadQueue()

@@ -24,7 +24,8 @@ export const syncCurrentUser = async (
       record.name = profile.name ?? record.name;
       record.handle = profile.handle ?? record.handle;
       record.avatarUrl = profile.avatarUrl ?? record.avatarUrl;
-      
+      record.email = profile.email ?? record.email;
+
       // if (profile.createdAt) {
       //   record.created_at = new Date(profile.createdAt).getTime();
       // }
@@ -41,6 +42,7 @@ export const syncCurrentUser = async (
       record.name = profile.name;
       record.handle = profile.handle;
       record.avatarUrl = profile.avatarUrl;
+      record.email = profile.email;
 
       // if (profile.createdAt) {
       //   record.created_at = new Date(profile.createdAt).getTime();

@@ -190,7 +190,7 @@ export async function getMyGalleries(userId: string) {
       addPermission: true,
       deletePermission: true,
       joinRequiresApproval: true,
-      requirePictureReview: true,
+
       defaultTagId: true,
       lastPhotoAt: true,
       photoCount: true,
@@ -322,11 +322,10 @@ export async function getGalleryById(galleryId: string) {
 export async function updateGallery(
   ownerId: string,
   galleryId: string,
-  data: Partial<{ name: string; iconUrl: string | null; startDate: string | null; endDate: string | null; location: string | null; defaultTagId?: string | null }> & {
+  data: Partial<{ name: string; iconUrl: string | null; startDate: string | null; endDate: string | null; location: string | null; defaultTagId?: string | null; description?: string }> & {
     addPermission?: any;
     deletePermission?: any;
     joinRequiresApproval?: boolean;
-    requirePictureReview?: boolean;
   }
 ) {
   const updated = await prisma.gallery.update({
@@ -340,7 +339,6 @@ export async function updateGallery(
       addPermission: (data as any).addPermission,
       deletePermission: (data as any).deletePermission,
       joinRequiresApproval: data.joinRequiresApproval,
-      requirePictureReview: data.requirePictureReview,
       defaultTagId: data.defaultTagId,
     } as unknown) as any,
     select: {
@@ -357,7 +355,7 @@ export async function updateGallery(
       addPermission: true,
       deletePermission: true,
       joinRequiresApproval: true,
-      requirePictureReview: true,
+
       defaultTagId: true,
       lastPhotoAt: true,
       photoCount: true,
@@ -598,6 +596,56 @@ export const generateIconPresignedUrl = async (userId: string, galleryId: string
 };
 
 /**
+ * Transfer ownership of a gallery to another member.
+ * @param currentOwnerId - The authenticated user (must be current owner)
+ * @param galleryId - Gallery id
+ * @param newOwnerId - User id of the new owner (must be an accepted member)
+ */
+export async function transferOwnership(
+  currentOwnerId: string,
+  galleryId: string,
+  newOwnerId: string
+) {
+  const gallery = await prisma.gallery.findUnique({
+    where: { id: galleryId },
+    select: { ownerId: true },
+  });
+  if (!gallery || gallery.ownerId !== currentOwnerId) {
+    return null;
+  }
+
+  const membership = await prisma.membership.findUnique({
+    where: { userId_galleryId: { userId: newOwnerId, galleryId } },
+    select: { id: true, status: true },
+  });
+  if (!membership || membership.status !== 'ACCEPTED') {
+    throw new Error('New owner must be an accepted member of the gallery');
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.gallery.update({
+      where: { id: galleryId },
+      data: { ownerId: newOwnerId },
+      select: {
+        id: true, name: true, type: true, iconUrl: true,
+        startDate: true, endDate: true, location: true,
+        shareableLink: true, ownerId: true, communityId: true,
+        addPermission: true, deletePermission: true, joinRequiresApproval: true,
+        defaultTagId: true, lastPhotoAt: true, photoCount: true, memberCount: true,
+        createdAt: true, updatedAt: true,
+        community: { select: { name: true } },
+      },
+    });
+    // Promote new owner to ADMIN role if not already
+    await tx.membership.update({
+      where: { userId_galleryId: { userId: newOwnerId, galleryId } },
+      data: { role: 'ADMIN' },
+    });
+    return { ...updated, communityName: updated.community?.name ?? null, community: undefined };
+  });
+}
+
+/**
  * Search through galleries the user has access to (owned or member of) with flexible filtering.
  * Supports general search term and specific field filters with case-insensitive partial matching.
  * @param userId - Authenticated user's ID
@@ -743,4 +791,53 @@ export async function searchGalleries(
   };
 }
 
- 
+async function createBranchLink(data: {
+  deepLinkPath: string;
+  title: string;
+  description: string;
+  fallbackUrl: string;
+}): Promise<string> {
+  const branchKey = config.branch?.key;
+  if (!branchKey) {
+    return data.fallbackUrl;
+  }
+  try {
+    const response = await fetch('https://api2.branch.io/v1/url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        branch_key: branchKey,
+        channel: 'share',
+        feature: 'invite',
+        data: {
+          '$deeplink_path': data.deepLinkPath,
+          '$og_title': data.title,
+          '$og_description': data.description,
+          '$fallback_url': data.fallbackUrl,
+        },
+      }),
+    });
+    if (!response.ok) return data.fallbackUrl;
+    const json = await response.json() as { url?: string };
+    return json.url || data.fallbackUrl;
+  } catch {
+    return data.fallbackUrl;
+  }
+}
+
+export async function createGalleryShareLink(userId: string, galleryId: string): Promise<string> {
+  const gallery = await prisma.gallery.findFirst({
+    where: {
+      id: galleryId,
+      OR: [{ ownerId: userId }, { memberships: { some: { userId } } }],
+    },
+    select: { id: true, name: true, shareableLink: true },
+  });
+  if (!gallery) throw new Error('Gallery not found or inaccessible');
+  return createBranchLink({
+    deepLinkPath: `gallery/join/${galleryId}`,
+    title: gallery.name,
+    description: `Join the gallery "${gallery.name}" on Focal`,
+    fallbackUrl: `https://focal.app/gallery/join/${galleryId}`,
+  });
+}

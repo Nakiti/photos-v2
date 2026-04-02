@@ -6,6 +6,7 @@ Express.js backend with Prisma ORM and PostgreSQL.
 Socket.IO for real-time sync.
 AWS S3 with presigned URLs for media storage.
 Branch.io for deep linking.
+Groups and Communities refer to the same things
 
 ## Key Patterns
 All database writes go through database.write() with batch operations.

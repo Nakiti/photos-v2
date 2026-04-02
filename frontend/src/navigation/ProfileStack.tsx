@@ -6,6 +6,7 @@ import DefaultHeader from "../components/DefaultHeader";
 import AddFriendsScreen from "../features/profile/screens/AddFriendsScreen";
 import DataSyncSettingsScreen from "../features/profile/screens/ProfileSettings/DataSyncSettingsScreen";
 import NotificationSettingsScreen from "../features/profile/screens/ProfileSettings/NotificationSettingsScreen";
+import HelpCenterScreen from "../features/profile/screens/HelpCenterScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -47,11 +48,18 @@ const ProfileStack = () => {
                     header: () => <DefaultHeader title="Notifications" />
                 }}
             />
-            <Stack.Screen 
+            <Stack.Screen
                 name="DataSyncSettings"
                 component={DataSyncSettingsScreen}
                 options={{
                     header: () => <DefaultHeader title="Data Sync"/>
+                }}
+            />
+            <Stack.Screen
+                name="HelpCenter"
+                component={HelpCenterScreen}
+                options={{
+                    header: () => <DefaultHeader title="Help Center" />
                 }}
             />
         </Stack.Navigator>

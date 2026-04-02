@@ -1,7 +1,7 @@
 import { useDatabase } from "@nozbe/watermelondb/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Q } from "@nozbe/watermelondb";
+import { Q, Database } from "@nozbe/watermelondb";
 import Membership from "../db/models/Membership";
 import User from "../db/models/User";
 import {
@@ -288,20 +288,19 @@ export const useInviteMember = () => {
 
           if (existing.length > 0) {
             await existing[0].update((record) => {
-              (record as any).status = 'INVITED';
-              (record as any).role = 'MEMBER';
-              (record as any).isMuted = false;
+              record.status = 'INVITED';
+              record.role = 'MEMBER';
+              record.isMuted = false;
             });
           } else {
             await membershipsCollection.create((record) => {
-              // Temporary local id; server sync may keep this id, which is fine
-              (record as any)._raw.id = `optimistic-${galleryId}-${userId}`;
-              (record as any).gallery.id = galleryId;
-              (record as any).user.id = userId;
-              (record as any).joinedAt = Date.now();
-              (record as any).status = 'INVITED';
-              (record as any).role = 'MEMBER';
-              (record as any).isMuted = false;
+              record._raw.id = `optimistic-${galleryId}-${userId}`;
+              record.galleryId = galleryId;
+              record.userId = userId;
+              record.joinedAt = Date.now();
+              record.status = 'INVITED';
+              record.role = 'MEMBER';
+              record.isMuted = false;
             });
           }
         });
@@ -382,14 +381,70 @@ export const useUpdateMyMembership = () => {
 
 /**
  * Hook to get the current user's membership for a specific gallery.
+ * Observes local DB for offline support and syncs from the API in the background.
  */
 export const useMyMembership = (galleryId: string | null) => {
-  return useQuery({
+  const database = useDatabase();
+  const { user } = useAuth();
+  const [localMembership, setLocalMembership] = useState<Membership | null>(null);
+
+  // Observe local record so role/status are available offline
+  useEffect(() => {
+    if (!galleryId || !user?.id) {
+      setLocalMembership(null);
+      return;
+    }
+    const col = database.collections.get<Membership>('memberships');
+    const sub = col
+      .query(Q.where('gallery_id', galleryId), Q.where('user_id', user.id))
+      .observe()
+      .subscribe(records => setLocalMembership(records[0] ?? null));
+    return () => sub.unsubscribe();
+  }, [database, galleryId, user?.id]);
+
+  const query = useQuery({
     queryKey: ['myMembership', galleryId],
     enabled: !!galleryId,
-    queryFn: () => getMyMembership(galleryId as string),
+    queryFn: async () => {
+      const apiMembership = await getMyMembership(galleryId as string);
+      // Persist to local DB so offline reads always have up-to-date role/status
+      const col = database.collections.get<Membership>('memberships');
+      const existing = await col
+        .query(Q.where('gallery_id', galleryId), Q.where('user_id', apiMembership.userId))
+        .fetch();
+      await database.write(async () => {
+        if (existing.length > 0) {
+          await database.batch(
+            existing[0].prepareUpdate(record => {
+              record.role = apiMembership.role;
+              record.status = apiMembership.status;
+              record.isMuted = apiMembership.isMuted;
+            })
+          );
+        } else {
+          await database.batch(
+            col.prepareCreate(record => {
+              record._raw.id = apiMembership.id;
+              record.galleryId = apiMembership.galleryId;
+              record.userId = apiMembership.userId;
+              record.joinedAt = new Date(apiMembership.joinedAt).getTime();
+              record.role = apiMembership.role;
+              record.status = apiMembership.status;
+              record.isMuted = apiMembership.isMuted;
+            })
+          );
+        }
+      });
+      return apiMembership;
+    },
     staleTime: 5 * 60 * 1000,
   });
+
+  return {
+    ...query,
+    // Use API data when fresh, fall back to local DB record when offline
+    data: (query.data ?? localMembership) as typeof query.data,
+  };
 };
 
 /**

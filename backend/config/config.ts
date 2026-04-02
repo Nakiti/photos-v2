@@ -22,6 +22,9 @@ const config = {
     region: process.env.AWS_REGION,
     s3Bucket: process.env.AWS_S3_BUCKET,
   },
+  branch: {
+    key: process.env.BRANCH_IO_KEY,
+  },
   // Add other configurations as needed
 };
 

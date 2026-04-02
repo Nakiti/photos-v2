@@ -45,19 +45,20 @@ export const useNotifications = (filters?: { isRead?: boolean }) => {
     );
 
     const subscription = query.observeWithColumns(['is_read', 'created_at']).subscribe(async (notificationsList) => {
-      // Enrich notifications with actor data
-      const enriched: EnrichedNotification[] = [];
-      for (const notification of notificationsList) {
-        try {
-          const actor = await notification.actor.fetch();
-          enriched.push({
-            notification,
-            actor,
-          });
-        } catch (error) {
-          console.error('Error fetching actor for notification:', error);
-        }
+      if (notificationsList.length === 0) {
+        setNotifications([]);
+        return;
       }
+      // Batch-fetch all actors in a single query instead of N individual fetches
+      const usersCollection = database.collections.get<User>('users');
+      const actorIds = [...new Set(notificationsList.map(n => n.actorId).filter(Boolean))];
+      const actors = await usersCollection.query(Q.where('id', Q.oneOf(actorIds))).fetch();
+      const actorMap = new Map(actors.map(a => [a.id, a]));
+
+      const enriched: EnrichedNotification[] = notificationsList
+        .map(notification => ({ notification, actor: actorMap.get(notification.actorId) }))
+        .filter((e): e is EnrichedNotification => !!e.actor);
+
       setNotifications(enriched);
     });
 
@@ -66,7 +67,7 @@ export const useNotifications = (filters?: { isRead?: boolean }) => {
 
   // Fetch & sync remote data
   const { isLoading, isError, error, isFetching } = useQuery({
-    queryKey: ['notifications', filters],
+    queryKey: ['notifications'],
     queryFn: async () => {
       const remote = await getNotifications({
         limit: 100, // Fetch a reasonable number
@@ -106,10 +107,11 @@ export const useMarkNotificationAsRead = () => {
       const notificationsCollection = database.collections.get<Notification>('notifications');
       const notification = await notificationsCollection.find(notificationId);
       await database.write(async () => {
-        await notification.update((record: any) => {
-          record.is_read = true;
-          record.updated_at = new Date(updated.updatedAt).getTime();
-        });
+        await database.batch(
+          notification.prepareUpdate((record) => {
+            record.isRead = true;
+          })
+        );
       });
 
       return updated;
@@ -132,7 +134,7 @@ export const useMarkAllNotificationsAsRead = () => {
     mutationFn: async () => {
       const result = await markAllNotificationsAsRead();
       
-      // Update local database
+      // Update local database — batch all updates in a single write
       const notificationsCollection = database.collections.get<Notification>('notifications');
       const unreadNotifications = await notificationsCollection
         .query(
@@ -141,14 +143,16 @@ export const useMarkAllNotificationsAsRead = () => {
         )
         .fetch();
 
-      await database.write(async () => {
-        for (const notification of unreadNotifications) {
-          await notification.update((record: any) => {
-            record.is_read = true;
-            record.updated_at = Date.now();
-          });
-        }
-      });
+      if (unreadNotifications.length > 0) {
+        const updates = unreadNotifications.map(n =>
+          n.prepareUpdate((record) => {
+            record.isRead = true;
+          })
+        );
+        await database.write(async () => {
+          await database.batch(updates);
+        });
+      }
 
       return result;
     },

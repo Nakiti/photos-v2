@@ -74,25 +74,31 @@ export const uploadPhoto = async (
  * @param {number} [since] Optional ms timestamp; if provided, only newer photos are returned
  * @returns {Promise<Photo[]>} Resolves to the array of photos
  */
+const FETCH_PAGE_SIZE = 100;
+
 export const fetchPhotos = async (galleryId: string, since?: number): Promise<Photo[]> => {
-  let url = `/api/v1/galleries/${galleryId}/photos`;
-  if (since) {
-    // Convert number timestamp to ISO string for the API
-    url += `?since=${new Date(since).toISOString()}`;
+  const all: Photo[] = [];
+  let page = 1;
+
+  while (true) {
+    let url = `/api/v1/galleries/${galleryId}/photos?page=${page}&limit=${FETCH_PAGE_SIZE}`;
+    if (since) {
+      url += `&since=${new Date(since).toISOString()}`;
+    }
+
+    const response = await apiClient.get(url);
+    const { items, total } = response.data as { items: Photo[]; total: number };
+    all.push(...items);
+
+    // Stop when we have everything or the page came back short
+    if (all.length >= total || items.length < FETCH_PAGE_SIZE) break;
+    page++;
   }
 
-  console.log(`[Cloud][fetchPhotos] GET ${url}`);
-  const response = await apiClient.get(url);
-
-  const items = response.data.items as Photo[];
   console.log(
-    `[Cloud][fetchPhotos] received ${items.length} items for gallery=${galleryId} (since=${since ?? 'none'})`,
+    `[Cloud][fetchPhotos] gallery=${galleryId} since=${since ?? 'none'} total=${all.length} pages=${page}`,
   );
-  if (items.length > 0) {
-    const sample = items.slice(0, 3).map((p: any) => ({ id: p.id, createdAt: p.createdAt }));
-    console.log('[Cloud][fetchPhotos] sample:', sample);
-  }
-  return items;
+  return all;
 };
 
 /**
@@ -120,13 +126,13 @@ export const fetchPhotoIdsForSync = async (galleryId: string): Promise<string[]>
  * @returns {Promise<{ full: { presignedUrl: string; s3Key: string; finalUrl: string }; thumb: { presignedUrl: string; s3Key: string; finalUrl: string } }>}
  * Resolves to presigned URLs, keys, and final URLs for both assets
  */
-const getPresignedUrls = async (galleryId: string, contentType: string): Promise<{
+const getPresignedUrls = async (galleryId: string, contentType: string, clientId?: string): Promise<{
   full: { presignedUrl: string; s3Key: string; finalUrl: string };
   thumb: { presignedUrl: string; s3Key: string; finalUrl: string };
 }> => {
   const response = await apiClient.post(
     `/api/v1/galleries/${galleryId}/photos/presign`,
-    { contentType }
+    { contentType, clientId }
   );
   return response.data;
 };
@@ -142,12 +148,16 @@ const getPresignedUrls = async (galleryId: string, contentType: string): Promise
 const uploadToS3 = async (presignedUrl: string, fileUri: string, fileType: string) => {
   const response = await fetch(fileUri);
   const blob = await response.blob();
-  
-  await fetch(presignedUrl, {
+
+  const s3Response = await fetch(presignedUrl, {
     method: 'PUT',
     body: blob,
     headers: { 'Content-Type': fileType || 'image/jpeg' },
   });
+
+  if (!s3Response.ok) {
+    throw new Error(`S3 upload failed: ${s3Response.status} ${s3Response.statusText}`);
+  }
 };
 
 /**
@@ -183,6 +193,7 @@ const confirmUpload = async (galleryId: string, data: {
   thumbnailKey: string;
   thumbnailUrl: string;
   tagIds: string[];
+  clientId?: string;
 }): Promise<Photo> => {
   const response = await apiClient.post(
     `/api/v1/galleries/${galleryId}/photos/confirm`,
@@ -204,34 +215,35 @@ export const uploadPhotoFlow = async (
   galleryId: string,
   fullImageUri: string,
   thumbImageUri: string,
-  tagIds: string[]
+  tagIds: string[],
+  clientId?: string,
+  onPresign?: (s3Key: string) => Promise<void>,
 ): Promise<Photo> => {
-  // 1. Determine content type from the full image
   const fullImageResponse = await fetch(fullImageUri);
   const fullImageBlob = await fullImageResponse.blob();
   const contentType = fullImageBlob.type || 'image/jpeg';
 
-  // 2. Get both presigned URLs from our backend
-  const {full, thumb} = await getPresignedUrls(galleryId, contentType);
+  // Forward clientId so the backend can deduplicate rapid duplicate presign requests.
+  const { full, thumb } = await getPresignedUrls(galleryId, contentType, clientId);
 
-  // 3. Upload both files to S3 in parallel
-  console.log("thumbnail image url", thumb.finalUrl)
+  // Notify caller of the assigned s3Key before uploading so the caller can persist it
+  // for local conflict detection (prevents duplicate records if the socket event races
+  // the confirm response and triggers a gallery refetch).
+  if (onPresign) await onPresign(full.s3Key);
 
   await Promise.all([
-    uploadToS3(full.presignedUrl, fullImageUri, 'image/jpeg'),
-    uploadToS3(thumb.presignedUrl, thumbImageUri, 'image/jpeg')
+    uploadToS3(full.presignedUrl, fullImageUri, contentType),
+    uploadToS3(thumb.presignedUrl, thumbImageUri, contentType),
   ]);
 
-  // 4. Confirm the upload with our backend
-  const finalPhoto = await confirmUpload(galleryId, {
+  return confirmUpload(galleryId, {
     s3Key: full.s3Key,
     s3Url: full.finalUrl,
     thumbnailKey: thumb.s3Key,
     thumbnailUrl: thumb.finalUrl,
-    tagIds: tagIds,
+    tagIds,
+    clientId,
   });
-  
-  return finalPhoto;
 };
 
 /**
@@ -245,37 +257,44 @@ export const deletePhoto = async (galleryId: string, photoId: string): Promise<v
   await apiClient.delete(`/api/v1/galleries/${galleryId}/photos/${photoId}`);
 };
 
-/**
- * Update photo visibility status. Allowed for gallery owner or admin.
- *
- * @param galleryId The gallery id
- * @param photoId The photo id
- * @param visible The new visibility status
- * @returns {Promise<Photo>} Resolves to the updated photo
- */
-export const updatePhotoVisibility = async (
+export const getPhotoLikeStatus = async (
   galleryId: string,
-  photoId: string,
-  visible: 'IN_REVIEW' | 'VISIBLE'
-): Promise<Photo> => {
-  const response = await apiClient.patch(
-    `/api/v1/galleries/${galleryId}/photos/${photoId}/visibility`,
-    { visible }
+  photoId: string
+): Promise<{ liked: boolean; likeCount: number }> => {
+  const response = await apiClient.get(
+    `/api/v1/galleries/${galleryId}/photos/${photoId}/like`
   );
-  return response.data as Photo;
+  return response.data;
+};
+
+export const likePhoto = async (
+  galleryId: string,
+  photoId: string
+): Promise<{ liked: boolean; likeCount: number }> => {
+  const response = await apiClient.post(
+    `/api/v1/galleries/${galleryId}/photos/${photoId}/like`
+  );
+  return response.data;
+};
+
+export const unlikePhoto = async (
+  galleryId: string,
+  photoId: string
+): Promise<{ liked: boolean; likeCount: number }> => {
+  const response = await apiClient.delete(
+    `/api/v1/galleries/${galleryId}/photos/${photoId}/like`
+  );
+  return response.data;
 };
 
 /**
- * Approve all in-review photos in a gallery. Allowed for gallery owner or admin.
- *
- * @param galleryId The gallery id
- * @returns {Promise<{ count: number }>} Resolves to the count of approved photos
+ * Fetch photo IDs soft-deleted in a gallery since a given timestamp.
+ * Used for delta reconciliation instead of fetching the full ID list every sync.
  */
-export const approveAllPhotos = async (galleryId: string): Promise<{ count: number }> => {
-  const response = await apiClient.post(
-    `/api/v1/galleries/${galleryId}/photos/approve-all`
-  );
-  return response.data as { count: number };
+export const fetchDeletedPhotoIds = async (galleryId: string, since: number): Promise<string[]> => {
+  const path = `/api/v1/galleries/${galleryId}/photos/deleted-since?since=${new Date(since).toISOString()}`;
+  const response = await apiClient.get(path);
+  return response.data.deletedIds as string[];
 };
 
 

@@ -25,22 +25,44 @@ export const syncGalleries = async (database: Database, remoteGalleries: Gallery
       // Record exists, check if it needs an update
       // A more advanced sync would compare a `updated_at` timestamp
       const remoteLastPhotoAt = remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : null;
-      if (local.name !== remoteGallery.name || local.iconUrl !== remoteGallery.iconUrl || local.joinRequiresApproval !== remoteGallery.joinRequiresApproval || local.requirePictureReview !== (remoteGallery.requirePictureReview ?? false) || local.addPermission !== remoteGallery.addPermission || local.deletePermission !== remoteGallery.deletePermission || local.lastPhotoAt !== remoteLastPhotoAt || local.photoCount !== (remoteGallery.photoCount ?? 0) || local.memberCount !== (remoteGallery.memberCount ?? 0)) {
+      const remoteStartDate = remoteGallery.startDate ? new Date(remoteGallery.startDate).getTime() : null;
+      const remoteEndDate = remoteGallery.endDate ? new Date(remoteGallery.endDate).getTime() : null;
+      const needsUpdate =
+        local.name !== remoteGallery.name ||
+        local.iconUrl !== remoteGallery.iconUrl ||
+        local.joinRequiresApproval !== remoteGallery.joinRequiresApproval ||
+        local.addPermission !== remoteGallery.addPermission ||
+        local.deletePermission !== remoteGallery.deletePermission ||
+        local.editPermission !== (remoteGallery as any).editPermission ||
+        local.defaultTagId !== remoteGallery.defaultTagId ||
+        local.communityId !== remoteGallery.communityId ||
+        local.communityName !== remoteGallery.communityName ||
+        local.lastPhotoAt !== remoteLastPhotoAt ||
+        local.photoCount !== (remoteGallery.photoCount ?? 0) ||
+        local.memberCount !== (remoteGallery.memberCount ?? 0) ||
+        local.startDate !== remoteStartDate ||
+        local.endDate !== remoteEndDate ||
+        local.location !== remoteGallery.location ||
+        local.shareableLink !== remoteGallery.shareableLink;
+      if (needsUpdate) {
         operations.push(
           local.prepareUpdate(record => {
             record.name = remoteGallery.name;
             record.iconUrl = remoteGallery.iconUrl;
-            record.joinRequiresApproval = remoteGallery.joinRequiresApproval,
-            record.requirePictureReview = remoteGallery.requirePictureReview ?? false,
-            record.addPermission = remoteGallery.addPermission,
-            record.deletePermission = remoteGallery.deletePermission
-            record.defaultTagId = remoteGallery.defaultTagId
-            record.communityId = remoteGallery.communityId
-            record.communityName = remoteGallery.communityName
-            record.lastPhotoAt = remoteLastPhotoAt ?? undefined
-            record.photoCount = remoteGallery.photoCount ?? 0
-            record.memberCount = remoteGallery.memberCount ?? 0
-            // map other updatable fields
+            record.joinRequiresApproval = remoteGallery.joinRequiresApproval ?? false;
+            record.addPermission = remoteGallery.addPermission;
+            record.deletePermission = remoteGallery.deletePermission;
+            record.editPermission = (remoteGallery as any).editPermission;
+            record.defaultTagId = remoteGallery.defaultTagId;
+            record.communityId = remoteGallery.communityId;
+            record.communityName = remoteGallery.communityName;
+            record.lastPhotoAt = remoteLastPhotoAt ?? undefined;
+            record.photoCount = remoteGallery.photoCount ?? 0;
+            record.memberCount = remoteGallery.memberCount ?? 0;
+            record.startDate = remoteStartDate ?? undefined;
+            record.endDate = remoteEndDate ?? undefined;
+            record.location = remoteGallery.location ?? undefined;
+            record.shareableLink = remoteGallery.shareableLink ?? undefined;
           })
         );
       }
@@ -48,21 +70,25 @@ export const syncGalleries = async (database: Database, remoteGalleries: Gallery
       // Record does not exist, prepare to create it
       operations.push(
         galleriesCollection.prepareCreate(record => {
-          record._raw.id = remoteGallery.id; // Use the server's ID
+          record._raw.id = remoteGallery.id;
           record.name = remoteGallery.name;
           record.type = remoteGallery.type;
           record.iconUrl = remoteGallery.iconUrl;
           record.ownerId = remoteGallery.ownerId;
-          record.joinRequiresApproval = remoteGallery.joinRequiresApproval,
-          record.requirePictureReview = remoteGallery.requirePictureReview ?? false,
-          record.addPermission = remoteGallery.addPermission,
-          record.deletePermission = remoteGallery.deletePermission
-          record.defaultTagId = remoteGallery.defaultTagId
-          record.communityId = remoteGallery.communityId
-          record.communityName = remoteGallery.communityName
-          record.lastPhotoAt = remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : undefined
-          record.photoCount = remoteGallery.photoCount ?? 0
-          record.memberCount = remoteGallery.memberCount ?? 0
+          record.joinRequiresApproval = remoteGallery.joinRequiresApproval ?? false;
+          record.addPermission = remoteGallery.addPermission;
+          record.deletePermission = remoteGallery.deletePermission;
+          record.editPermission = (remoteGallery as any).editPermission;
+          record.defaultTagId = remoteGallery.defaultTagId;
+          record.communityId = remoteGallery.communityId;
+          record.communityName = remoteGallery.communityName;
+          record.lastPhotoAt = remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : undefined;
+          record.photoCount = remoteGallery.photoCount ?? 0;
+          record.memberCount = remoteGallery.memberCount ?? 0;
+          record.startDate = remoteGallery.startDate ? new Date(remoteGallery.startDate).getTime() : undefined;
+          record.endDate = remoteGallery.endDate ? new Date(remoteGallery.endDate).getTime() : undefined;
+          record.location = remoteGallery.location ?? undefined;
+          record.shareableLink = remoteGallery.shareableLink ?? undefined;
         })
       );
     }
@@ -113,8 +139,10 @@ export const syncGalleryDetails = async (
     record.ownerId = remoteGallery.ownerId;
     record.iconUrl = remoteGallery.iconUrl;
     record.type = remoteGallery.type;
-    record.joinRequiresApproval = remoteGallery.joinRequiresApproval;
-    record.requirePictureReview = remoteGallery.requirePictureReview ?? false;
+    record.joinRequiresApproval = remoteGallery.joinRequiresApproval ?? false;
+    record.addPermission = remoteGallery.addPermission;
+    record.deletePermission = remoteGallery.deletePermission;
+    record.editPermission = (remoteGallery as any).editPermission;
     record.startDate = remoteGallery.startDate
       ? new Date(remoteGallery.startDate).getTime()
       : null;

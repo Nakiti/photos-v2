@@ -1,22 +1,22 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TextInput, 
-  TouchableOpacity, 
-  TouchableWithoutFeedback, 
-  Keyboard, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   Alert,
-  SafeAreaView
+  SafeAreaView,
+  ActivityIndicator,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import { launchImageLibrary, ImagePickerResponse } from 'react-native-image-picker';
 import FastImage from 'react-native-fast-image';
+import { useCreateCommunity } from '../../../hooks/useCommunityData';
 
 // --- Theme ---
 const COLORS = {
@@ -35,7 +35,9 @@ const CreateCommunityDetailsScreen = () => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [imageUri, setImageUri] = useState<string | undefined>(undefined);
-  
+
+  const { mutateAsync: createCommunity, isPending: isCreating } = useCreateCommunity();
+
   const onPickImage = () => {
     launchImageLibrary({ mediaType: 'photo', quality: 0.8 }, (response: ImagePickerResponse) => {
       if (response.didCancel) return;
@@ -49,18 +51,23 @@ const CreateCommunityDetailsScreen = () => {
     });
   };
 
-  const onContinue = () => {
+  const onContinue = async () => {
     if (!name.trim()) return;
-
-    // Navigate to settings screen with form data
-    navigation.navigate("CreateCommunitySettings", {
-      name: name.trim(),
-      description: description.trim(),
-      imageUri: imageUri ?? null,
-    });
+    try {
+      const newCommunity = await createCommunity({
+        data: { name: name.trim(), description: description.trim() || undefined },
+        imageUri: imageUri ?? null,
+      });
+      navigation.navigate("ShareCommunity", {
+        communityId: newCommunity.id,
+        fromCreateFlow: true,
+      });
+    } catch (e: any) {
+      Alert.alert('Failed to create community', e?.message ?? 'Please try again.');
+    }
   };
 
-  const isButtonDisabled = !name.trim();
+  const isButtonDisabled = !name.trim() || isCreating;
 
   return (
     <View style={styles.root}>
@@ -142,10 +149,14 @@ const CreateCommunityDetailsScreen = () => {
                 disabled={isButtonDisabled}
                 activeOpacity={0.8}
             >
-                <View style={styles.buttonContent}>
-                    <Text style={styles.buttonText}>Continue</Text>
-                    <Ionicons name="arrow-forward" size={18} color="#FFF" />
-                </View>
+                {isCreating ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <View style={styles.buttonContent}>
+                      <Text style={styles.buttonText}>Create Community</Text>
+                      <Ionicons name="arrow-forward" size={18} color="#FFF" />
+                  </View>
+                )}
             </TouchableOpacity>
         </SafeAreaView>
 

@@ -5,12 +5,14 @@ export const getPhotosQuerySchema = z.object({
     page: z.coerce.number().int().min(1).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20),
     tagId: z.string().min(1).optional(),
+    since: z.string().datetime({ offset: true }).optional(),
   }),
 });
 
 export const presignBodySchema = z.object({
   body: z.object({
     contentType: z.string().min(3),
+    clientId: z.string().optional(),
   }),
 });
 
@@ -21,12 +23,7 @@ export const confirmBodySchema = z.object({
     tagIds: z.array(z.string().min(1)).optional(),
     thumbnailKey: z.string().min(1),
     thumbnailUrl: z.string().url(),
-  }),
-});
-
-export const updatePhotoVisibilitySchema = z.object({
-  body: z.object({
-    visible: z.enum(['IN_REVIEW', 'VISIBLE']),
+    clientId: z.string().optional(),
   }),
 });
 

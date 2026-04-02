@@ -114,7 +114,22 @@ export async function transferOwnership(req: Request, res: Response) {
 	}
 }
 
-
+/**
+ * GET /api/v1/communities/:communityId/share-link
+ * Generate a Branch.io deep link for sharing a community.
+ */
+export async function getShareLink(req: Request, res: Response) {
+	const userId = (req as any).user?.id as string | undefined;
+	if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+	const { communityId } = req.params as { communityId: string };
+	try {
+		const shareLink = await communitiesService.createCommunityShareLink(userId, communityId);
+		return res.status(200).json({ shareLink });
+	} catch (e: any) {
+		if (e?.message?.includes('not found')) return res.status(404).json({ message: e.message });
+		return res.status(500).json({ message: 'Failed to generate share link' });
+	}
+}
 
 
 

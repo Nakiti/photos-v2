@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   View,
@@ -6,12 +6,14 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  RefreshControl,
   ActivityIndicator,
   SafeAreaView,
   Alert,
 } from 'react-native';
-import { useDeleteGallery, useGallery } from '../../../hooks/useGalleryData';
-import { useUpdateMyMembership } from '../../../hooks/useMembershipData';
+import { useQueryClient } from '@tanstack/react-query';
+import { useDeleteGallery, useGallery, useLocalGallery } from '../../../hooks/useGalleryData';
+import { useLeaveGallery, useUpdateMyMembership } from '../../../hooks/useMembershipData';
 import { useAuth } from '../../../hooks/useAuth';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import FastImage from 'react-native-fast-image';
@@ -54,10 +56,17 @@ const GalleryDetailsScreen = () => {
   const route = useRoute();
   const { galleryId } = route.params as { galleryId: string };
 
-  const { gallery, isLoading } = useGallery(galleryId);
+  const queryClient = useQueryClient();
+  const { gallery } = useGallery(galleryId);
+  const isLoading = !gallery;
   const { mutate: updateMembership } = useUpdateMyMembership();
   const { user } = useAuth();
   const deleteGalleryMutation = useDeleteGallery();
+  const leaveGalleryMutation = useLeaveGallery();
+
+  const onRefresh = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['gallery', galleryId, 'meta'] });
+  }, [queryClient, galleryId]);
 
   const [isMuted, setIsMuted] = useState(false);
 
@@ -109,6 +118,9 @@ const GalleryDetailsScreen = () => {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={false} onRefresh={onRefresh} tintColor="#999" colors={['#999']} />
+          }
         >
           {gallery && (
             <>
@@ -173,7 +185,7 @@ const GalleryDetailsScreen = () => {
                       <ListRow
                         icon="swap-horizontal-outline"
                         label="Transfer Ownership"
-                        onPress={() => {}}
+                        onPress={() => (navigation as any).navigate('ChangeOwner', { galleryId })}
                       />
                       <ListRow
                         icon="trash-outline"
@@ -187,7 +199,24 @@ const GalleryDetailsScreen = () => {
                     <ListRow
                       icon="exit-outline"
                       label="Leave Gallery"
-                      onPress={() => {}}
+                      onPress={() => {
+                        Alert.alert(
+                          'Leave Gallery',
+                          'Are you sure you want to leave this gallery?',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Leave',
+                              style: 'destructive',
+                              onPress: () => {
+                                leaveGalleryMutation.mutate(galleryId, {
+                                  onSuccess: () => (navigation as any).goBack(),
+                                });
+                              },
+                            },
+                          ]
+                        );
+                      }}
                       isDestructive
                       isLast
                     />

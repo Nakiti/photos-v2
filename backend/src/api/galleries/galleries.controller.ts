@@ -8,6 +8,7 @@ import {
   updateGallerySchema,
   joinByLinkSchema,
   searchGalleriesSchema,
+  transferOwnershipSchema,
   type CreateGalleryDto,
   type UpdateGalleryDto,
 } from './galleries.validation.js';
@@ -110,6 +111,23 @@ export async function updateGallery(req: Request, res: Response) {
       return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
     }
     return res.status(500).json({ message: 'Failed to update gallery' });
+  }
+}
+
+/**
+ * GET /api/v1/galleries/:galleryId/share-link
+ * Generate a Branch.io deep link for sharing a gallery.
+ */
+export async function getShareLink(req: Request, res: Response) {
+  const userId = (req as any).user?.id as string | undefined;
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+  const { galleryId } = req.params;
+  try {
+    const shareLink = await galleriesService.createGalleryShareLink(userId, galleryId);
+    return res.status(200).json({ shareLink });
+  } catch (e: any) {
+    if (e?.message?.includes('not found')) return res.status(404).json({ message: e.message });
+    return res.status(500).json({ message: 'Failed to generate share link' });
   }
 }
 
@@ -236,6 +254,31 @@ export async function searchGalleries(req: Request, res: Response) {
       });
     }
     return res.status(500).json({ message: 'Failed to search galleries' });
+  }
+}
+
+/**
+ * PUT /api/v1/galleries/:galleryId/transfer-ownership
+ * Transfer gallery ownership to another accepted member (owner only).
+ */
+export async function transferOwnership(req: Request, res: Response) {
+  const currentOwnerId = (req as any).user?.id as string | undefined;
+  if (!currentOwnerId) return res.status(401).json({ message: 'Unauthorized' });
+  const { galleryId } = req.params;
+  try {
+    const parsed = transferOwnershipSchema.parse({ body: req.body });
+    const { newOwnerId } = parsed.body;
+    const result = await galleriesService.transferOwnership(currentOwnerId, galleryId, newOwnerId);
+    if (!result) return res.status(403).json({ message: 'Forbidden' });
+    return res.status(200).json(result);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
+    }
+    if (error instanceof Error && error.message.includes('accepted member')) {
+      return res.status(400).json({ message: error.message });
+    }
+    return res.status(500).json({ message: 'Failed to transfer ownership' });
   }
 }
 

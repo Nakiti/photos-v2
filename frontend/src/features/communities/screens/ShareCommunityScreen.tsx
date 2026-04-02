@@ -1,39 +1,43 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, StyleSheet, Text, TouchableOpacity,
-  Share, Dimensions, SafeAreaView,
+  Share, Dimensions, SafeAreaView, ActivityIndicator,
 } from 'react-native';
 import { useRoute, useNavigation, CommonActions } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import QRCode from "react-native-qrcode-svg";
+import QRCode from 'react-native-qrcode-svg';
 import { useCommunity } from '../../../hooks/useCommunityData';
+import { getCommunityShareLink } from '../../../services/api/communities.service';
 
 const { width } = Dimensions.get('window');
-const QR_SIZE = width * 0.55;
+const QR_SIZE = width * 0.6;
 
 const ShareCommunityScreen = () => {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { communityId } = (route.params || {}) as { communityId?: string };
+  const { communityId, fromCreateFlow } = (route.params || {}) as {
+    communityId?: string;
+    fromCreateFlow?: boolean;
+  };
 
   const { community } = useCommunity(communityId || null);
+  const [shareLink, setShareLink] = useState<string>(`https://focal.app/community/join/${communityId}`);
+  const [loadingLink, setLoadingLink] = useState(true);
 
-  const inviteLink = `https://focal.app/community/${communityId}`;
-
-  const pin = useMemo(() => {
-    if (!communityId) return '-----';
-    const base = communityId.replace(/[^0-9]/g, '');
-    return base.slice(0, 5).padEnd(5, '0');
+  useEffect(() => {
+    if (!communityId) return;
+    getCommunityShareLink(communityId)
+      .then(setShareLink)
+      .catch(() => {}) // keep fallback URL on error
+      .finally(() => setLoadingLink(false));
   }, [communityId]);
 
   const onShare = async () => {
     try {
       await Share.share({
-        message: [
-          `Join "${community?.name || 'my community'}" on Focal!`,
-          inviteLink,
-          `PIN: ${pin}`,
-        ].join('\n'),
+        message: `Join "${community?.name || 'my community'}" on Focal!\n${shareLink}`,
+        url: shareLink,
+        title: 'Join my Community',
       });
     } catch (e) {
       console.error('Share failed', e);
@@ -41,10 +45,50 @@ const ShareCommunityScreen = () => {
   };
 
   const onDone = () => {
-    navigation.dispatch(
+    // Reset root to tabs + CommunityFlow so we land in the new community and
+    // back from Community returns to the Communities list (see ShareGalleryScreen).
+    let rootNav = navigation;
+    let parent = navigation.getParent();
+    while (parent) {
+      rootNav = parent;
+      parent = parent.getParent();
+    }
+
+    if (!communityId) {
+      rootNav.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{
+            name: 'TabNavigator',
+            state: {
+              index: 1,
+              routes: [{ name: 'Groups' }, { name: 'Communities' }, { name: 'Profile' }],
+            },
+          }],
+        })
+      );
+      return;
+    }
+
+    rootNav.dispatch(
       CommonActions.reset({
-        index: 0,
-        routes: [{ name: 'MainTabs', state: { routes: [{ name: 'Communities' }] } }],
+        index: 1,
+        routes: [
+          {
+            name: 'TabNavigator',
+            state: {
+              index: 1,
+              routes: [{ name: 'Groups' }, { name: 'Communities' }, { name: 'Profile' }],
+            },
+          },
+          {
+            name: 'CommunityFlow',
+            params: {
+              screen: 'Community',
+              params: { communityId },
+            },
+          },
+        ],
       })
     );
   };
@@ -57,7 +101,9 @@ const ShareCommunityScreen = () => {
 
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.eyebrow}>Community created</Text>
+            <Text style={styles.eyebrow}>
+              {fromCreateFlow ? 'Community Created' : 'Share invite'}
+            </Text>
             <Text style={styles.title} numberOfLines={2}>
               {community?.name || '…'}
             </Text>
@@ -65,38 +111,38 @@ const ShareCommunityScreen = () => {
 
           {/* QR Card */}
           <View style={styles.card}>
-            <View style={styles.qrWrap}>
-              <QRCode
-                value={inviteLink}
-                size={QR_SIZE}
-                color="#111111"
-                backgroundColor="white"
-              />
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.pinSection}>
-              <Text style={styles.pinLabel}>Entry PIN</Text>
-              <Text style={styles.pinValue}>{pin}</Text>
-            </View>
+            {loadingLink ? (
+              <View style={{ width: QR_SIZE + 8, height: QR_SIZE + 8, justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator size="large" color="#111" />
+              </View>
+            ) : (
+              <View style={styles.qrWrap}>
+                <QRCode
+                  value={shareLink}
+                  size={QR_SIZE}
+                  color="#111111"
+                  backgroundColor="white"
+                />
+              </View>
+            )}
           </View>
 
           {/* Share */}
           <TouchableOpacity style={styles.shareBtn} onPress={onShare} activeOpacity={0.6}>
             <Ionicons name="share-outline" size={17} color="#111111" />
-            <Text style={styles.shareBtnText}>Share invite</Text>
+            <Text style={styles.shareBtnText}>Share Invite Link</Text>
           </TouchableOpacity>
 
         </View>
 
-        {/* Footer */}
-        <View style={styles.footer}>
-          <TouchableOpacity style={styles.doneBtn} onPress={onDone} activeOpacity={0.7}>
-            <Text style={styles.doneBtnText}>Go to Community</Text>
-            <Ionicons name="arrow-forward" size={16} color="#FFF" style={{ marginLeft: 6 }} />
-          </TouchableOpacity>
-        </View>
+        {fromCreateFlow ? (
+          <View style={styles.footer}>
+            <TouchableOpacity style={styles.doneBtn} onPress={onDone} activeOpacity={0.7}>
+              <Text style={styles.doneBtnText}>Go to Community</Text>
+              <Ionicons name="arrow-forward" size={16} color="#FFF" style={{ marginLeft: 6 }} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
       </SafeAreaView>
     </View>
@@ -115,7 +161,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
     alignItems: 'center',
-    paddingTop: 24,
+    paddingTop: 32,
   },
 
   // Header
@@ -157,32 +203,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   qrWrap: {
-    marginBottom: 24,
     padding: 4,
-  },
-  divider: {
-    width: '80%',
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: '#EBEBEB',
-    marginBottom: 20,
-  },
-  pinSection: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  pinLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#AAAAAA',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  pinValue: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#111111',
-    letterSpacing: 8,
-    fontVariant: ['tabular-nums'],
   },
 
   // Share button

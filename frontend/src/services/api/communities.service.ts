@@ -77,6 +77,11 @@ export const requestCommunityIconPresign = async (
   return response.data;
 };
 
+export const getCommunityShareLink = async (communityId: string): Promise<string> => {
+  const response = await apiClient.get(`/api/v1/communities/${communityId}/share-link`);
+  return response.data.shareLink as string;
+};
+
 export const joinCommunity = async (communityId: string) => {
   const response = await apiClient.post(`/api/v1/communities/${communityId}/join`);
   return response.data;

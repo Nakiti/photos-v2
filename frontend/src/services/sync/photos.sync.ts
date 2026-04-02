@@ -34,25 +34,27 @@ import { TagApi } from "../api/tags.service";
   
     // Create Maps for fast lookup
     const localPhotoMap = new Map(localPhotos.map(p => [p.id, p]));
-    const localPhotoTagMap = new Map<string, Set<string>>(); // e.g., { 'photo-123': Set('tag-abc', 'tag-def') }
+    // photoId -> Set<tagId>  (add-side diffing)
+    const localPhotoTagMap = new Map<string, Set<string>>();
+    // "photoId:tagId" -> PhotoTag record  (O(1) delete-side lookup, eliminates O(n×m) filter)
+    const localPhotoTagRecordMap = new Map<string, PhotoTag>();
 
     for (const pt of localPhotoTags) {
       if (!localPhotoTagMap.has(pt.photoId)) {
         localPhotoTagMap.set(pt.photoId, new Set());
       }
       localPhotoTagMap.get(pt.photoId)!.add(pt.tagId);
+      localPhotoTagRecordMap.set(`${pt.photoId}:${pt.tagId}`, pt);
     }
 
     // --- 1.5. Fetch optimistic photos for conflict resolution ---
-    // Get all unique galleryIds and uploaderIds from remote photos
+    // Get all unique galleryIds from remote photos
     const galleryIds = Array.from(new Set(remotePhotos.map(p => p.galleryId)));
-    const uploaderIds = Array.from(new Set(remotePhotos.map(p => p.uploaderId)));
-    
+
     // Fetch optimistic photos that might match (includes sync_pending — rate-limited but not yet uploaded)
     const optimisticPhotos = await photosCollection
       .query(
         Q.where('gallery_id', Q.oneOf(galleryIds)),
-        Q.where('uploader_id', Q.oneOf(uploaderIds)),
         Q.where('status', Q.oneOf(['queued', 'uploading', 'sync_pending']))
       )
       .fetch();
@@ -88,8 +90,7 @@ import { TagApi } from "../api/tags.service";
         const needsUpdate =
           local.s3Url !== remotePhoto.s3Url ||
           local.s3Key !== remotePhoto.s3Key ||
-          local.thumbnailUri !== (remotePhoto as any).thumbnailUrl ||
-          local.visible !== (remotePhoto as any).visible;
+          local.thumbnailUri !== (remotePhoto as any).thumbnailUrl;
         if (needsUpdate) {
           operations.push(
             local.prepareUpdate(record => {
@@ -98,8 +99,6 @@ import { TagApi } from "../api/tags.service";
               // Map API field 'thumbnailUrl' to local column 'thumbnail_uri'
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               record.thumbnailUri = (remotePhoto as any).thumbnailUrl;
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              record.visible = (remotePhoto as any).visible;
               // Ensure status is synced after update
               record.status = 'synced';
             })
@@ -107,51 +106,33 @@ import { TagApi } from "../api/tags.service";
           updateCount += 1;
         }
       } else {
-        // Create - but first check if there's an optimistic photo that matches
-        // This handles the case where socket event arrives before upload completes
-        const optimisticKey = `${remotePhoto.galleryId}:${remotePhoto.uploaderId}`;
-        const optimisticMatches = optimisticMap.get(optimisticKey) || [];
-
-        // Check if any optimistic photo could be this one (by timestamp proximity)
-        const photoCreatedAt = new Date(remotePhoto.createdAt).getTime();
-        const now = Date.now();
-        const timeWindow = 5 * 60 * 1000; // 5 minutes
-
+        // Not found locally — create it.
+        // Guard: if a pending-upload optimistic record exists for the same s3Key
+        // (set by upload flow before confirm), skip to avoid a duplicate.
+        const s3Key = remotePhoto.s3Key;
         let matchedOptimistic = false;
-        for (const optimisticPhoto of optimisticMatches) {
-          const optimisticCreatedAt = optimisticPhoto.createdAt;
-          // Compare absolute difference between timestamps
-          const optimisticAge = now - optimisticCreatedAt;
-          const photoAge = now - photoCreatedAt;
-          const timeDiff = Math.abs(optimisticAge - photoAge);
-          
-          if (timeDiff < timeWindow) {
+        if (s3Key) {
+          const optimisticKey = `${remotePhoto.galleryId}:${remotePhoto.uploaderId}`;
+          const optimisticMatches = optimisticMap.get(optimisticKey) || [];
+          matchedOptimistic = optimisticMatches.some(op => op.s3Key === s3Key);
+          if (matchedOptimistic) {
             console.log(
-              `[Conflict][Sync] Matched remote photo to optimistic photo: ` +
-              `optimistic=${optimisticPhoto.id} remote=${remotePhoto.id}`
+              `[Conflict][Sync] Skipping create — optimistic record has same s3Key: ${s3Key}`
             );
-            // Don't create duplicate - the upload queue will update the optimistic photo
-            matchedOptimistic = true;
-            break;
           }
         }
 
         if (!matchedOptimistic) {
-          // Create new photo (from another user, or no optimistic match)
           operations.push(
             photosCollection.prepareCreate(record => {
               record._raw.id = remotePhoto.id;
               record.galleryId = remotePhoto.galleryId;
               record.uploaderId = remotePhoto.uploaderId;
               record.s3Key = remotePhoto.s3Key;
-              record.s3Url = remotePhoto.s3Url; 
-              // Map API field 'thumbnailUrl' to local column 'thumbnail_uri'
+              record.s3Url = remotePhoto.s3Url;
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               record.thumbnailUri = (remotePhoto as any).thumbnailUrl;
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              record.visible = (remotePhoto as any).visible || 'VISIBLE';
               record.status = 'synced';
-              // WatermelonDB _raw typing doesn't include custom columns; cast to any
               (record as any)._raw.created_at = new Date(remotePhoto.createdAt).getTime();
             })
           );
@@ -177,12 +158,14 @@ import { TagApi } from "../api/tags.service";
         }
       }
   
-      // Find tags to delete
-      // We must find the specific join table record to delete it
-      for (const localTag of localPhotoTags.filter(pt => pt.photoId === remotePhoto.id)) {
-        if (!remoteTagIdSet.has(localTag.tagId)) {
-          operations.push(localTag.prepareDestroyPermanently());
-          tagsRemoved += 1;
+      // Find tags to delete — O(1) per tag via pre-built record map
+      for (const localTagId of localTagIdSet) {
+        if (!remoteTagIdSet.has(localTagId)) {
+          const record = localPhotoTagRecordMap.get(`${remotePhoto.id}:${localTagId}`);
+          if (record) {
+            operations.push(record.prepareDestroyPermanently());
+            tagsRemoved += 1;
+          }
         }
       }
     }
@@ -236,6 +219,31 @@ export const reconcileDeletedPhotos = async (
 
 
 /**
+ * Reconciles photos deleted on the server since a given timestamp.
+ * More efficient than reconcileDeletedPhotos at scale because it only fetches
+ * IDs of recently-deleted photos rather than all photo IDs in the gallery.
+ */
+export const reconcileDeletedPhotosSince = async (
+  database: Database,
+  galleryId: string,
+  deletedPhotoIds: string[],
+) => {
+  if (deletedPhotoIds.length === 0) return;
+
+  const photosCollection = database.collections.get<Photo>('photos');
+  const localPhotos = await photosCollection
+    .query(Q.where('id', Q.oneOf(deletedPhotoIds)), Q.where('status', 'synced'))
+    .fetch();
+
+  if (localPhotos.length === 0) return;
+
+  await database.write(async () => {
+    await database.batch(...localPhotos.map(p => p.prepareDestroyPermanently()));
+  });
+  console.log(`✅ Delta-reconciled and deleted ${localPhotos.length} photos.`);
+};
+
+/**
  * Updates a 'queued' photo record with the permanent data from the server.
  * @param database - WatermelonDB instance
  * @param temporaryId - The client-side ID of the queued photo
@@ -252,26 +260,45 @@ export const updateOptimisticPhoto = async (
     await database.write(async () => {
       try {
         const tempRecord = await photosCollection.find(temporaryId);
-        console.log(`[Sync][Optimistic] replace temp -> final (temp=${temporaryId} final=${finalPhoto.id})`);
-        // Find all optimistic photo_tag rows pointing to the temporary photo id
+
+        // Guard: if syncPhotos already created the permanent record (e.g., a socket-triggered
+        // gallery refetch raced the confirm response), just clean up the temp record.
+        let permanentAlreadyExists = false;
+        try {
+          await photosCollection.find(finalPhoto.id);
+          permanentAlreadyExists = true;
+        } catch {}
+
         const tempPhotoTags = await photoTagsCollection
           .query(Q.where('photo_id', temporaryId))
           .fetch();
+
+        if (permanentAlreadyExists) {
+          // Permanent record exists — delete the temp record and its orphaned tags.
+          await database.batch(
+            ...tempPhotoTags.map(pt => pt.prepareDestroyPermanently()),
+            tempRecord.prepareDestroyPermanently(),
+          );
+          console.log(`[Sync][Optimistic] permanent already existed, cleaned up temp (temp=${temporaryId})`);
+          return;
+        }
+
+        console.log(`[Sync][Optimistic] replace temp -> final (temp=${temporaryId} final=${finalPhoto.id})`);
         
         // We must re-create the record with the permanent ID,
         // as WatermelonDB IDs are immutable.
         const newRecord = photosCollection.prepareCreate(record => {
-          record._raw.id = finalPhoto.id; // Set permanent server ID
+          record._raw.id = finalPhoto.id;
           record.galleryId = finalPhoto.galleryId;
           record.uploaderId = finalPhoto.uploaderId;
           record.s3Key = finalPhoto.s3Key;
           record.s3Url = finalPhoto.s3Url;
           record.thumbnailUri = (finalPhoto as any).thumbnailUrl;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          record.visible = (finalPhoto as any).visible || 'VISIBLE';
           record.status = 'synced';
-        //   record.createdAt = new Date(finalPhoto.createdAt).getTime(); // i think i need to change it so that created_at is no longer
-
+          // Use the server-assigned timestamp so the local sync cursor stays accurate.
+          if (finalPhoto.createdAt) {
+            (record as any)._raw.created_at = new Date(finalPhoto.createdAt).getTime();
+          }
         });
         
         const deleteOp = tempRecord.prepareDestroyPermanently();

@@ -1,43 +1,49 @@
-import React from "react";
-import { 
-    View, 
-    Text, 
-    StyleSheet, 
-    TouchableOpacity, 
-    Share, 
-    SafeAreaView, 
+import React, { useEffect, useState } from "react";
+import {
+    View,
+    Text,
+    StyleSheet,
+    TouchableOpacity,
+    Share,
+    SafeAreaView,
     Dimensions,
-    Platform 
+    ActivityIndicator,
 } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { useNavigation, useRoute, CommonActions } from "@react-navigation/native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 
-// Hooks
 import { useGallery } from "../../../hooks/useGalleryData";
-
-// Components
+import { getGalleryShareLink } from "../../../services/api/gallery.service";
 
 const { width } = Dimensions.get('window');
-const QR_SIZE = width * 0.65;
+const QR_SIZE = width * 0.6;
 
 const ShareGalleryScreen = () => {
     const navigation = useNavigation<any>();
     const route = useRoute();
-    const { galleryId } = route.params as { galleryId: string };
+    const { galleryId, fromCreateFlow } = route.params as {
+        galleryId: string;
+        fromCreateFlow?: boolean;
+    };
 
     const { gallery } = useGallery(galleryId);
+    const [shareLink, setShareLink] = useState<string>(`https://focal.app/gallery/join/${galleryId}`);
+    const [loadingLink, setLoadingLink] = useState(true);
 
-    // Construct your deep link or web URL here
-    // Example: https://focal.app/join/123xyz
-    const inviteUrl = `https://focal.app/join/${galleryId}`; 
+    useEffect(() => {
+        getGalleryShareLink(galleryId)
+            .then(setShareLink)
+            .catch(() => {}) // keep fallback URL on error
+            .finally(() => setLoadingLink(false));
+    }, [galleryId]);
 
     const handleShare = async () => {
         try {
             await Share.share({
-                message: `Join my gallery "${gallery?.name || 'Focal Event'}"!`,
-                url: inviteUrl, // iOS uses this field for the link
-                title: 'Join my Gallery' // Android title
+                message: `Join "${gallery?.name || 'my gallery'}" on Focal!\n${shareLink}`,
+                url: shareLink,
+                title: 'Join my Gallery',
             });
         } catch (error) {
             console.error("Error sharing:", error);
@@ -45,77 +51,97 @@ const ShareGalleryScreen = () => {
     };
 
     const handleDone = () => {
-        // Reset the navigation state to ensure we exit the "Creation Flow" modal
-        // and land on the main Tabs, preferably navigating to the new gallery.
-        navigation.dispatch(
-            CommonActions.reset({
-                index: 0,
-                routes: [
-                    { 
-                        name: 'MainTabs', 
-                        state: {
-                            routes: [
-                                { name: 'Communities' } // Or 'Groups' depending on your tab structure
-                            ]
-                        }
-                    },
-                ],
-            })
-        );
-        
-        // Optional: If you want to deep link directly to the gallery after reset:
-        // navigation.navigate('CommunityStack', { screen: 'Gallery', params: { galleryId } });
+        // After create flow, reset root to tabs + gallery so back from Gallery lands on
+        // the Groups list (a plain navigate would stack Gallery on top of GroupFlow).
+        if (fromCreateFlow) {
+            let rootNav = navigation;
+            let parent = navigation.getParent();
+            while (parent) {
+                rootNav = parent;
+                parent = parent.getParent();
+            }
+            rootNav.dispatch(
+                CommonActions.reset({
+                    index: 1,
+                    routes: [
+                        { name: 'TabNavigator' },
+                        {
+                            name: 'Gallery',
+                            params: {
+                                screen: 'Gallery',
+                                params: { galleryId },
+                            },
+                        },
+                    ],
+                })
+            );
+            return;
+        }
+        navigation.navigate('Gallery', {
+            screen: 'Gallery',
+            params: { galleryId },
+        });
     };
 
     return (
         <View style={styles.root}>
 
             <View style={styles.container}>
-                
-                {/* 1. Success Message */}
+
+                {/* Header */}
                 <View style={styles.textContainer}>
-                    <Text style={styles.subHeader}>SHARE YOUR GALLERY!</Text>
+                    <Text style={styles.eyebrow}>
+                        {fromCreateFlow ? 'Gallery created' : 'Share invite'}
+                    </Text>
                     <Text style={styles.galleryName} numberOfLines={2}>
-                        {gallery?.name || "Loading..."}
+                        {gallery?.name || '…'}
                     </Text>
                 </View>
 
-                {/* 2. QR Code Card */}
+                {/* QR Code Card */}
                 <View style={styles.qrCard}>
-                    <View style={styles.qrContainer}>
-                        <QRCode
-                            value={inviteUrl}
-                            size={QR_SIZE}
-                            color="black"
-                            backgroundColor="white"
-                        />
-                    </View>
+                    {loadingLink ? (
+                        <View style={[styles.qrContainer, { width: QR_SIZE + 48, height: QR_SIZE + 48, justifyContent: 'center', alignItems: 'center' }]}>
+                            <ActivityIndicator size="large" color="#111" />
+                        </View>
+                    ) : (
+                        <View style={styles.qrContainer}>
+                            <QRCode
+                                value={shareLink}
+                                size={QR_SIZE}
+                                color="#111111"
+                                backgroundColor="white"
+                            />
+                        </View>
+                    )}
                     <Text style={styles.qrLabel}>Scan to join</Text>
                 </View>
 
-                {/* 3. Share Link Button */}
-                <TouchableOpacity 
-                    style={styles.shareLinkButton} 
+                {/* Share Link Button */}
+                <TouchableOpacity
+                    style={styles.shareBtn}
                     onPress={handleShare}
                     activeOpacity={0.7}
                 >
-                    <Ionicons name="share-outline" size={20} color="#000" />
-                    <Text style={styles.shareLinkText}>Share Invite Link</Text>
+                    <Ionicons name="share-outline" size={18} color="#111111" />
+                    <Text style={styles.shareBtnText}>Share Invite Link</Text>
                 </TouchableOpacity>
 
             </View>
 
-            {/* 4. Footer */}
-            <SafeAreaView style={styles.footer}>
-                <TouchableOpacity 
-                    style={styles.doneButton} 
-                    onPress={handleDone}
-                    activeOpacity={0.9}
-                >
-                    <Text style={styles.doneButtonText}>Go to Gallery</Text>
-                    <Ionicons name="arrow-forward" size={18} color="#FFF" />
-                </TouchableOpacity>
-            </SafeAreaView>
+            {fromCreateFlow ? (
+                <SafeAreaView style={styles.footer}>
+                    <TouchableOpacity
+                        style={styles.doneButton}
+                        onPress={handleDone}
+                        activeOpacity={0.9}
+                    >
+                        <Text style={styles.doneButtonText}>Go to Gallery</Text>
+                        <Ionicons name="arrow-forward" size={18} color="#FFF" />
+                    </TouchableOpacity>
+                </SafeAreaView>
+            ) : null}
+
         </View>
     );
 };
@@ -125,89 +151,90 @@ export default ShareGalleryScreen;
 const styles = StyleSheet.create({
     root: {
         flex: 1,
-        backgroundColor: "#FFFFFF",
+        backgroundColor: '#FAFAFA',
     },
     container: {
         flex: 1,
         alignItems: 'center',
-        paddingTop: 40,
-        paddingHorizontal: 24,
+        paddingTop: 32,
+        paddingHorizontal: 20,
     },
-    
-    // Text
+
+    // Header
     textContainer: {
         alignItems: 'center',
-        marginBottom: 40,
+        marginBottom: 32,
+        gap: 6,
     },
-    subHeader: {
+    eyebrow: {
         fontSize: 12,
-        fontWeight: '700',
-        color: '#8E8E93',
-        letterSpacing: 1.5,
-        marginBottom: 12,
+        fontWeight: '600',
+        color: '#AAAAAA',
+        letterSpacing: 0.4,
         textTransform: 'uppercase',
     },
     galleryName: {
-        fontSize: 28,
-        fontWeight: '800',
-        color: '#000000',
+        fontSize: 24,
+        fontWeight: '700',
+        color: '#111111',
         textAlign: 'center',
-        lineHeight: 34,
+        letterSpacing: -0.4,
+        lineHeight: 30,
     },
 
     // QR Card
     qrCard: {
         alignItems: 'center',
         gap: 20,
-        marginBottom: 40,
+        marginBottom: 28,
     },
     qrContainer: {
         padding: 24,
         backgroundColor: '#FFFFFF',
-        borderRadius: 30,
-        // Soft modern shadow
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.08,
-        shadowRadius: 20,
-        elevation: 6,
-        borderWidth: 1,
-        borderColor: '#F2F2F7',
+        borderRadius: 24,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.07,
+        shadowRadius: 18,
+        elevation: 5,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: '#E5E5E5',
     },
     qrLabel: {
-        fontSize: 15,
-        fontWeight: '600',
-        color: '#8E8E93',
+        fontSize: 14,
+        fontWeight: '500',
+        color: '#AAAAAA',
     },
 
-    // Share Link
-    shareLinkButton: {
+    // Share button
+    shareBtn: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        paddingVertical: 12,
+        backgroundColor: '#EFEFEF',
+        paddingVertical: 11,
         paddingHorizontal: 20,
-        backgroundColor: '#F2F2F7', // System Gray 6
-        borderRadius: 20,
+        borderRadius: 11,
     },
-    shareLinkText: {
-        fontSize: 15,
-        fontWeight: '600',
-        color: '#000000',
+    shareBtnText: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: '#111111',
     },
 
     // Footer
     footer: {
-        backgroundColor: '#FFFFFF',
-        borderTopWidth: 1,
-        borderTopColor: '#F2F2F7',
-        paddingHorizontal: 24,
-        paddingVertical: 12,
+        paddingHorizontal: 20,
+        paddingTop: 12,
+        paddingBottom: 8,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: '#E5E5E5',
+        backgroundColor: '#FAFAFA',
     },
     doneButton: {
-        backgroundColor: '#000000',
-        height: 56,
-        borderRadius: 28,
+        backgroundColor: '#111111',
+        height: 48,
+        borderRadius: 13,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
@@ -215,7 +242,7 @@ const styles = StyleSheet.create({
     },
     doneButtonText: {
         color: '#FFFFFF',
-        fontSize: 17,
+        fontSize: 15,
         fontWeight: '700',
     },
 });

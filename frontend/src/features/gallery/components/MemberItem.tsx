@@ -39,9 +39,13 @@ const MemberItem = ({ role, name, handle, avatarUri, onPressLeft, onPressRight }
         </View>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.right} onPress={onPressRight} activeOpacity={0.5}>
-        <Ionicons name="ellipsis-horizontal" size={18} color="#CCCCCC" />
-      </TouchableOpacity>
+      {onPressRight ? (
+        <TouchableOpacity style={styles.right} onPress={onPressRight} activeOpacity={0.5}>
+          <Ionicons name="ellipsis-horizontal" size={18} color="#CCCCCC" />
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.right} />
+      )}
     </View>
   );
 };

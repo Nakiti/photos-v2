@@ -23,10 +23,10 @@ export default class Gallery extends Model {
   @text('location') location?: string;
   @text('shareable_link') shareableLink?: string;
   // Settings
-  @text('join_requires_approval') joinRequiresApproval?: 'all' | 'admin_approval';
-  @field('require_picture_review') requirePictureReview?: boolean;
-  @text('add_permission') addPermission?: 'all' | 'admin';
-  @text('delete_permission') deletePermission?: 'admins_authors' | 'admin';
+  @field('join_requires_approval') joinRequiresApproval?: boolean;
+  @text('add_permission') addPermission?: 'ANYONE' | 'ADMIN';
+  @text('delete_permission') deletePermission?: 'ADMINS_AUTHORS' | 'ADMIN';
+  @text('edit_permission') editPermission?: 'ANYONE' | 'ADMIN';
   @date('last_photo_at') lastPhotoAt?: number;
   @field('photo_count') photoCount!: number;
   @field('member_count') memberCount!: number;

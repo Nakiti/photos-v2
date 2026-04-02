@@ -12,6 +12,8 @@ import {
   requestIconUpload,
   searchGalleries,
   getRateLimitState,
+  transferOwnership,
+  getShareLink,
 } from './galleries.controller.js';
 import photoRoutes from './photos/photos.routes.js';
 import membersRoutes from './members/members.routes.js';
@@ -77,11 +79,25 @@ router.get('/:galleryId', isAuthenticated, getGalleryDetails);
 router.get('/:galleryId/rate-limit-state', isAuthenticated, getRateLimitState);
 
 /**
+ * @route GET /api/v1/galleries/:galleryId/share-link
+ * @summary Generate a Branch.io deep link for sharing a gallery
+ * @access Private
+ */
+router.get('/:galleryId/share-link', isAuthenticated, getShareLink);
+
+/**
  * @route PUT /api/v1/galleries/:galleryId
  * @summary Update gallery fields (owner only)
  * @access Private
  */
 router.put('/:galleryId', isAuthenticated, updateGallery);
+
+/**
+ * @route PUT /api/v1/galleries/:galleryId/transfer-ownership
+ * @summary Transfer gallery ownership to another accepted member (owner only)
+ * @access Private
+ */
+router.put('/:galleryId/transfer-ownership', isAuthenticated, transferOwnership);
 
 /**
  * @route POST /api/v1/galleries/:galleryId/icon/presign

@@ -59,7 +59,7 @@ const EditGalleryDetailsScreen = () => {
   const handleSave = () => {
     if (!isDirty || isUpdating) return;
     updateGallery(
-      { galleryId, data: { name: name.trim() || initial.name } },
+      { galleryId, data: { name: name.trim() || initial.name, description: description.trim() || undefined } },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });

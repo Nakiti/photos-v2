@@ -41,7 +41,7 @@ export const useCommunities = (searchQuery?: string) => {
 
   // Fetch + sync from server
   const { isLoading, isError, error, isFetching } = useQuery({
-    queryKey: ['communities', searchQuery ?? 'all'],
+    queryKey: ['communities'],
     queryFn: async () => {
       const remote = await fetchMyCommunities();
       await syncCommunities(database, remote);

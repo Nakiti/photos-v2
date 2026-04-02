@@ -284,4 +284,41 @@ export async function transferOwnership(
 	});
 }
 
-
+export async function createCommunityShareLink(userId: string, communityId: string): Promise<string> {
+	const membership = await prisma.communityMembership.findUnique({
+		where: { userId_communityId: { userId, communityId } },
+		select: { id: true },
+	});
+	const community = await prisma.community.findUnique({
+		where: { id: communityId },
+		select: { id: true, name: true, ownerId: true },
+	});
+	if (!community || (!membership && community.ownerId !== userId)) {
+		throw new Error('Community not found or inaccessible');
+	}
+	const branchKey = config.branch?.key;
+	const fallbackUrl = `https://focal.app/community/join/${communityId}`;
+	if (!branchKey) return fallbackUrl;
+	try {
+		const response = await fetch('https://api2.branch.io/v1/url', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				branch_key: branchKey,
+				channel: 'share',
+				feature: 'invite',
+				data: {
+					'$deeplink_path': `community/join/${communityId}`,
+					'$og_title': community.name,
+					'$og_description': `Join the community "${community.name}" on Focal`,
+					'$fallback_url': fallbackUrl,
+				},
+			}),
+		});
+		if (!response.ok) return fallbackUrl;
+		const json = await response.json() as { url?: string };
+		return json.url || fallbackUrl;
+	} catch {
+		return fallbackUrl;
+	}
+}

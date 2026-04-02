@@ -1,8 +1,10 @@
 import { Server, Socket } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
 import http from 'http';
 import jwt from 'jsonwebtoken';
 import config from '../config/config.js';
-import { redis } from './redis.js';
+import { redis, redisConnection } from './redis.js';
+import { Redis } from 'ioredis';
 
 // Module-level state (singleton pattern)
 let io: Server | null = null;
@@ -19,7 +21,12 @@ export function initializeSocket(httpServer: http.Server) {
     },
   });
 
-  console.log('🔌 WebSocket server initialized'); 
+  // Redis pub/sub clients for multi-instance broadcast
+  const pubClient = new Redis(redisConnection);
+  const subClient = pubClient.duplicate();
+  io.adapter(createAdapter(pubClient, subClient));
+
+  console.log('🔌 WebSocket server initialized');
 
   // Socket authentication middleware
   io.use(async (socket: Socket, next) => {
@@ -42,6 +49,15 @@ export function initializeSocket(httpServer: http.Server) {
     }
   });
 
+  // Decrement a user's socket count in a gallery room; remove the entry when it reaches zero.
+  async function leaveGalleryRoom(galleryId: string, userId: string) {
+    const roomKey = `gallery:${galleryId}:users`;
+    const remaining = await redis.hincrby(roomKey, userId, -1);
+    if (remaining <= 0) {
+      await redis.hdel(roomKey, userId);
+    }
+  }
+
   // Add your authentication and connection logic here
   io.on('connection', async (socket: Socket) => {
     const userId = (socket as any).userId;
@@ -50,33 +66,27 @@ export function initializeSocket(httpServer: http.Server) {
     socket.on('join_gallery', async (galleryId: string) => {
       console.log(`User ${userId} (${socket.id}) joining gallery room: ${galleryId}`);
       socket.join(galleryId);
-      
-      // Track user in Redis set for this gallery room
+
+      // Track user with a socket-count so multiple devices don't evict each other.
+      // roomKey is a Hash: { userId -> activeSocketCount }
       const roomKey = `gallery:${galleryId}:users`;
-      await redis.sadd(roomKey, userId);
-      // Set expiry to 1 hour (users should rejoin periodically)
+      await redis.hincrby(roomKey, userId, 1);
       await redis.expire(roomKey, 3600);
     });
 
     socket.on('leave_gallery', async (galleryId: string) => {
       console.log(`User ${userId} (${socket.id}) leaving gallery room: ${galleryId}`);
       socket.leave(galleryId);
-      
-      // Remove user from Redis set
-      const roomKey = `gallery:${galleryId}:users`;
-      await redis.srem(roomKey, userId);
+      await leaveGalleryRoom(galleryId, userId);
     });
 
     socket.on('disconnect', async () => {
       console.log(`❌ User disconnected: ${socket.id} (User: ${userId})`);
-      
-      // Clean up: Remove user from all gallery rooms they were in
-      // Get all rooms this socket was in (excluding the socket's own room)
+
+      // Decrement socket count for every gallery this socket was in.
       const rooms = Array.from(socket.rooms).filter(room => room !== socket.id);
       for (const galleryId of rooms) {
-        // All rooms except socket.id are gallery rooms
-        const roomKey = `gallery:${galleryId}:users`;
-        await redis.srem(roomKey, userId);
+        await leaveGalleryRoom(galleryId, userId);
         console.log(`🧹 Cleaned up user ${userId} from gallery room: ${galleryId}`);
       }
     });
@@ -88,10 +98,19 @@ export function initializeSocket(httpServer: http.Server) {
  * @param galleryId The room ID
  * @param photo The new photo object
  */
-export function broadcastNewPhoto(galleryId: string, photo: any) {
+export function broadcastNewPhoto(
+  galleryId: string,
+  photo: { id: string; galleryId: string; uploaderId: string; clientId?: string },
+) {
   if (io) {
-    io.to(galleryId).emit('new_photo', photo);
-    console.log(`📢 Broadcasted new photo to gallery room: ${galleryId}`);
+    // Send only the minimal identifiers; clients fetch the full photo via their sync query.
+    // This avoids broadcasting the full ~2KB payload to every connected member.
+    io.to(galleryId).emit('new_photo', {
+      id: photo.id,
+      galleryId: photo.galleryId,
+      uploaderId: photo.uploaderId,
+      clientId: photo.clientId,
+    });
   }
 }
 
@@ -130,6 +149,17 @@ export function broadcastPhotoTagged(galleryId: string, photoId: string, tagId: 
   if (io) {
     io.to(galleryId).emit('photo_tagged', { photoId, tagId, action, galleryId });
     console.log(`📢 Broadcasted photo tag ${action} to gallery room: ${galleryId}, photoId: ${photoId}, tagId: ${tagId}`);
+  }
+}
+
+/**
+ * Broadcasts that one or more photos in a gallery were approved (visibility → VISIBLE).
+ * Clients should refetch photos rather than trying to apply a partial update locally.
+ * @param galleryId The room ID
+ */
+export function broadcastPhotosApproved(galleryId: string) {
+  if (io) {
+    io.to(galleryId).emit('photos_approved', { galleryId });
   }
 }
 

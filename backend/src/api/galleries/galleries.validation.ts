@@ -25,13 +25,20 @@ export const updateGallerySchema = z.object({
     location: z.string().nullable().optional(),
     addPermission: z.string().optional(),
     joinRequiresApproval: z.boolean().optional(),
-    requirePictureReview: z.boolean().optional(),
     deletePermission: z.string().optional(),
     defaultTagId: z.string().optional()
   }),
 });
 
 export type UpdateGalleryDto = z.infer<typeof updateGallerySchema>['body'];
+
+export const transferOwnershipSchema = z.object({
+  body: z.object({
+    newOwnerId: z.string().uuid('Invalid user id'),
+  }),
+});
+
+export type TransferOwnershipDto = z.infer<typeof transferOwnershipSchema>['body'];
 
 export const joinByLinkSchema = z.object({
   params: z.object({

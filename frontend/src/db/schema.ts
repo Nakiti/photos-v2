@@ -1,8 +1,8 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const mySchema = appSchema({
-  // Version 26: Added notifications table
-  version: 26,
+  // Version 29: Removed visible column from photos
+  version: 29,
   tables: [
     tableSchema({
       name: 'users',
@@ -30,10 +30,10 @@ export const mySchema = appSchema({
         { name: 'location', type: 'string', isOptional: true },
         { name: 'shareable_link', type: 'string', isOptional: true },
         // Settings
-        { name: 'join_requires_approval', type: 'boolean', isOptional: true }, // true | false
-        { name: 'require_picture_review', type: 'boolean', isOptional: true }, // true | false
-        { name: 'add_permission', type: 'string', isOptional: true },  // 'all' | 'admin'
-        { name: 'delete_permission', type: 'string', isOptional: true }, // 'admins_authors' | 'admin'
+        { name: 'join_requires_approval', type: 'boolean', isOptional: true },
+        { name: 'add_permission', type: 'string', isOptional: true },   // 'ANYONE' | 'ADMIN'
+        { name: 'delete_permission', type: 'string', isOptional: true }, // 'ADMINS_AUTHORS' | 'ADMIN'
+        { name: 'edit_permission', type: 'string', isOptional: true },   // 'ANYONE' | 'ADMIN'
         { name: 'last_photo_at', type: 'number', isOptional: true },
         { name: 'photo_count', type: 'number' },
         { name: 'member_count', type: 'number' },
@@ -66,7 +66,6 @@ export const mySchema = appSchema({
         { name: 'local_uri', type: 'string', isOptional: true },
         { name: 'local_thumbnail_uri', type: 'string', isOptional: true },
         { name: 'thumbnail_url', type: 'string', isOptional: true },
-        { name: 'visible', type: 'string' }, // 'IN_REVIEW' | 'VISIBLE'
         { name: 'status', type: 'string' }, // 'queued', 'uploading', 'upload_failed', 'synced', 'sync_pending'
         { name: 'retry_after', type: 'number', isOptional: true }, // Timestamp when sync_pending photos should retry
         { name: 'created_at', type: 'number' },

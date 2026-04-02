@@ -1,14 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, StyleSheet, Alert } from "react-native";
+import { View, StyleSheet } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
-import { useGallery } from "../../../hooks/useGalleryData";
+import { useLocalGallery } from "../../../hooks/useGalleryData";
 import { useDatabase } from "@nozbe/watermelondb/react";
 import UserModel from "../../../db/models/User";
 import { useGalleryTags } from "../../../hooks/useGalleryTagData";
-import { useAuth } from "../../../hooks/useAuth";
-import { useMyMembership } from "../../../hooks/useMembershipData";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { updatePhotoVisibility } from "../../../services/api/photos.service";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getPhotoLikeStatus, likePhoto, unlikePhoto } from "../../../services/api/photos.service";
 import SingleImageHeader from "../../gallery/components/SingleImageHeader";
 import SingleImageBottomBar from "../../gallery/components/SingleImageBottomBar";
 import SingleImageTagDropdown from "../../gallery/components/SingleImageTagDropdown";
@@ -26,32 +24,13 @@ const SingleImageScreen = () => {
   };
 
   const [activeTagId, setActiveTagId] = useState<string | null>(selectedTagId ?? null);
-  const { gallery, photos } = useGallery(galleryId, { tagId: activeTagId });
+  const { gallery, photos } = useLocalGallery(galleryId, { tagId: activeTagId });
   const { tags } = useGalleryTags(galleryId);
-  const { user } = useAuth();
-  const { data: myMembership } = useMyMembership(galleryId);
   const queryClient = useQueryClient();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [overlaysVisible, setOverlaysVisible] = useState(true);
   const [headerHeight, setHeaderHeight] = useState(0);
   const [bottomBarHeight, setBottomBarHeight] = useState(0);
-  const [liked, setLiked] = useState(false);
-
-  const isOwner = gallery?.ownerId === user?.id;
-  const isAdmin = myMembership?.role === 'ADMIN';
-  const canApprove = isOwner || isAdmin;
-
-  const approvePhotoMutation = useMutation({
-    mutationFn: ({ photoId, visible }: { photoId: string; visible: 'IN_REVIEW' | 'VISIBLE' }) =>
-      updatePhotoVisibility(galleryId, photoId, visible),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });
-      Alert.alert('Success', 'Photo approved!');
-    },
-    onError: () => {
-      Alert.alert('Error', 'Failed to approve photo');
-    },
-  });
 
   const items = useMemo(() => {
     return (photos || [])
@@ -59,11 +38,10 @@ const SingleImageScreen = () => {
       .reverse() // oldest -> newest so swiping right (decreasing index) goes to older
       .map((p: any) => ({
         id: p.id,
-        uri: p.s3Url || p.localUri || p.thumbnailUrl || p.thumbnailUri || p.localThumbnailUri || "",
+        uri: p.s3Url || p.localUri || p.thumbnailUri || p.localThumbnailUri || "",
         thumbnailUri: p.thumbnailUri || p.localThumbnailUri || "",
         createdAt: p.createdAt,
         uploaderId: p.uploaderId,
-        visible: p.visible || 'VISIBLE',
       }))
       .filter((x) => !!x.uri);
   }, [photos]);
@@ -93,6 +71,37 @@ const SingleImageScreen = () => {
   }, [items]);
 
   const current = items[currentIndex];
+  const currentPhotoId = current?.id;
+
+  const { data: likeData, refetch: refetchLike } = useQuery({
+    queryKey: ['photoLike', galleryId, currentPhotoId],
+    queryFn: () => getPhotoLikeStatus(galleryId, currentPhotoId!),
+    enabled: !!currentPhotoId,
+    staleTime: 0,
+  });
+
+  const liked = likeData?.liked ?? false;
+  const likeCount = likeData?.likeCount ?? 0;
+
+  const likeMutation = useMutation({
+    mutationFn: () =>
+      liked ? unlikePhoto(galleryId, currentPhotoId!) : likePhoto(galleryId, currentPhotoId!),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['photoLike', galleryId, currentPhotoId] });
+      const prev = queryClient.getQueryData<{ liked: boolean; likeCount: number }>(['photoLike', galleryId, currentPhotoId]);
+      queryClient.setQueryData(['photoLike', galleryId, currentPhotoId], {
+        liked: !liked,
+        likeCount: liked ? likeCount - 1 : likeCount + 1,
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, context: any) => {
+      queryClient.setQueryData(['photoLike', galleryId, currentPhotoId], context?.prev);
+    },
+    onSettled: () => {
+      refetchLike();
+    },
+  });
 
   const [uploaderName, setUploaderName] = useState<string>(""); 
 
@@ -177,15 +186,8 @@ const SingleImageScreen = () => {
           // TODO: implement upload flow
           console.log("Upload pressed for", current?.id);
         }}
-        onPressLike={() => setLiked((v) => !v)}
+        onPressLike={() => { if (currentPhotoId) likeMutation.mutate(); }}
         liked={liked}
-        showApprove={canApprove && current?.visible === 'IN_REVIEW'}
-        onPressApprove={() => {
-          if (current?.id) {
-            approvePhotoMutation.mutate({ photoId: current.id, visible: 'VISIBLE' });
-          }
-        }}
-        isApproving={approvePhotoMutation.isPending}
       />
     </View>
   );

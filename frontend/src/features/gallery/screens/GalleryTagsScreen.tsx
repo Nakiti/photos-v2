@@ -3,38 +3,31 @@ import {
   View, Text, FlatList, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform, SafeAreaView,
 } from 'react-native';
-import { useDatabase } from '@nozbe/watermelondb/react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useGalleryTags } from '../../../hooks/useGalleryTagData';
-import { createTag as createTagApi, deleteTag as deleteTagApi, listTagsForGallery } from '../../../services/api/tags.service';
-import { syncTags } from '../../../services/sync/tags.sync';
+import { createTag as createTagApi, deleteTag as deleteTagApi } from '../../../services/api/tags.service';
 import Tag from '../../../db/models/Tag';
 import { useRoute } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { useGallery, useUpdateGallery } from '../../../hooks/useGalleryData';
+import { useLocalGallery, useUpdateGallery } from '../../../hooks/useGalleryData';
 
 const GalleryTagsScreen = () => {
   const route = useRoute();
   const { galleryId } = route.params as { galleryId: string };
-  const database = useDatabase();
   const queryClient = useQueryClient();
 
   const { tags, isLoading } = useGalleryTags(galleryId);
-  const { gallery } = useGallery(galleryId);
+  const { gallery } = useLocalGallery(galleryId);
   const updateGalleryMutation = useUpdateGallery();
 
   const [name, setName] = useState('');
   const canCreate = useMemo(() => name.trim().length > 0, [name]);
 
-  const refreshTags = async () => {
-    const remote = await listTagsForGallery(galleryId);
-    await syncTags(database, galleryId, remote);
-    queryClient.invalidateQueries({ queryKey: ['gallery-tags', galleryId] });
-  };
+  const invalidateTags = () => queryClient.invalidateQueries({ queryKey: ['gallery-tags', galleryId] });
 
   const deleteMutation = useMutation({
     mutationFn: async (tagId: string) => { await deleteTagApi(galleryId, tagId); },
-    onSuccess: refreshTags,
+    onSuccess: invalidateTags,
   });
 
   const createMutation = useMutation({
@@ -43,7 +36,7 @@ const GalleryTagsScreen = () => {
       if (!tagName) return;
       await createTagApi(galleryId, { name: tagName });
     },
-    onSuccess: async () => { setName(''); await refreshTags(); },
+    onSuccess: () => { setName(''); invalidateTags(); },
   });
 
   const handleCreate = () => {

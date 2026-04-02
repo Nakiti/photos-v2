@@ -1,25 +1,27 @@
 import { PrismaClient } from '@prisma/client';
-import AWS from 'aws-sdk';
 import config from '../../../../config/config.js';
 import { broadcastNewPhoto, broadcastPhotoDeleted, broadcastPhotoUpdated } from '../../../../libs/socket.manager.js';
 import { photoQueue } from '../../../../libs/queue.js';
 import {v4 as uuidv4} from "uuid"
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
-import { smartThrottleNewPhoto } from '../../notifications/notifications.service.js';
-import { recordUpload } from '../../../../libs/rateLimiter.js';
+import { S3Client, PutObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3';
+import { smartThrottleNewPhoto, createNotificationRecord, sendPushNotifications } from '../../notifications/notifications.service.js';
+import { checkAndRecordUpload } from '../../../../libs/rateLimiter.js';
+import { redis } from '../../../../libs/redis.js';
+
+export class RateLimitError extends Error {
+  readonly limit: number;
+  readonly currentCount: number;
+  constructor(limit: number, currentCount: number) {
+    super('Upload rate limit exceeded');
+    this.name = 'RateLimitError';
+    this.limit = limit;
+    this.currentCount = currentCount;
+  }
+}
 
 const prisma = new PrismaClient();
 
-AWS.config.update({
-  accessKeyId: config.aws.accessKeyId!,
-  secretAccessKey: config.aws.secretAccessKey!,
-  region: config.aws.region!,
-});
-
-const s3 = new AWS.S3();
-const s3v3 = new AWS.S3(); // placeholder to keep name alignment; real v3 client below
-import { S3Client } from '@aws-sdk/client-s3';
 const s3ClientV3 = new S3Client({
   credentials: {
     accessKeyId: config.aws.accessKeyId!,
@@ -28,46 +30,33 @@ const s3ClientV3 = new S3Client({
   region: config.aws.region!,
 });
 
-export async function listPhotos(galleryId: string, page: number, limit: number, tagId?: string, userId?: string) {
+export async function listPhotos(galleryId: string, page: number, limit: number, tagId?: string, userId?: string, since?: string) {
   const skip = (page - 1) * limit;
   
-  // Get gallery and user membership to determine visibility permissions
-  const gallery = await prisma.gallery.findUnique({
-    where: { id: galleryId },
-    select: { ownerId: true },
-  });
-
-  const membership = userId ? await prisma.membership.findFirst({
-    where: {
-      galleryId,
-      userId,
-      status: 'ACCEPTED',
-    },
-    select: { role: true },
-  }) : null;
+  // Parallelise the two permission checks — they have no dependency on each other.
+  const [gallery, membership] = await Promise.all([
+    prisma.gallery.findUnique({
+      where: { id: galleryId },
+      select: { ownerId: true },
+    }),
+    userId
+      ? prisma.membership.findFirst({
+          where: { galleryId, userId, status: 'ACCEPTED' },
+          select: { role: true },
+        })
+      : null,
+  ]);
 
   const isOwner = gallery?.ownerId === userId;
   const isAdmin = membership?.role === 'ADMIN';
 
   // Build where clause
-  const where: any = { galleryId };
+  const where: any = { galleryId, deletedAt: null };
   if (tagId) {
     where.photoTags = { some: { tagId } };
   }
-
-  // Filter by visibility: show VISIBLE to all, IN_REVIEW only to uploader, owner, or admin
-  if (userId && (isOwner || isAdmin)) {
-    // Owner or admin can see all photos
-    // No additional filter needed
-  } else if (userId) {
-    // Regular members: only see VISIBLE photos or their own IN_REVIEW photos
-    where.OR = [
-      { visible: 'VISIBLE' },
-      { visible: 'IN_REVIEW', uploaderId: userId },
-    ];
-  } else {
-    // No user context: only show VISIBLE photos
-    where.visible = 'VISIBLE';
+  if (since) {
+    where.createdAt = { gt: new Date(since) };
   }
 
   const [items, total] = await Promise.all([
@@ -104,73 +93,112 @@ export async function listPhotos(galleryId: string, page: number, limit: number,
 }
 
 export async function getPhotoIdsForGallery(galleryId: string) {
-  const photos = await prisma.photo.findMany({ where: { galleryId }, select: { id: true } });
+  const photos = await prisma.photo.findMany({
+    where: { galleryId, deletedAt: null },
+    select: { id: true },
+  });
   return photos.map((p) => p.id);
 }
 
-export const createPresignedUploadUrls = async (galleryId: string, contentType: string, userId: string) => {
-  // 1. Check if user is an accepted member of the gallery
-  const membership = await prisma.membership.findFirst({
+/**
+ * Returns photo IDs soft-deleted in this gallery at or after `since`.
+ * Used by clients for delta reconciliation instead of full ID scan.
+ */
+export async function getDeletedPhotoIdsSince(galleryId: string, since: string) {
+  const photos = await prisma.photo.findMany({
     where: {
       galleryId,
-      userId,
-      status: 'ACCEPTED', // Ensure they are an accepted member
-      // TODO: Add check for gallery.postPermission
+      deletedAt: { gte: new Date(since) },
     },
+    select: { id: true },
   });
+  return photos.map((p) => p.id);
+}
 
-  if (!membership) {
-    throw new Error('Forbidden');
+export const createPresignedUploadUrls = async (galleryId: string, contentType: string, userId: string, clientId?: string) => {
+  // Return cached response for same clientId to deduplicate rapid duplicate requests
+  if (clientId) {
+    const cacheKey = `presign:${clientId}`;
+    const cached = await redis.get(cacheKey);
+    if (cached) return JSON.parse(cached) as ReturnType<typeof buildPresignResult>;
   }
 
-  // 2. Generate a single UUID for both files
-  const fileId = uuidv4();
-  const expiresIn = 300; // 5 minutes
+  const membership = await prisma.membership.findFirst({
+    where: { galleryId, userId, status: 'ACCEPTED' },
+  });
+  if (!membership) throw new Error('Forbidden');
 
-  // 3. Define keys and commands for BOTH files
+  const fileId = uuidv4();
+  const expiresIn = 1800; // 30 minutes
+
   const s3KeyFull = `photos/${galleryId}/${fileId}.jpg`;
   const s3KeyThumb = `thumbnails/${galleryId}/${fileId}.jpg`;
 
   const commandFull = new PutObjectCommand({
     Bucket: config.aws.s3Bucket,
     Key: s3KeyFull,
-    ContentType: contentType || 'image/jpeg',
+    ContentType: 'image/jpeg',
   });
 
   const commandThumb = new PutObjectCommand({
     Bucket: config.aws.s3Bucket,
     Key: s3KeyThumb,
-    ContentType: contentType || 'image/jpeg',
+    ContentType: 'image/jpeg',
   });
 
-  // 4. Get both presigned URLs in parallel
   const [presignedUrlFull, presignedUrlThumb] = await Promise.all([
     getSignedUrl(s3ClientV3, commandFull, { expiresIn }),
-    getSignedUrl(s3ClientV3, commandThumb, { expiresIn })
+    getSignedUrl(s3ClientV3, commandThumb, { expiresIn }),
   ]);
 
-  // 5. Define the final, permanent URLs
   const finalUrlFull = `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${s3KeyFull}`;
   const finalUrlThumb = `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${s3KeyThumb}`;
 
-  // 6. Return all data to the client
-  return {
-    full: {
-      presignedUrl: presignedUrlFull,
-      s3Key: s3KeyFull,
-      finalUrl: finalUrlFull,
-    },
-    thumb: {
-      presignedUrl: presignedUrlThumb,
-      s3Key: s3KeyThumb,
-      finalUrl: finalUrlThumb,
-    },
-  };
+  const result = buildPresignResult(presignedUrlFull, s3KeyFull, finalUrlFull, presignedUrlThumb, s3KeyThumb, finalUrlThumb);
+
+  if (clientId) {
+    await redis.set(`presign:${clientId}`, JSON.stringify(result), 'EX', expiresIn);
+  }
+
+  return result;
 };
+
+function buildPresignResult(
+  presignedUrlFull: string, s3KeyFull: string, finalUrlFull: string,
+  presignedUrlThumb: string, s3KeyThumb: string, finalUrlThumb: string,
+) {
+  return {
+    full: { presignedUrl: presignedUrlFull, s3Key: s3KeyFull, finalUrl: finalUrlFull },
+    thumb: { presignedUrl: presignedUrlThumb, s3Key: s3KeyThumb, finalUrl: finalUrlThumb },
+  };
+}
+
+const PHOTO_SELECT = {
+  id: true,
+  galleryId: true,
+  uploaderId: true,
+  s3Key: true,
+  s3Url: true,
+  thumbnailUrl: true,
+  thumbnailKey: true,
+  visible: true,
+  createdAt: true,
+} as const;
+
+function deleteS3ObjectsSilently(s3Key: string, thumbnailKey: string | null) {
+  const objects: { Key: string }[] = [{ Key: s3Key }];
+  if (thumbnailKey) objects.push({ Key: thumbnailKey });
+  s3ClientV3.send(new DeleteObjectsCommand({
+    Bucket: config.aws.s3Bucket!,
+    Delete: { Objects: objects },
+  })).catch(() => {});
+}
 
 /**
  * Creates a photo and optionally applies tags in a single transaction.
- * If s3Url is not provided, derive it from the s3Key.
+ * - Idempotent: returns the existing record if s3Key was already confirmed.
+ * - Atomic rate limit: check and record in a single Redis operation (no TOCTOU).
+ * - S3 cleanup: deletes orphaned objects if the DB transaction fails.
  */
 export async function confirmUploadedPhoto(
   uploaderId: string,
@@ -180,339 +208,225 @@ export async function confirmUploadedPhoto(
   thumbnailKey: string,
   s3Url?: string,
   tagIds?: string[],
+  clientId?: string,
 ) {
   const resolvedS3Url =
     s3Url ??
     `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${s3Key}`;
 
-  const created = await prisma.$transaction(async (tx) => {
-    // Get gallery to check requirePictureReview setting
-    const gallery = await tx.gallery.findUnique({
-      where: { id: galleryId },
-      select: { requirePictureReview: true },
-    });
+  // 1. Idempotency: if this s3Key was already confirmed, return the existing record.
+  const existing = await prisma.photo.findUnique({
+    where: { s3Key },
+    select: PHOTO_SELECT,
+  });
+  if (existing) return existing;
 
-    // Determine visibility based on gallery setting
-    const visible = gallery?.requirePictureReview ? 'IN_REVIEW' : 'VISIBLE';
+  // 2. Atomic rate limit: check and record in one Redis operation.
+  const rateCheck = await checkAndRecordUpload(uploaderId, galleryId);
+  if (!rateCheck.allowed) {
+    throw new RateLimitError(rateCheck.limit, rateCheck.currentCount);
+  }
 
-    // Create the photo first
-    const photo = await tx.photo.create({
-      data: {
-        galleryId,
-        uploaderId,
-        s3Key,
-        s3Url: resolvedS3Url,
-        thumbnailUrl: thumbnailUrl ?? null,
-        thumbnailKey: thumbnailKey ?? null,
-        visible: visible as any,
-      },
-      select: {
-        id: true,
-        galleryId: true,
-        uploaderId: true,
-        s3Key: true,
-        s3Url: true,
-        thumbnailUrl: true,
-        thumbnailKey: true,
-        visible: true,
-        createdAt: true,
-      },
-    });
-
-    // Update the gallery's lastPhotoAt and increment photoCount
-    await tx.gallery.update({
-      where: { id: galleryId },
-      data: { 
-        lastPhotoAt: photo.createdAt,
-        photoCount: {
-          increment: 1,
+  // 3. Persist the photo record.
+  let created: typeof existing;
+  try {
+    created = await prisma.$transaction(async (tx) => {
+      const photo = await tx.photo.create({
+        data: {
+          galleryId,
+          uploaderId,
+          s3Key,
+          s3Url: resolvedS3Url,
+          thumbnailUrl: thumbnailUrl ?? null,
+          thumbnailKey: thumbnailKey ?? null,
+          visible: 'VISIBLE' as any,
         },
-      },
-    });
-
-    // If tagIds provided, restrict to tags belonging to this gallery and create associations
-    if (tagIds && tagIds.length > 0) {
-      const uniqueTagIds = Array.from(new Set(tagIds));
-      const validTags = await tx.tag.findMany({
-        where: { id: { in: uniqueTagIds }, galleryId },
-        select: { id: true },
+        select: PHOTO_SELECT,
       });
-      if (validTags.length > 0) {
-        await tx.photoTag.createMany({
-          data: validTags.map((t) => ({ photoId: photo.id, tagId: t.id })),
-          skipDuplicates: true,
+
+      await tx.gallery.update({
+        where: { id: galleryId },
+        data: {
+          lastPhotoAt: photo.createdAt,
+          photoCount: { increment: 1 },
+        },
+      });
+
+      if (tagIds && tagIds.length > 0) {
+        const uniqueTagIds = Array.from(new Set(tagIds));
+        const validTags = await tx.tag.findMany({
+          where: { id: { in: uniqueTagIds }, galleryId },
+          select: { id: true },
         });
+        if (validTags.length > 0) {
+          await tx.photoTag.createMany({
+            data: validTags.map((t) => ({ photoId: photo.id, tagId: t.id })),
+            skipDuplicates: true,
+          });
+        }
       }
+
+      return photo;
+    });
+  } catch (err: any) {
+    // Narrow race: another concurrent confirm with same s3Key beat us between step 1 and 3.
+    if (err?.code === 'P2002') {
+      const raceWinner = await prisma.photo.findUnique({
+        where: { s3Key },
+        select: PHOTO_SELECT,
+      });
+      if (raceWinner) return raceWinner;
     }
 
-    return photo;
+    // Transaction failed for other reasons: clean up the orphaned S3 objects.
+    deleteS3ObjectsSilently(s3Key, thumbnailKey);
+    throw err;
+  }
+
+  // 4. Post-transaction: broadcast and notifications.
+  broadcastNewPhoto(galleryId, {
+    id: created!.id,
+    galleryId: created!.galleryId,
+    uploaderId: created!.uploaderId,
+    clientId,
   });
 
-  // Notify sockets and queues (outside the transaction)
-  const uploader = await prisma.user.findUnique({
-    where: { id: uploaderId },
-    select: { name: true, handle: true },
-  });
-  const gallery = await prisma.gallery.findUnique({
-    where: { id: galleryId },
-    select: { name: true },
-  });
-
-  const socketPayload = {
-    id: created.id,
-    s3Url: created.s3Url,
-    thumbnailUrl: created.thumbnailUrl,
-    createdAt: created.createdAt,
-    galleryId: created.galleryId,
-    uploader: uploader,
-  };
-  broadcastNewPhoto(galleryId, socketPayload);
+  const [uploader, gallery] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: uploaderId },
+      select: { name: true, handle: true },
+    }),
+    prisma.gallery.findUnique({
+      where: { id: galleryId },
+      select: { name: true },
+    }),
+  ]);
 
   const uploaderName = (uploader?.name || uploader?.handle || 'A user') as string;
   const galleryName = (gallery?.name || '') as string;
-  
-  // Record the upload for rate limiting (only after successful creation)
-  await recordUpload(uploaderId, galleryId);
-  
-  await smartThrottleNewPhoto(
-    galleryId,
-    uploaderId,
-    uploaderName,
-    galleryName,
-    created.id
-  );
 
-  return created; // includes s3Key and thumbnailUrl
+  await smartThrottleNewPhoto(galleryId, uploaderName, galleryName, created!.id);
+
+  return created!;
 }
 
 export async function deletePhoto(requesterId: string, galleryId: string, photoId: string) {
   const photo = await prisma.photo.findUnique({
     where: { id: photoId },
-    select: { id: true, galleryId: true, uploaderId: true, s3Key: true, gallery: { select: { ownerId: true } } },
+    select: { id: true, galleryId: true, uploaderId: true, s3Key: true, deletedAt: true, gallery: { select: { ownerId: true } } },
   });
-  if (!photo || photo.galleryId !== galleryId) return false;
+  if (!photo || photo.galleryId !== galleryId || photo.deletedAt !== null) return false;
   const isOwner = photo.gallery.ownerId === requesterId;
   const isUploader = photo.uploaderId === requesterId;
   if (!isOwner && !isUploader) return false;
 
-  // Best-effort delete from S3, but don't fail the API if S3 delete fails
-  try {
-    await s3
-      .deleteObject({ Bucket: config.aws.s3Bucket!, Key: photo.s3Key })
-      .promise();
-  } catch (_) {
-    // ignore
-  }
-
-  // Use transaction to delete photo and decrement gallery photoCount
   await prisma.$transaction(async (tx) => {
-    await tx.photo.delete({ where: { id: photoId } });
-    
-    // Decrement photoCount
+    await tx.photo.update({
+      where: { id: photoId },
+      data: { deletedAt: new Date() },
+    });
     await tx.gallery.update({
       where: { id: galleryId },
-      data: {
-        photoCount: {
-          decrement: 1,
-        },
-      },
+      data: { photoCount: { decrement: 1 } },
     });
   });
-  
-  // Broadcast photo deletion to gallery room
+
   broadcastPhotoDeleted(galleryId, photoId);
-  
   return true;
 }
 
 /**
  * Update photo visibility status. Only allowed for gallery owner or admin.
  */
-export async function updatePhotoVisibility(
-  requesterId: string,
-  galleryId: string,
-  photoId: string,
-  visible: 'IN_REVIEW' | 'VISIBLE'
-) {
-  // Check if photo exists and belongs to gallery
-  const photo = await prisma.photo.findUnique({
-    where: { id: photoId },
-    select: { id: true, galleryId: true, gallery: { select: { ownerId: true } } },
+
+export async function getPhotoLikeStatus(userId: string, galleryId: string, photoId: string) {
+  const membership = await prisma.membership.findFirst({
+    where: { galleryId, userId, status: 'ACCEPTED' },
   });
+  if (!membership) throw new Error('Forbidden');
 
-  if (!photo || photo.galleryId !== galleryId) {
-    return null;
-  }
-
-  // Check if requester is owner or admin
-  const isOwner = photo.gallery.ownerId === requesterId;
-  const membership = await prisma.membership.findUnique({
-    where: { userId_galleryId: { userId: requesterId, galleryId } },
-    select: { status: true, role: true } as any,
-  });
-  const isAdmin = membership?.status === 'ACCEPTED' && membership?.role === 'ADMIN';
-
-  if (!isOwner && !isAdmin) {
-    return null; // Not authorized
-  }
-
-  // Update photo visibility
-  const updated = await prisma.photo.update({
-    where: { id: photoId },
-    data: { visible: visible as any },
-    select: {
-      id: true,
-      galleryId: true,
-      uploaderId: true,
-      s3Key: true,
-      s3Url: true,
-      thumbnailUrl: true,
-      thumbnailKey: true,
-      visible: true,
-      createdAt: true,
-    },
-  });
-
-  // Broadcast photo update to gallery room
-  broadcastPhotoUpdated(galleryId, updated);
-
-  return updated;
+  const [like, likeCount] = await Promise.all([
+    prisma.photoLike.findUnique({ where: { photoId_userId: { photoId, userId } } }),
+    prisma.photoLike.count({ where: { photoId } }),
+  ]);
+  return { liked: !!like, likeCount };
 }
 
-/**
- * Approve multiple photos at once. Only allowed for gallery owner or admin.
- */
-export async function approvePhotos(
-  requesterId: string,
-  galleryId: string,
-  photoIds: string[]
-) {
-  // Check if requester is owner or admin
-  const gallery = await prisma.gallery.findUnique({
-    where: { id: galleryId },
-    select: { ownerId: true },
+export async function likePhoto(userId: string, galleryId: string, photoId: string) {
+  const membership = await prisma.membership.findFirst({
+    where: { galleryId, userId, status: 'ACCEPTED' },
+  });
+  if (!membership) throw new Error('Forbidden');
+
+  const photo = await prisma.photo.findFirst({
+    where: { id: photoId, galleryId },
+    select: { id: true, uploaderId: true, thumbnailUrl: true },
+  });
+  if (!photo) throw new Error('Not found');
+
+  await prisma.photoLike.upsert({
+    where: { photoId_userId: { photoId, userId } },
+    update: {},
+    create: { photoId, userId },
   });
 
-  if (!gallery) return null;
+  const likeCount = await prisma.photoLike.count({ where: { photoId } });
 
-  const isOwner = gallery.ownerId === requesterId;
-  const membership = await prisma.membership.findUnique({
-    where: { userId_galleryId: { userId: requesterId, galleryId } },
-    select: { status: true, role: true } as any,
-  });
-  const isAdmin = membership?.status === 'ACCEPTED' && membership?.role === 'ADMIN';
+  // Notify the photo uploader (not if they liked their own photo)
+  if (photo.uploaderId !== userId) {
+    // Dedup: only send one like notification per user per photo per hour
+    const { redis } = await import('../../../../libs/redis.js');
+    const dedupKey = `like:notif:${photoId}:${userId}`;
+    const alreadyNotified = await redis.set(dedupKey, '1', 'EX', 3600, 'NX');
 
-  if (!isOwner && !isAdmin) {
-    return null; // Not authorized
+    if (alreadyNotified === 'OK') {
+      const liker = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, handle: true },
+      });
+      const likerName = liker?.name || liker?.handle || 'Someone';
+
+      await createNotificationRecord(
+        photo.uploaderId,
+        userId,
+        'LIKE',
+        { likerName, thumbnailUrl: photo.thumbnailUrl, galleryId },
+        photoId,
+        'photo'
+      );
+
+      const devices = await prisma.device.findMany({
+        where: { userId: photo.uploaderId },
+        select: { token: true },
+      });
+      if (devices.length > 0) {
+        const invalidTokens = await sendPushNotifications(
+          devices.map((d) => d.token),
+          'New Like',
+          `${likerName} liked your photo`,
+          { type: 'LIKE', photoId, galleryId }
+        );
+        if (invalidTokens.length > 0) {
+          await prisma.device.deleteMany({ where: { token: { in: invalidTokens } } });
+        }
+      }
+    }
   }
 
-  // Update all photos to VISIBLE
-  const updated = await prisma.photo.updateMany({
-    where: {
-      id: { in: photoIds },
-      galleryId: galleryId,
-      visible: 'IN_REVIEW',
-    },
-    data: { visible: 'VISIBLE' as any },
-  });
-
-  // Fetch updated photos to broadcast
-  const updatedPhotos = await prisma.photo.findMany({
-    where: { id: { in: photoIds }, galleryId: galleryId },
-    select: {
-      id: true,
-      galleryId: true,
-      uploaderId: true,
-      s3Key: true,
-      s3Url: true,
-      thumbnailUrl: true,
-      thumbnailKey: true,
-      visible: true,
-      createdAt: true,
-    },
-  });
-
-  // Broadcast each photo update
-  updatedPhotos.forEach(photo => {
-    broadcastPhotoUpdated(galleryId, photo);
-  });
-
-  return { count: updated.count };
+  return { liked: true, likeCount };
 }
 
-/**
- * Approve all in-review photos in a gallery. Only allowed for gallery owner or admin.
- */
-export async function approveAllInReviewPhotos(
-  requesterId: string,
-  galleryId: string
-) {
-  // Check if requester is owner or admin
-  const gallery = await prisma.gallery.findUnique({
-    where: { id: galleryId },
-    select: { ownerId: true },
+export async function unlikePhoto(userId: string, galleryId: string, photoId: string) {
+  const membership = await prisma.membership.findFirst({
+    where: { galleryId, userId, status: 'ACCEPTED' },
   });
+  if (!membership) throw new Error('Forbidden');
 
-  if (!gallery) return null;
-
-  const isOwner = gallery.ownerId === requesterId;
-  const membership = await prisma.membership.findUnique({
-    where: { userId_galleryId: { userId: requesterId, galleryId } },
-    select: { status: true, role: true } as any,
-  });
-  const isAdmin = membership?.status === 'ACCEPTED' && membership?.role === 'ADMIN';
-
-  if (!isOwner && !isAdmin) {
-    return null; // Not authorized
-  }
-
-  // Find all in-review photos
-  const inReviewPhotos = await prisma.photo.findMany({
-    where: {
-      galleryId: galleryId,
-      visible: 'IN_REVIEW',
-    },
-    select: { id: true },
-  });
-
-  if (inReviewPhotos.length === 0) {
-    return { count: 0 };
-  }
-
-  const photoIds = inReviewPhotos.map(p => p.id);
-
-  // Update all photos to VISIBLE
-  const updated = await prisma.photo.updateMany({
-    where: {
-      id: { in: photoIds },
-      galleryId: galleryId,
-    },
-    data: { visible: 'VISIBLE' as any },
-  });
-
-  // Fetch updated photos to broadcast
-  const updatedPhotos = await prisma.photo.findMany({
-    where: { id: { in: photoIds }, galleryId: galleryId },
-    select: {
-      id: true,
-      galleryId: true,
-      uploaderId: true,
-      s3Key: true,
-      s3Url: true,
-      thumbnailUrl: true,
-      thumbnailKey: true,
-      visible: true,
-      createdAt: true,
-    },
-  });
-
-  // Broadcast each photo update
-  updatedPhotos.forEach(photo => {
-    broadcastPhotoUpdated(galleryId, photo);
-  });
-
-  return { count: updated.count };
+  await prisma.photoLike.deleteMany({ where: { photoId, userId } });
+  const likeCount = await prisma.photoLike.count({ where: { photoId } });
+  return { liked: false, likeCount };
 }
+
 
 
 

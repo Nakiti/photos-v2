@@ -12,6 +12,8 @@
   "dependencies": {
     "@nozbe/watermelondb": "^0.27.1",
     "@react-native-community/datetimepicker": "^8.5.0",
+    "@react-native-firebase/app": "^23.8.8",
+    "@react-native-firebase/messaging": "^23.8.8",
     "@react-native/new-app-screen": "0.81.4",
     "@react-navigation/bottom-tabs": "^7.4.7",
     "@react-navigation/material-top-tabs": "^7.3.7",
