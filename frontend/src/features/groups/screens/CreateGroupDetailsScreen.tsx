@@ -1,41 +1,65 @@
-import React, { useState } from "react";
+import React, { useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  SafeAreaView, Alert, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
-} from "react-native";
-import Ionicons from "react-native-vector-icons/Ionicons";
-import { useNavigation, useRoute } from "@react-navigation/native";
-import { launchImageLibrary, ImagePickerResponse } from "react-native-image-picker";
-import FastImage from "react-native-fast-image";
-import { useCreateGallery } from "../../../hooks/useGalleryData";
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Alert,
+  SafeAreaView,
+  ActivityIndicator,
+} from 'react-native';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
+import { launchImageLibrary, ImagePickerResponse } from 'react-native-image-picker';
+import FastImage from 'react-native-fast-image';
+import { useCreateGroup } from '../../../hooks/useGroupData';
+
+// --- Theme ---
+const COLORS = {
+    bg: '#FFFFFF',
+    textPrimary: '#000000',
+    textSecondary: '#8E8E93',
+    placeholder: '#C7C7CC',
+    button: '#000000',
+    buttonText: '#FFFFFF',
+    border: '#E5E5EA',
+    bannerPlaceholder: '#F2F2F7',
+};
 
 const CreateGroupDetailsScreen = () => {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [imageUri, setImageUri] = useState<string | undefined>(undefined);
-  const route = useRoute();
-  const { communityId } = route.params as any || {};
   const navigation = useNavigation<any>();
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [imageUri, setImageUri] = useState<string | undefined>(undefined);
 
-  const { mutateAsync: createGallery, isPending: isCreating } = useCreateGallery();
+  const { mutateAsync: createGroup, isPending: isCreating } = useCreateGroup();
 
   const onPickImage = () => {
     launchImageLibrary({ mediaType: 'photo', quality: 0.8 }, (response: ImagePickerResponse) => {
       if (response.didCancel) return;
-      if (response.errorMessage) { Alert.alert('Error', response.errorMessage); return; }
-      if (response.assets?.[0]?.uri) setImageUri(response.assets[0].uri);
+      if (response.errorMessage) {
+        Alert.alert('Error', response.errorMessage);
+        return;
+      }
+      if (response.assets && response.assets[0]?.uri) {
+        setImageUri(response.assets[0].uri);
+      }
     });
   };
 
   const onContinue = async () => {
     if (!name.trim()) return;
     try {
-      const newGallery = await createGallery({
-        galleryData: { name: name.trim(), type: 'GROUP', communityId: communityId || undefined },
+      const newGroup = await createGroup({
+        data: { name: name.trim(), description: description.trim() || undefined },
         imageUri: imageUri ?? null,
       });
       navigation.navigate("ShareGroup", {
-        galleryId: newGallery.id,
+        groupId: newGroup.id,
         fromCreateFlow: true,
       });
     } catch (e: any) {
@@ -43,214 +67,223 @@ const CreateGroupDetailsScreen = () => {
     }
   };
 
-  const isDisabled = !name.trim() || isCreating;
+  const isButtonDisabled = !name.trim() || isCreating;
 
   return (
     <View style={styles.root}>
-      <KeyboardAvoidingView
+      <KeyboardAvoidingView 
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
       >
-        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-
-          {/* Banner */}
-          <TouchableOpacity style={styles.banner} onPress={onPickImage} activeOpacity={0.85}>
-            {imageUri ? (
-              <FastImage
-                source={{ uri: imageUri }}
-                style={StyleSheet.absoluteFill}
-                resizeMode={FastImage.resizeMode.cover}
-              />
-            ) : (
-              <View style={styles.bannerEmpty}>
-                <View style={styles.cameraWrap}>
-                  <Ionicons name="camera" size={20} color="#555555" />
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            
+            {/* 1. Cover Photo Picker */}
+            <TouchableOpacity 
+              style={styles.bannerPicker} 
+              onPress={onPickImage}
+              activeOpacity={0.9}
+            >
+              {imageUri ? (
+                <FastImage 
+                    source={{ uri: imageUri }} 
+                    style={styles.bannerImage} 
+                    resizeMode={FastImage.resizeMode.cover} 
+                />
+              ) : (
+                <View style={styles.bannerPlaceholder}>
+                    <View style={styles.iconCircle}>
+                      <Ionicons name="camera" size={24} color={COLORS.textPrimary} />
+                    </View>
+                    <Text style={styles.bannerText}>Add Group Cover</Text>
                 </View>
-                <Text style={styles.bannerHint}>Add cover photo</Text>
-              </View>
-            )}
-            {imageUri && (
-              <View style={styles.editBadge}>
-                <Ionicons name="pencil" size={12} color="#FFF" />
-              </View>
-            )}
-          </TouchableOpacity>
+              )}
+              
+              {imageUri && (
+                <View style={styles.editBadge}>
+                  <Ionicons name="pencil" size={14} color="#FFF" />
+                </View>
+              )}
+            </TouchableOpacity>
 
-          {/* Form */}
-          <View style={styles.form}>
+            {/* 2. Form Inputs */}
+            <View style={styles.formContainer}>
+                
+                {/* Name Input */}
+                <View style={styles.titleInputWrapper}>
+                  <Text style={styles.label}>GROUP NAME</Text>
+                  <TextInput
+                    style={styles.nameInput}
+                    placeholder="Name your group"
+                    placeholderTextColor={COLORS.placeholder}
+                    value={name}
+                    onChangeText={setName}
+                    returnKeyType="next"
+                    autoCorrect={false}
+                    autoCapitalize="words"
+                  />
+                </View>
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Group name</Text>
-              <TextInput
-                style={styles.nameInput}
-                placeholder="Name your group"
-                placeholderTextColor="#CCCCCC"
-                value={name}
-                onChangeText={setName}
-                returnKeyType="next"
-                autoFocus
-              />
+                {/* Description Input */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>DESCRIPTION</Text>
+                  <TextInput
+                    style={styles.descriptionInput}
+                    placeholder="What is this group about? (Optional)"
+                    placeholderTextColor={COLORS.placeholder}
+                    multiline
+                    value={description}
+                    onChangeText={setDescription}
+                    textAlignVertical="top"
+                  />
+                </View>
+
             </View>
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.fieldLabel}>Description</Text>
-              <TextInput
-                style={styles.descriptionInput}
-                placeholder="What's this group about? (Optional)"
-                placeholderTextColor="#CCCCCC"
-                multiline
-                value={description}
-                onChangeText={setDescription}
-                textAlignVertical="top"
-              />
-            </View>
-
-          </View>
         </ScrollView>
 
-        {/* Footer */}
+        {/* 3. Sticky Footer */}
         <SafeAreaView style={styles.footer}>
-          <TouchableOpacity
-            style={[styles.continueBtn, isDisabled && styles.continueBtnDisabled]}
-            onPress={onContinue}
-            disabled={isDisabled}
-            activeOpacity={0.7}
-          >
-            {isCreating ? (
-              <ActivityIndicator color="#FFF" size="small" />
-            ) : (
-              <>
-                <Text style={[styles.continueBtnText, isDisabled && styles.continueBtnTextDisabled]}>
-                  Create Group
-                </Text>
-                {!isDisabled && (
-                  <Ionicons name="arrow-forward" size={16} color="#FFF" style={{ marginLeft: 6 }} />
+            <TouchableOpacity
+                style={[styles.continueButton, isButtonDisabled && styles.buttonDisabled]}
+                onPress={onContinue}
+                disabled={isButtonDisabled}
+                activeOpacity={0.8}
+            >
+                {isCreating ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <View style={styles.buttonContent}>
+                      <Text style={styles.buttonText}>Create Group</Text>
+                      <Ionicons name="arrow-forward" size={18} color="#FFF" />
+                  </View>
                 )}
-              </>
-            )}
-          </TouchableOpacity>
+            </TouchableOpacity>
         </SafeAreaView>
 
       </KeyboardAvoidingView>
     </View>
   );
 };
-
-export default CreateGroupDetailsScreen;
-
+  
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: COLORS.bg,
   },
   scrollContent: {
     paddingBottom: 40,
   },
-
-  // Banner
-  banner: {
-    height: 200,
+  
+  // --- Banner Picker ---
+  bannerPicker: {
+    height: 220,
     width: '100%',
-    backgroundColor: '#EFEFEF',
+    backgroundColor: COLORS.bannerPlaceholder,
     position: 'relative',
-    overflow: 'hidden',
   },
-  bannerEmpty: {
+  bannerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  bannerPlaceholder: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
+    gap: 12,
   },
-  cameraWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
+  iconCircle: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: '#FFF',
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
   },
-  bannerHint: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#AAAAAA',
+  bannerText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: COLORS.textSecondary,
   },
   editBadge: {
     position: 'absolute',
-    bottom: 14,
-    right: 14,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    width: 30,
-    height: 30,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
+    bottom: 16,
+    right: 16,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    padding: 8,
+    borderRadius: 20,
   },
 
-  // Form
-  form: {
-    paddingHorizontal: 20,
-    paddingTop: 28,
-    gap: 28,
+  // --- Form ---
+  formContainer: {
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    gap: 32,
   },
-  fieldGroup: {
-    gap: 8,
+  label: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    letterSpacing: 1, // Uppercase Tracking
+    marginBottom: 8,
   },
-  fieldLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#AAAAAA',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
+  
+  // Title Input
+  titleInputWrapper: {
+      gap: 0,
   },
   nameInput: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '700',
-    color: '#111111',
-    paddingVertical: 0,
-    paddingBottom: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E5E5E5',
-    letterSpacing: -0.4,
-  },
-  descriptionInput: {
-    fontSize: 15,
-    color: '#111111',
-    minHeight: 72,
-    lineHeight: 22,
+    color: COLORS.textPrimary,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
 
-  // Footer
-  footer: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E5E5E5',
-    backgroundColor: '#FAFAFA',
+  // Description Input
+  inputGroup: {
+      gap: 0,
   },
-  continueBtn: {
-    backgroundColor: '#111111',
-    height: 48,
-    borderRadius: 13,
-    flexDirection: 'row',
+  descriptionInput: {
+    fontSize: 16,
+    color: COLORS.textPrimary,
+    minHeight: 100,
+    lineHeight: 24,
+    marginTop: 4,
+  },
+
+  // --- Footer ---
+  footer: {
+    backgroundColor: COLORS.bg,
+    borderTopWidth: 1,
+    borderTopColor: '#F2F2F2',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  continueButton: {
+    backgroundColor: COLORS.button,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  continueBtnDisabled: {
-    backgroundColor: '#EFEFEF',
+  buttonContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
   },
-  continueBtnText: {
-    color: '#FFFFFF',
-    fontSize: 15,
+  buttonDisabled: {
+    backgroundColor: '#E5E5EA',
+  },
+  buttonText: {
+    color: COLORS.buttonText,
+    fontSize: 17,
     fontWeight: '600',
-    letterSpacing: -0.1,
-  },
-  continueBtnTextDisabled: {
-    color: '#BBBBBB',
   },
 });
+
+export default CreateGroupDetailsScreen;

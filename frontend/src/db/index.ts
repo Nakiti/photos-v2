@@ -8,11 +8,10 @@ import Gallery from './models/Gallery';
 import Photo from './models/Photo';
 import User from './models/User';
 import Membership from './models/Membership';
-import Friendship from './models/Friendship';
 import Tag from './models/Tag';
 import PhotoTag from './models/PhotoTag';
-import CommunityMembership from './models/CommunityMembership';
-import Community from './models/Community';
+import GroupMembership from './models/GroupMembership';
+import Group from './models/Group';
 import PhotoAttempt from './models/PhotoAttempt';
 import Notification from './models/Notification';
 
@@ -31,11 +30,10 @@ export const database = new Database({
     Photo,
     User,
     Membership,
-    Friendship,
     Tag,
     PhotoTag,
-    Community,
-    CommunityMembership,
+    Group,
+    GroupMembership,
     PhotoAttempt,
     Notification,
   ],

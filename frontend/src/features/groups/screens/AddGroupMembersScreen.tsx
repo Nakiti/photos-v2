@@ -1,493 +1,240 @@
-import React, { useMemo, useState, useCallback } from "react";
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  StyleSheet, 
-  FlatList, 
-  ActivityIndicator, 
-  TouchableOpacity, 
-  Alert, 
-  SafeAreaView, 
-  KeyboardAvoidingView, 
-  Platform,
-  ScrollView
-} from "react-native";
-import Ionicons from "react-native-vector-icons/Ionicons";
-import { useRoute, useNavigation } from "@react-navigation/native";
+import React, { useMemo, useState, useCallback } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import { useRoute } from '@react-navigation/native';
+import { useGroupMembers, useAddGroupMember, useRemoveGroupMember } from '../../../hooks/useGroupMembershipData';
+import { useSearchUsers } from '../../../hooks/useUser';
+import AddMemberListItem from '../../groups/components/AddMemberListItem';
 
-// Hooks
-import { useFriendships } from "../../../hooks/useFriendshipData";
-import { useInviteMember, useMemberships, useAddCommunityMembersToGallery } from "../../../hooks/useMembershipData";
-import { useSearchUsers } from "../../../hooks/useUser";
-import { useCommunityMembers } from "../../../hooks/useCommunityMembershipData";
-
-// Components
-import AddMemberListItem, { FriendStatus } from "../components/AddMemberListItem";
+type DisplayUser = {
+  id: string;
+  name: string;
+  handle: string;
+  avatar?: string;
+};
 
 const AddGroupMembersScreen = () => {
-  const navigation = useNavigation<any>();
   const route = useRoute();
-  const { galleryId, communityId } = route.params as { galleryId: string, communityId?: string };
+  const { groupId } = route.params as { groupId: string };
 
-  const [searchText, setSearchText] = useState('');
+  const [value, setValue] = useState('');
+  const [showMembers, setShowMembers] = useState(true);
   const [showSearchResults, setShowSearchResults] = useState(false);
 
-  // Data
-  const { friends, isLoading: isLoadingFriends } = useFriendships();
-  const { acceptedMembers, pendingMembers, isLoading: isLoadingMembers } = useMemberships(galleryId);
-  const { mutate: inviteMember, isPending: isInviting } = useInviteMember();
-  const { users: searchResults, isLoading: isSearching, search } = useSearchUsers({}, false);
-  
-  // Community members (only when communityId is available)
-  const { members: communityMembers, isLoading: isLoadingCommunityMembers } = useCommunityMembers(communityId || null);
-  const { mutateAsync: addAllCommunityMembers, isPending: isAddingAllMembers } = useAddCommunityMembersToGallery();
+  const { members } = useGroupMembers(groupId);
+  const { mutate: addMember, isPending: isInviting } = useAddGroupMember();
+  const { mutate: removeMember, isPending: isRemoving } = useRemoveGroupMember();
 
-  // Fast Lookups
-  const acceptedMemberIds = useMemo(() => new Set(acceptedMembers.map(m => m.user.id)), [acceptedMembers]);
-  const pendingMemberIds = useMemo(() => new Set(pendingMembers.map(m => m.user.id)), [pendingMembers]);
+  // Search users hook (manual trigger)
+  const { users: searchResults, isLoading: isSearching, search, pagination } = useSearchUsers({}, false);
 
-  // Community Members List (when communityId is available)
-  const communityMembersList = useMemo(() => {
-    if (!communityId) return [];
-    return communityMembers.map(({ user }) => {
-      const userId = user.id;
-      let status: FriendStatus = 'can_add';
-      
-      if (acceptedMemberIds.has(userId)) status = 'member';
-      else if (pendingMemberIds.has(userId)) status = 'pending';
-      
-      return { 
-        user: {
-          id: user.id,
-          name: user.name || user.handle || 'Unknown User',
-          handle: user.handle,
-          avatarUrl: user.avatarUrl,
-        }, 
-        status 
-      };
-    });
-  }, [communityMembers, acceptedMemberIds, pendingMemberIds, communityId]);
+  const memberIds = useMemo(
+    () => new Set(members.map((m) => m.user.id)),
+    [members]
+  );
 
-  // Friends List (not filtered by search)
-  const friendsList = useMemo(() => {
-    return friends.map(friendship => {
-      const friendId = friendship.friendProfile.id;
-      let status: FriendStatus = 'can_add';
-      
-      if (acceptedMemberIds.has(friendId)) status = 'member';
-      else if (pendingMemberIds.has(friendId)) status = 'pending';
-      
-      return { 
-        user: {
-          id: friendship.friendProfile.id,
-          name: friendship.friendProfile.name || friendship.friendProfile.handle || 'Unknown User',
-          handle: friendship.friendProfile.handle,
-          avatarUrl: friendship.friendProfile.avatarUrl,
-        }, 
-        status 
-      };
-    });
-  }, [friends, acceptedMemberIds, pendingMemberIds]);
-
-  // Search Results with status
-  const searchResultsWithStatus = useMemo(() => {
-    return searchResults.map(user => {
-      const userId = user.id;
-      let status: FriendStatus = 'can_add';
-      
-      if (acceptedMemberIds.has(userId)) status = 'member';
-      else if (pendingMemberIds.has(userId)) status = 'pending';
-      
-      return { 
-        user: {
-          id: user.id,
-          name: user.name || user.handle || 'Unknown User',
-          handle: user.handle,
-          avatarUrl: user.avatarUrl,
-        }, 
-        status 
-      };
-    });
-  }, [searchResults, acceptedMemberIds, pendingMemberIds]);
-
-  // Handlers
-  const handleInvite = useCallback((userId: string) => {
-    inviteMember({ galleryId, userId }, {
-      onError: () => Alert.alert("Error", "Failed to send invite.")
-    });
-  }, [galleryId, inviteMember]);
+  const displayMembers: DisplayUser[] = useMemo(
+    () =>
+      members.map(({ user }) => ({
+        id: user.id,
+        name: user.name || user.handle,
+        handle: user.handle,
+        avatar: user.avatarUrl || undefined,
+      })),
+    [members]
+  );
 
   const handleSearch = useCallback(async () => {
-    if (!searchText.trim()) {
+    if (!value.trim()) {
       setShowSearchResults(false);
       return;
     }
     await search({
-      search: searchText.trim(),
+      search: value.trim(),
       limit: 20,
     });
     setShowSearchResults(true);
-  }, [searchText, search]);
+  }, [value, search]);
 
-  const handleSearchChange = useCallback((text: string) => {
-    setSearchText(text);
-    if (text.trim().length > 0) {
-      // Auto-search as user types (with debounce would be better, but keeping it simple)
-      handleSearch();
-    } else {
-      setShowSearchResults(false);
-    }
-  }, [handleSearch]);
+  const handleInvite = useCallback(
+    (user: any) => {
+      const userId = user.id;
+      addMember(
+        { groupId, userId },
+        {
+          onSuccess: () => {
+            // No-op; queries invalidate in hook
+          },
+          onError: () => {
+            Alert.alert('Error', 'Failed to add member.');
+          },
+        }
+      );
+    },
+    [addMember, groupId]
+  );
 
-  const handleContinue = () => {
-    navigation.navigate('AddGroupTags', { galleryId, communityId });
-  };
-
-  const handleAddAllCommunityMembers = async () => {
-    if (!communityId) return;
-    try {
-      await addAllCommunityMembers({ galleryId, communityId });
-      Alert.alert('Success', 'All community members have been added to the gallery.');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to add all community members.');
-    }
-  };
-
-  const isLoading = communityId 
-    ? isLoadingCommunityMembers || isLoadingMembers
-    : isLoadingFriends || isLoadingMembers;
+  const toggleMembers = useCallback(() => setShowMembers((s) => !s), []);
 
   return (
-    <View style={styles.root}>
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
-      >
-        <ScrollView 
-          style={{ flex: 1 }}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.scrollContent}
-        >
-          {communityId ? (
-            /* Community Members Mode */
-            <View style={styles.communitySection}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Community Members</Text>
-                <Text style={styles.sectionSubtitle}>
-                  {communityMembersList.length} {communityMembersList.length === 1 ? 'member' : 'members'}
-                </Text>
-              </View>
+    <View style={styles.container}>
+      <ScrollView>
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search-outline" size={16} color="#999" style={{ marginRight: 8 }} />
+          <TextInput
+            style={styles.searchBar}
+            placeholder="Search users by name or handle"
+            placeholderTextColor="gray"
+            value={value}
+            onChangeText={setValue}
+            onSubmitEditing={handleSearch}
+            returnKeyType="search"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {value.length > 0 && (
+            <TouchableOpacity
+              style={styles.clearButton}
+              onPress={() => {
+                setValue('');
+                setShowSearchResults(false);
+              }}
+            >
+              <Ionicons name="close-circle" size={18} color="#999" />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={styles.searchButton}
+            onPress={handleSearch}
+            disabled={isSearching || !value.trim()}
+          >
+            {isSearching ? (
+              <ActivityIndicator size="small" color="gray" />
+            ) : (
+              <Ionicons name="arrow-forward" size={16} color={value.trim() ? '#333' : '#ccc'} />
+            )}
+          </TouchableOpacity>
+        </View>
 
-              {/* Add All Button */}
-              <TouchableOpacity
-                style={[styles.addAllButton, isAddingAllMembers && styles.addAllButtonDisabled]}
-                onPress={handleAddAllCommunityMembers}
-                disabled={isAddingAllMembers}
-                activeOpacity={0.8}
-              >
-                {isAddingAllMembers ? (
-                  <ActivityIndicator size="small" color="#FFF" />
-                ) : (
-                  <>
-                    <Ionicons name="people" size={18} color="#FFF" />
-                    <Text style={styles.addAllButtonText}>Add All Community Members</Text>
-                  </>
-                )}
+        {/* Search Results */}
+        {showSearchResults && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>
+                Search results {pagination ? `(${pagination.total})` : ''}
+              </Text>
+              <TouchableOpacity onPress={() => setShowSearchResults(false)}>
+                <Ionicons name="close-outline" size={20} color="#666" />
               </TouchableOpacity>
-
-              {/* Community Members List */}
-              {isLoading ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="small" color="#000" />
-                </View>
-              ) : communityMembersList.length > 0 ? (
-                communityMembersList.map((item) => (
+            </View>
+            {isSearching ? (
+              <ActivityIndicator size="large" color="gray" style={{ marginVertical: 10 }} />
+            ) : searchResults.length === 0 ? (
+              <Text style={styles.emptyRow}>No users found</Text>
+            ) : (
+              searchResults.map((user) => {
+                const status = memberIds.has(user.id) ? 'member' : 'can_add';
+                return (
                   <AddMemberListItem
-                    key={item.user.id}
-                    user={item.user}
-                    status={item.status}
-                    onInvite={() => handleInvite(item.user.id)}
+                    key={user.id}
+                    user={user as any}
+                    status={status}
+                    onInvite={() => handleInvite(user)}
                     isInviting={isInviting}
                   />
-                ))
-              ) : (
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyText}>No community members</Text>
-                  <Text style={styles.emptySubtext}>This community has no members yet.</Text>
-                </View>
-              )}
-            </View>
-          ) : (
-            /* Search + Friends Mode */
-            <>
-              {/* Search Section */}
-              <View style={styles.searchSection}>
-                <View style={styles.searchContainer}>
-                  <View style={styles.searchBar}>
-                    <Ionicons name="search" size={18} color="#8E8E93" style={styles.searchIcon} />
-                    <TextInput
-                      style={styles.searchInput}
-                      placeholder="Search users by name or handle"
-                      placeholderTextColor="#8E8E93"
-                      value={searchText}
-                      onChangeText={handleSearchChange}
-                      onSubmitEditing={handleSearch}
-                      returnKeyType="search"
-                      autoCorrect={false}
-                      autoCapitalize="none"
-                    />
-                    {searchText.length > 0 && (
-                      <TouchableOpacity onPress={() => {
-                        setSearchText('');
-                        setShowSearchResults(false);
-                      }}>
-                        <Ionicons name="close-circle" size={18} color="#C7C7CC" />
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
+                );
+              })
+            )}
+          </View>
+        )}
 
-                {/* Search Results */}
-                {showSearchResults && (
-                  <View style={styles.searchResultsContainer}>
-                    {isSearching ? (
-                      <View style={styles.loadingContainer}>
-                        <ActivityIndicator size="small" color="#000" />
-                      </View>
-                    ) : searchResultsWithStatus.length > 0 ? (
-                      searchResultsWithStatus.map((item) => (
-                        <AddMemberListItem
-                          key={item.user.id}
-                          user={item.user}
-                          status={item.status}
-                          onInvite={() => handleInvite(item.user.id)}
-                          isInviting={isInviting}
-                        />
-                      ))
-                    ) : (
-                      <View style={styles.emptyContainer}>
-                        <Text style={styles.emptyText}>No users found</Text>
-                        <Text style={styles.emptySubtext}>Try a different search term</Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-              </View>
-
-              {/* Divider */}
-              {showSearchResults && friendsList.length > 0 && (
-                <View style={styles.divider}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>OR</Text>
-                  <View style={styles.dividerLine} />
-                </View>
-              )}
-
-              {/* Friends Section */}
-              <View style={styles.friendsSection}>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>Your Friends</Text>
-                  <Text style={styles.sectionSubtitle}>{friendsList.length} {friendsList.length === 1 ? 'friend' : 'friends'}</Text>
-                </View>
-
-                {isLoading ? (
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="small" color="#000" />
-                  </View>
-                ) : friendsList.length > 0 ? (
-                  friendsList.map((item) => (
-                    <AddMemberListItem
-                      key={item.user.id}
-                      user={item.user}
-                      status={item.status}
-                      onInvite={() => handleInvite(item.user.id)}
-                      isInviting={isInviting}
-                    />
-                  ))
-                ) : (
-                  <View style={styles.emptyContainer}>
-                    <Text style={styles.emptyText}>No friends available</Text>
-                    <Text style={styles.emptySubtext}>Add friends from your profile to invite them here.</Text>
-                  </View>
-                )}
-              </View>
-            </>
-          )}
-        </ScrollView>
-
-        {/* Footer */}
-        <SafeAreaView style={styles.footer}>
-          <TouchableOpacity 
-            style={styles.continueButton} 
-            onPress={handleContinue}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.continueButtonText}>Continue</Text>
-            <Ionicons name="arrow-forward" size={18} color="#FFF" />
+        {/* Members */}
+        <View style={styles.section}>
+          <TouchableOpacity style={styles.sectionHeader} onPress={toggleMembers}>
+            <Text style={styles.sectionTitle}>Members</Text>
+            <Ionicons
+              name={showMembers ? 'chevron-down-outline' : 'chevron-forward-outline'}
+              size={16}
+            />
           </TouchableOpacity>
-        </SafeAreaView>
-
-      </KeyboardAvoidingView>
+          {showMembers &&
+            (displayMembers.length === 0 ? (
+              <Text style={styles.emptyRow}>No members</Text>
+            ) : (
+              displayMembers.map((m) => (
+                <AddMemberListItem
+                  key={m.id}
+                  user={
+                    {
+                      id: m.id,
+                      name: m.name,
+                      handle: m.handle,
+                      avatarUrl: m.avatar,
+                    } as any
+                  }
+                  status="member"
+                  onInvite={() => {}}
+                  onRemove={() => removeMember({ groupId, userId: m.id })}
+                  isInviting={isRemoving}
+                />
+              ))
+            ))}
+        </View>
+      </ScrollView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  root: {
+  container: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
-  },
-  scrollContent: {
-    paddingBottom: 20,
-  },
-  
-  // Search Section
-  searchSection: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: 'white',
+    paddingHorizontal: 16,
   },
   searchContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: '#F2F2F7',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    marginTop: 12,
   },
   searchBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F2F2F7",
-    borderRadius: 10,
-    height: 40,
-    paddingHorizontal: 12,
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: '#333',
   },
-  searchIcon: {
+  clearButton: {
+    padding: 4,
     marginRight: 8,
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: "#000",
-    height: '100%',
+  searchButton: {
+    padding: 4,
   },
-  searchResultsContainer: {
-    backgroundColor: "#FFFFFF",
-  },
-
-  // Divider
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E5E5EA',
-  },
-  dividerText: {
-    paddingHorizontal: 16,
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#8E8E93',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-
-  // Community Section
-  communitySection: {
-    backgroundColor: "#FFFFFF",
-  },
-  
-  // Friends Section
-  friendsSection: {
-    backgroundColor: "#FFFFFF",
+  section: {
+    marginTop: 16,
   },
   sectionHeader: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F2F2F7',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   sectionTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#000',
-    marginBottom: 2,
-  },
-  sectionSubtitle: {
-    fontSize: 13,
-    color: '#8E8E93',
-  },
-  
-  // Add All Button
-  addAllButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#000000',
-    marginHorizontal: 16,
-    marginVertical: 12,
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
-  },
-  addAllButtonDisabled: {
-    backgroundColor: '#8E8E93',
-  },
-  addAllButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  
-  // Loading & Empty States
-  loadingContainer: {
-    paddingVertical: 40,
-    alignItems: 'center',
-  },
-  emptyContainer: {
-    paddingTop: 40,
-    paddingBottom: 20,
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
-    marginBottom: 8,
-  },
-  emptySubtext: {
     fontSize: 14,
-    color: '#8E8E93',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-
-  // Footer
-  footer: {
-    backgroundColor: '#FFFFFF',
-    borderTopWidth: 1,
-    borderTopColor: '#F2F2F7',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  continueButton: {
-    backgroundColor: '#000000',
-    height: 50,
-    borderRadius: 25,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  continueButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
     fontWeight: '600',
+    color: '#666',
+    marginBottom: 8,
+    paddingHorizontal: 2,
+  },
+  emptyRow: {
+    fontSize: 13,
+    color: '#999',
+    paddingHorizontal: 2,
+    marginBottom: 8,
   },
 });
 
 export default AddGroupMembersScreen;
+

@@ -1,87 +1,56 @@
-import React, { useCallback, useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl, Text } from 'react-native';
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react';
+import { View, FlatList, StyleSheet, Text, RefreshControl } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useGroups } from '../../../hooks/useGroupData';
+import GroupListHeader from '../components/GroupListHeader';
 import { useQueryClient } from '@tanstack/react-query';
-import { useGalleries } from '../../../hooks/useGalleryData';
-import Gallery from '../../../db/models/Gallery';
-import Ionicons from 'react-native-vector-icons/Ionicons';
-
-import GroupsHeader from '../components/GroupsListHeader';
-import SearchBar from '../../../components/SearchBar';
-import GroupListItem from '../components/GroupListItem';
+import GroupCard from '../components/GroupCard';
 
 const GroupsListScreen = () => {
-  const [query, setQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const navigation = useNavigation<any>();
+  const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-
-  const navigation = useNavigation();
   const queryClient = useQueryClient();
+  const { groups, isLoading, isSyncing } = useGroups(search);
 
-  useEffect(() => {
-    const handler = setTimeout(() => setDebouncedQuery(query), 300);
-    return () => clearTimeout(handler);
-  }, [query]);
-
-  const { galleries, isLoading, isSyncing, isError, error } = useGalleries(undefined, debouncedQuery);
+  const filtered = useMemo(() => groups, [groups]);
 
   const prevIsSyncing = useRef(isSyncing);
   useEffect(() => {
-    if (refreshing && prevIsSyncing.current && !isSyncing) setRefreshing(false);
+    if (refreshing && prevIsSyncing.current && !isSyncing) {
+      setRefreshing(false);
+    }
     prevIsSyncing.current = isSyncing;
   }, [refreshing, isSyncing]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    queryClient.invalidateQueries({ queryKey: ['galleries'] });
+    queryClient.invalidateQueries({ queryKey: ['groups'] });
   }, [queryClient]);
 
-  const handleGroupPress = (galleryId: string) => {
-    (navigation as any).navigate('Gallery', {
-      screen: 'Gallery',
-      params: { galleryId },
-    });
-  };
-
-  const renderItem = useCallback(({ item }: { item: Gallery }) => (
-    <GroupListItem
-      id={item.id}
-      title={item.name}
-      icon={item.iconUrl || ''}
-      communityName={item.communityName ?? undefined}
-      lastUploadedBy=""
-      unseenCount={0}
-      lastUpdated={item.lastPhotoAt
-        ? new Date(item.lastPhotoAt).toISOString()
-        : new Date(item.createdAt).toISOString()}
-      photoCount={item.photoCount}
-      memberCount={item.memberCount}
-      onPress={() => handleGroupPress(item.id)}
+  const renderItem = ({ item }: any) => (
+    <GroupCard
+      name={item.name}
+      description={item.description}
+      iconUrl={item.iconUrl}
+      membersCount={item.memberCount}
+      galleryCount={item.galleryCount}
+      onPress={() =>
+        navigation.navigate('GroupFlow', {
+          screen: 'Group',
+          params: { groupId: item.id },
+        })
+      }
     />
-  ), []);
-
-  const keyExtractor = useCallback((item: Gallery) => item.id, []);
-
-  const ListEmptyComponent = useCallback(() => (
-    <View style={styles.emptyContainer}>
-      <View style={styles.emptyIconWrap}>
-        <Ionicons name="albums-outline" size={28} color="#CCCCCC" />
-      </View>
-      <Text style={styles.emptyTitle}>No galleries</Text>
-      <Text style={styles.emptySubtext}>
-        {query.length > 0
-          ? "Try a different search term."
-          : "Tap + to create your first gallery."}
-      </Text>
-    </View>
-  ), [query]);
+  );
 
   return (
     <View style={styles.container}>
-      <GroupsHeader />
+      <GroupListHeader />
       <FlatList
-        data={galleries}
-        keyExtractor={keyExtractor}
+        data={filtered}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
         renderItem={renderItem}
         refreshControl={
           <RefreshControl
@@ -91,9 +60,13 @@ const GroupsListScreen = () => {
             colors={['#999']}
           />
         }
-        ListEmptyComponent={ListEmptyComponent}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyText}>
+              {isLoading ? 'Loading…' : 'No groups yet'}
+            </Text>
+          </View>
+        }
       />
     </View>
   );
@@ -105,34 +78,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAFAFA',
   },
   listContent: {
-    paddingBottom: 40,
+    paddingBottom: 32,
   },
-  emptyContainer: {
+  emptyState: {
+    paddingTop: 64,
     alignItems: 'center',
-    paddingTop: 72,
-    paddingHorizontal: 40,
   },
-  emptyIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: '#F2F2F2',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111111',
-    marginBottom: 6,
-    letterSpacing: -0.2,
-  },
-  emptySubtext: {
-    fontSize: 13.5,
+  emptyText: {
+    fontSize: 14,
     color: '#AAAAAA',
-    textAlign: 'center',
-    lineHeight: 20,
+    fontWeight: '400',
   },
 });
 

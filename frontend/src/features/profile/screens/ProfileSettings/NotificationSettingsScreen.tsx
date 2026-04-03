@@ -83,13 +83,13 @@ const NotificationSettingsScreen = () => {
                                 onValueChange={() => toggleItem('newPhotos')} 
                                 disabled={pauseAll}
                             />
-                            <ToggleRow 
-                                label="Event Invites" 
-                                value={toggles.invites} 
-                                onValueChange={() => toggleItem('invites')} 
+                            <ToggleRow
+                                label="Invites"
+                                value={toggles.invites}
+                                onValueChange={() => toggleItem('invites')}
                                 disabled={pauseAll}
                             />
-                            <ToggleRow 
+                            <ToggleRow
                                 label="Likes" 
                                 value={toggles.likes} 
                                 onValueChange={() => toggleItem('likes')} 

@@ -1,212 +1,193 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, Switch, TouchableOpacity,
-  Alert, ScrollView, SafeAreaView,
+  View,
+  Text,
+  StyleSheet,
+  Switch,
+  TouchableOpacity,
+  ScrollView,
+  SafeAreaView,
+  StatusBar,
+  Alert,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { useCreateGallery, useUpdateGallery } from '../../../hooks/useGalleryData';
-import { useAddCommunityMembersToGallery } from '../../../hooks/useMembershipData';
-import { useCommunity } from '../../../hooks/useCommunityData';
+import { useCreateGroup, useUpdateGroup } from '../../../hooks/useGroupData';
 
-type RouteParams = {
+// --- Theme ---
+const COLORS = {
+  bg: '#FFFFFF',
+  textPrimary: '#000000',
+  textSecondary: '#8E8E93',
+  divider: '#F2F2F7',
+  tint: '#000000', // Minimalist Black for active state
+  toggleTrack: '#E5E5EA',
+};
+
+type RouteParams = { 
   name: string;
   description?: string;
   imageUri?: string | null;
-  communityId?: string;
 };
 
+// --- Reusable Segment Component ---
 const Segment = <T extends string,>({
-  options, value, onChange, disabled = false,
+  options,
+  value,
+  onChange,
+  disabled = false,
 }: {
   options: { label: string; value: T }[];
   value: T;
   onChange: (next: T) => void;
   disabled?: boolean;
-}) => (
-  <View style={[styles.segmentTrack, disabled && styles.segmentDisabled]}>
-    {options.map((opt) => {
-      const isActive = opt.value === value;
-      return (
-        <TouchableOpacity
-          key={opt.value}
-          activeOpacity={disabled ? 1 : 0.7}
-          style={[styles.segmentItem, isActive && styles.segmentItemActive]}
-          onPress={() => !disabled && onChange(opt.value)}
-          disabled={disabled}
-        >
-          <Text style={[styles.segmentText, isActive && styles.segmentTextActive]}>
-            {opt.label}
-          </Text>
-        </TouchableOpacity>
-      );
-    })}
-  </View>
-);
+}) => {
+  return (
+    <View style={[styles.segmentContainer, disabled && styles.segmentDisabled]}>
+      {options.map((opt) => {
+        const isActive = opt.value === value;
+        return (
+          <TouchableOpacity
+            key={opt.value}
+            activeOpacity={disabled ? 1 : 0.8}
+            style={[styles.segmentItem, isActive && styles.segmentItemActive]}
+            onPress={() => !disabled && onChange(opt.value)}
+            disabled={disabled}
+          >
+            <Text style={[
+              styles.segmentText, 
+              isActive && styles.segmentTextActive,
+            ]}>
+              {opt.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+};
 
 const CreateGroupSettingsScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { name, description, imageUri, communityId } = (route.params || {}) as RouteParams;
+  const { name, description, imageUri } = (route.params || {}) as RouteParams;
 
-  const { mutateAsync: createGallery, isPending: isCreating } = useCreateGallery();
-  const { mutateAsync: updateGallery } = useUpdateGallery();
-  const { mutateAsync: addCommunityMembers, isPending: isAddingMembers } = useAddCommunityMembersToGallery();
-  const { community } = useCommunity(communityId || null);
-
-  const [joinRequiresApproval, setJoinRequiresApproval] = useState(true);
+  // --- Hooks ---
+  const { mutateAsync: createGroup, isPending: isCreating } = useCreateGroup();
+  const { mutateAsync: updateGroup } = useUpdateGroup();
+  
+  // --- State ---
+  const [joinRequiresApproval, setJoinRequiresApproval] = useState<boolean>(false);
   const [addPermission, setAddPermission] = useState<'ANYONE' | 'ADMIN'>('ADMIN');
-  const [deletePermission, setDeletePermission] = useState<'ADMINS_AUTHORS' | 'ADMIN'>('ADMINS_AUTHORS');
-  const [addAllCommunityMembers, setAddAllCommunityMembers] = useState(false);
-  const [inheritCommunitySettings, setInheritCommunitySettings] = useState(false);
+  const [deletePermission, setDeletePermission] = useState<'ADMINS_AUTHORS' | 'ADMIN'>('ADMIN');
 
-  useEffect(() => {
-    if (inheritCommunitySettings && community) {
-      const c: any = community;
-      setJoinRequiresApproval(c.joinRequiresApproval ?? true);
-      setAddPermission((c.addPermission as 'ANYONE' | 'ADMIN') ?? 'ADMIN');
-      setDeletePermission((c.deletePermission as 'ADMINS_AUTHORS' | 'ADMIN') ?? 'ADMINS_AUTHORS');
-    }
-  }, [inheritCommunitySettings, community]);
-
-  const settingsToSave = useMemo(() => {
-    if (inheritCommunitySettings && community) {
-      const c: any = community;
-      return {
-        joinRequiresApproval: c.joinRequiresApproval ?? true,
-        addPermission: (c.addPermission as 'ANYONE' | 'ADMIN') ?? 'ADMIN',
-        deletePermission: (c.deletePermission as 'ADMINS_AUTHORS' | 'ADMIN') ?? 'ADMINS_AUTHORS',
-      };
-    }
-    return { joinRequiresApproval, addPermission, deletePermission };
-  }, [inheritCommunitySettings, community, joinRequiresApproval, addPermission, deletePermission]);
-
+  // --- Save Handler ---
   const onSave = async () => {
     if (!name) return Alert.alert('Error', 'Missing group name.');
+
     try {
-      const newGallery = await createGallery({
-        galleryData: { name, type: 'GROUP', communityId: communityId || undefined },
+      // 1. Create Group
+      const newGroup = await createGroup({
+        data: {
+          name,
+          description: description || undefined,
+        },
         imageUri: imageUri ?? null,
       });
-      await updateGallery({ galleryId: newGallery.id, data: { ...settingsToSave } as any });
-      if (addAllCommunityMembers && communityId) {
-        try {
-          await addCommunityMembers({ galleryId: newGallery.id, communityId });
-        } catch (e) {
-          console.warn('Failed to add members automatically', e);
-        }
-      }
-      navigation.navigate('AddGroupMembers', { galleryId: newGallery.id });
+
+      // 2. Update Settings (since they're not in create schema)
+      await updateGroup({
+        groupId: newGroup.id,
+        data: {
+          joinRequiresApproval,
+          addPermission,
+          deletePermission,
+        } as any,
+      });
+
+      // 3. Navigate to Add Members
+      navigation.navigate("AddGroupMembers", { groupId: newGroup.id });
     } catch (e: any) {
       Alert.alert('Failed to create group', e?.message ?? 'Please try again.');
     }
   };
 
-  const isLoading = isCreating || isAddingMembers;
-  const inherited = inheritCommunitySettings && !!communityId;
+  const isLoading = isCreating;
 
   return (
     <View style={styles.root}>
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
+      <StatusBar barStyle="dark-content" />
+      
+      <ScrollView 
+        style={styles.container} 
+        contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
 
-        {/* Membership */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Membership</Text>
-          <View style={styles.card}>
-            <View style={styles.switchRow}>
-              <View style={styles.switchText}>
-                <Text style={styles.switchLabel}>Require Approval</Text>
-                <Text style={styles.switchSub}>Admins must approve new members.</Text>
-              </View>
-              <Switch
-                value={joinRequiresApproval}
-                onValueChange={setJoinRequiresApproval}
-                trackColor={{ false: '#E5E5E5', true: '#111111' }}
-                thumbColor="#FFF"
-                ios_backgroundColor="#E5E5E5"
-                disabled={inherited}
-              />
-            </View>
-            {communityId && (
-              <View style={[styles.switchRow, styles.rowLast]}>
-                <View style={styles.switchText}>
-                  <Text style={styles.switchLabel}>Sync Members</Text>
-                  <Text style={styles.switchSub}>Auto-add members from community.</Text>
-                </View>
-                <Switch
-                  value={addAllCommunityMembers}
-                  onValueChange={setAddAllCommunityMembers}
-                  trackColor={{ false: '#E5E5E5', true: '#111111' }}
-                  thumbColor="#FFF"
-                  ios_backgroundColor="#E5E5E5"
-                />
-              </View>
-            )}
-          </View>
+        {/* --- Section 1: Membership --- */}
+        <View style={styles.sectionHeaderContainer}>
+            <Text style={styles.sectionHeader}>MEMBERSHIP</Text>
         </View>
 
-        {/* Permissions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Permissions</Text>
-          <View style={styles.card}>
-            {communityId && (
-              <View style={styles.switchRow}>
-                <View style={styles.switchText}>
-                  <Text style={styles.switchLabel}>Inherit Settings</Text>
-                  <Text style={styles.switchSub}>Use defaults from {community?.name}.</Text>
-                </View>
-                <Switch
-                  value={inheritCommunitySettings}
-                  onValueChange={setInheritCommunitySettings}
-                  trackColor={{ false: '#E5E5E5', true: '#111111' }}
-                  thumbColor="#FFF"
-                  ios_backgroundColor="#E5E5E5"
-                />
-              </View>
-            )}
-
-            <View style={styles.segmentRow}>
-              <Text style={styles.segmentLabel}>Who can post photos?</Text>
-              <Segment
-                options={[
-                  { label: 'Admins', value: 'ADMIN' },
-                  { label: 'Everyone', value: 'ANYONE' },
-                ]}
-                value={addPermission}
-                onChange={setAddPermission}
-                disabled={inherited}
-              />
+        <View style={styles.row}>
+            <View style={styles.textStack}>
+                <Text style={styles.rowLabel}>Require Approval</Text>
+                <Text style={styles.rowSubtext}>Admins must approve new members.</Text>
             </View>
+            <Switch 
+              value={joinRequiresApproval} 
+              onValueChange={setJoinRequiresApproval}
+              trackColor={{ false: COLORS.toggleTrack, true: COLORS.tint }}
+              thumbColor="#FFF"
+              ios_backgroundColor={COLORS.toggleTrack}
+            />
+        </View>
 
-            <View style={[styles.segmentRow, styles.rowLast]}>
-              <Text style={styles.segmentLabel}>Who can delete photos?</Text>
-              <Segment
-                options={[
-                  { label: 'Admins', value: 'ADMIN' },
-                  { label: 'Authors', value: 'ADMINS_AUTHORS' },
-                ]}
-                value={deletePermission}
-                onChange={setDeletePermission}
-                disabled={inherited}
-              />
-            </View>
-          </View>
+        {/* --- Spacer --- */}
+        <View style={styles.sectionSpacer} />
+
+        {/* --- Section 2: Permissions --- */}
+        <View style={styles.sectionHeaderContainer}>
+            <Text style={styles.sectionHeader}>PERMISSIONS</Text>
+        </View>
+
+        {/* Permission: Add Members (Matching your CommunitySettings logic) */}
+        <View style={styles.controlRow}>
+            <Text style={styles.controlLabel}>Who can invite members?</Text>
+            <Segment
+              options={[
+                { label: 'Admins', value: 'ADMIN' },
+                { label: 'Everyone', value: 'ANYONE' },
+              ]}
+              value={addPermission}
+              onChange={setAddPermission}
+            />
+        </View>
+
+        {/* Permission: Delete Photos */}
+        <View style={styles.controlRow}>
+            <Text style={styles.controlLabel}>Who can delete photos?</Text>
+            <Segment
+              options={[
+                { label: 'Admins Only', value: 'ADMIN' },
+                { label: 'Admins & Authors', value: 'ADMINS_AUTHORS' },
+              ]}
+              value={deletePermission}
+              onChange={setDeletePermission}
+            />
         </View>
 
       </ScrollView>
 
-      {/* Footer */}
+      {/* --- Footer Action --- */}
       <SafeAreaView style={styles.footer}>
         <TouchableOpacity
-          style={[styles.createBtn, isLoading && styles.createBtnDisabled]}
+          activeOpacity={0.8}
+          style={[styles.saveButton, isLoading && styles.saveButtonDisabled]}
           onPress={onSave}
           disabled={isLoading}
-          activeOpacity={0.7}
         >
-          <Text style={[styles.createBtnText, isLoading && styles.createBtnTextDisabled]}>
-            {isLoading ? 'Creating…' : 'Create Group'}
+          <Text style={styles.saveText}>
+            {isLoading ? 'Creating Group...' : 'Create Group'}
           </Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -217,139 +198,124 @@ const CreateGroupSettingsScreen = () => {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: COLORS.bg,
   },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 40,
+  container: {
+    flex: 1,
+  },
+  contentContainer: {
+    paddingVertical: 24,
+    paddingHorizontal: 24,
+  },
+  sectionSpacer: {
+    height: 40,
+  },
+  
+  // --- Section Headers ---
+  sectionHeaderContainer: {
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.divider,
+    paddingBottom: 8,
+  },
+  sectionHeader: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    letterSpacing: 1, // Uppercase spacing
   },
 
-  // Section
-  section: {
-    marginBottom: 24,
-  },
-  sectionLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#AAAAAA',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-    marginBottom: 8,
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#E5E5E5',
-    overflow: 'hidden',
-  },
-
-  // Switch rows
-  switchRow: {
+  // --- Rows ---
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#EBEBEB',
+    paddingVertical: 16,
   },
-  rowLast: {
-    borderBottomWidth: 0,
-  },
-  switchText: {
+  textStack: {
     flex: 1,
     paddingRight: 16,
-    gap: 2,
   },
-  switchLabel: {
-    fontSize: 15,
+  rowLabel: {
+    fontSize: 16,
     fontWeight: '500',
-    color: '#111111',
-    letterSpacing: -0.1,
+    color: COLORS.textPrimary,
+    marginBottom: 4,
   },
-  switchSub: {
-    fontSize: 12,
-    color: '#AAAAAA',
-    lineHeight: 18,
+  rowSubtext: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    lineHeight: 20,
   },
 
-  // Segment rows
-  segmentRow: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#EBEBEB',
-    gap: 10,
+  // --- Controls ---
+  controlRow: {
+    paddingVertical: 16,
   },
-  segmentLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#111111',
-    letterSpacing: -0.1,
+  controlLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginBottom: 12,
   },
-  segmentTrack: {
+
+  // --- Segment ---
+  segmentContainer: {
     flexDirection: 'row',
-    backgroundColor: '#F2F2F2',
+    backgroundColor: '#F5F5F5',
     padding: 2,
-    borderRadius: 9,
-    height: 36,
+    borderRadius: 8,
+    height: 40,
   },
   segmentDisabled: {
-    opacity: 0.4,
+    opacity: 0.5,
   },
   segmentItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 7,
+    borderRadius: 6,
   },
   segmentItemActive: {
     backgroundColor: '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.1,
     shadowRadius: 2,
-    elevation: 1,
+    elevation: 2,
   },
   segmentText: {
     fontSize: 13,
     fontWeight: '500',
-    color: '#AAAAAA',
+    color: COLORS.textSecondary,
   },
   segmentTextActive: {
     fontWeight: '600',
-    color: '#111111',
+    color: COLORS.textPrimary,
   },
 
-  // Footer
+  // --- Footer ---
   footer: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E5E5E5',
-    backgroundColor: '#FAFAFA',
+    backgroundColor: COLORS.bg,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.divider,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
   },
-  createBtn: {
-    backgroundColor: '#111111',
-    height: 48,
-    borderRadius: 13,
+  saveButton: {
+    backgroundColor: '#000000',
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  createBtnDisabled: {
-    backgroundColor: '#EFEFEF',
+  saveButtonDisabled: {
+    backgroundColor: '#E5E5EA',
   },
-  createBtnText: {
+  saveText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
-    letterSpacing: -0.1,
-  },
-  createBtnTextDisabled: {
-    color: '#BBBBBB',
   },
 });
 

@@ -6,7 +6,6 @@ import GalleryMembersScreen from "../features/gallery/screens/GalleryMembersScre
 import AddGalleryMembersScreen from "../features/gallery/screens/AddGalleryMembersScreen";
 import SingleImageScreen from "../features/gallery/screens/SingleImageScreen";
 import EditGalleryDetailsScreen from "../features/gallery/screens/GallerySettings/EditGalleryDetailsScreen";
-import EditGalleryEventScreen from "../features/gallery/screens/GallerySettings/EditGalleryEventScreen";
 import EditPermissionScreen from "../features/gallery/screens/GallerySettings/EditPermissionScreen";
 import EditAddMembersPermissionScreen from "../features/gallery/screens/GallerySettings/EditAddMembersPermissionScreen";
 import EditDeletePermissionScreen from "../features/gallery/screens/GallerySettings/EditDeletePermissionScreen";
@@ -15,7 +14,6 @@ import ChangeOwnerScreen from "../features/gallery/screens/GallerySettings/Chang
 import DefaultHeader from "../components/DefaultHeader";
 import GalleryTagsScreen from "../features/gallery/screens/GalleryTagsScreen";
 import EditRequireApprovalScreen from "../features/gallery/screens/GallerySettings/EditRequireApprovalScreen";
-import EditShareEventLinkScreen from "../features/gallery/screens/GallerySettings/EditShareEventLinkScreen";
 import PendingRequestsScreen from "../features/gallery/screens/GallerySettings/PendingRequestsScreen";
 import ShareGalleryScreen from "../features/gallery/screens/ShareGalleryScreen";
 
@@ -76,14 +74,6 @@ const GalleryStack = () => {
                     header: () => <DefaultHeader title="Edit Details"/>
                 }}
             /> 
-            <Stack.Screen 
-                name="EditGalleryEvent"
-                component={EditGalleryEventScreen as any}
-                options={{
-                    headerShown: true,
-                    header: () => <DefaultHeader title="Event"/>
-                }}
-            />
             <Stack.Screen name="EditPermission" component={EditPermissionScreen as any}
                 options={{
                     headerShown: true,
@@ -118,12 +108,6 @@ const GalleryStack = () => {
                 options={{
                     headerShown: true,
                     header: () => <DefaultHeader title="Require Join Approval"/>
-                }}
-            />
-<Stack.Screen name="EditShareEventLink" component={EditShareEventLinkScreen as any}
-                options={{
-                    headerShown: true,
-                    header: () => <DefaultHeader title="Edit Share Event Link"/>
                 }}
             />
             <Stack.Screen name="PendingRequests" component={PendingRequestsScreen as any}

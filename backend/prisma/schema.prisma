@@ -25,8 +25,6 @@ model User {
   photos         Photo[]
   photoLikes     PhotoLike[]
   devices        Device[]
-  sentFriendRequests Friendship[] @relation("SentFriendRequests")
-  receivedFriendRequests Friendship[] @relation("ReceivedFriendRequests")
   ownedCommunities    Community[]           @relation("OwnedCommunities")
   communityMemberships CommunityMembership[]
   receivedNotifications Notification[] @relation("ReceivedNotifications")
@@ -236,28 +234,6 @@ model Device {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade) // Cascade delete if user is deleted
 
   @@index([userId])
-}
-
-model Friendship {
-  id          String           @id @default(uuid())
-  requesterId String
-  receiverId  String
-  status      FriendshipStatus // PENDING, ACCEPTED, BLOCKED
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-
-  requester User @relation("SentFriendRequests", fields: [requesterId], references: [id], onDelete: Cascade) // Cascade delete if user is deleted
-  receiver  User @relation("ReceivedFriendRequests", fields: [receiverId], references: [id], onDelete: Cascade) // Cascade delete if user is deleted
-
-  @@unique([requesterId, receiverId])
-  @@index([requesterId])
-  @@index([receiverId])
-}
-
-enum FriendshipStatus {
-  PENDING
-  ACCEPTED
-  BLOCKED
 }
 
 enum NotificationType {

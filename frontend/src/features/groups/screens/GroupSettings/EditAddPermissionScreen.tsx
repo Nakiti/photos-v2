@@ -1,0 +1,177 @@
+import React, { useEffect, useState, useMemo } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { useRoute } from "@react-navigation/native";
+import { useGroup, useUpdateGroup } from "../../../../hooks/useGroupData";
+import { useMyGroupMembership } from "../../../../hooks/useGroupMembershipData";
+import { ActivityIndicator } from "react-native-paper";
+import { useQueryClient } from "@tanstack/react-query";
+
+interface EditAddMembersPermissionProps { groupId: string | number }
+
+const EditAddPermissionScreen = () => {
+   const route = useRoute();
+   const queryClient = useQueryClient();
+   const { groupId } = route.params as { groupId: string };
+
+   // Fetch group data and user's membership
+   const { group: community, isLoading, isError, error } = useGroup(groupId);
+   const { data: myMembership } = useMyGroupMembership(groupId);
+   const { mutate: updateGroup, isPending: isUpdating } = useUpdateGroup();
+
+   const [selectedOption, setSelectedOption] = useState<'all' | 'admin'>('admin');
+
+   const options = [
+      { id: "1", value: "all" as const, title: "Anyone", subtitle: "Anyone can add members to the group" },
+      { id: "2", value: "admin" as const, title: "Admin", subtitle: "Only admins can add new members" },
+   ];
+
+   // Set initial value when community loads
+   useEffect(() => {
+      if (community?.addPermission) {
+         // Map backend enum to frontend value
+         setSelectedOption(community.addPermission === 'ANYONE' ? 'all' : 'admin');
+      }
+   }, [community]);
+
+   const isDirty = useMemo(() => {
+      const currentValue = community?.addPermission === 'ANYONE' ? 'all' : 'admin';
+      return currentValue !== selectedOption;
+   }, [community?.addPermission, selectedOption]);
+
+   const handleSave = () => {
+      if (!isDirty || isUpdating) return;
+
+      // Map frontend values to backend enum values
+      const backendValue = selectedOption === 'all' ? 'ANYONE' : 'ADMIN';
+      updateGroup(
+         { groupId, data: { addPermission: backendValue } },
+         {
+            onSuccess: () => {
+               Alert.alert('Success', 'Add members permission updated!');
+               queryClient.invalidateQueries({ queryKey: ['group', groupId] });
+            },
+            onError: () => {
+               Alert.alert('Error', 'Failed to update permission.');
+            },
+         }
+      );
+   };
+
+   if (isLoading) {
+      return (
+         <View style={[styles.container, styles.center]}>
+            <ActivityIndicator size="large" color="#0000ff" />
+         </View>
+      );
+   }
+
+   if (isError) {
+      return (
+         <View style={[styles.container, styles.center]}>
+            <Text style={styles.errorText}>Failed to load community: {error?.message || 'Unknown error'}</Text>
+         </View>
+      );
+   }
+
+   const userRole = myMembership?.role;
+   const canEdit = userRole === 'ADMIN' || community?.ownerId === myMembership?.userId;
+
+   return (
+      <View style={styles.container}>
+         <Text style={styles.title}>Who can add members?</Text>
+
+         <View style={styles.optionsContainer}>
+         {options.map((item, index) => (
+            <TouchableOpacity
+               key={item.id}
+               style={[styles.option, index !== options.length - 1 && styles.optionBorder]}
+               onPress={() => setSelectedOption(item.value)}
+               disabled={!canEdit}
+            >
+               <View>
+                  <Text style={styles.optionTitle}>{item.title}</Text>
+                  <Text style={styles.optionSubtitle}>{item.subtitle}</Text>
+               </View>
+               {selectedOption === item.value && <Text style={{ color: 'green', fontSize: 18 }}>✓</Text>}
+            </TouchableOpacity>
+         ))}
+         </View>
+
+         {canEdit && <TouchableOpacity
+            style={[
+               styles.saveButton,
+               (!isDirty || isUpdating) ? styles.saveButtonDisabled : styles.saveButtonActive
+            ]}
+            disabled={!isDirty || isUpdating}
+            onPress={handleSave}
+         >
+            <Text style={styles.saveButtonText}>{isUpdating ? 'Saving...' : 'Save'}</Text>
+         </TouchableOpacity>}
+      </View>
+   );
+};
+
+export default EditAddPermissionScreen;
+
+const styles = StyleSheet.create({
+   container: {
+     flex: 1,
+     backgroundColor: "white",
+     padding: 20,
+   },
+   center: {
+     justifyContent: 'center',
+     alignItems: 'center',
+   },
+   title: {
+     color: "black",
+     fontSize: 16,
+     marginBottom: 10,
+     paddingHorizontal: 2,
+     fontWeight: "600",
+   },
+   optionsContainer: {
+     backgroundColor: "#f2f2f2",
+     borderRadius: 10,
+   },
+   option: {
+     padding: 15,
+     flexDirection: "row",
+     justifyContent: "space-between",
+     alignItems: "center",
+   },
+   optionBorder: {
+     borderBottomWidth: 1,
+     borderBottomColor: "#ddd",
+   },
+   optionTitle: {
+     color: "black",
+     fontSize: 16,
+   },
+   optionSubtitle: {
+     color: "#666",
+     fontSize: 14,
+   },
+   saveButton: {
+     marginTop: 20,
+     paddingVertical: 12,
+     borderRadius: 8,
+     alignItems: "center",
+   },
+   saveButtonDisabled: {
+     backgroundColor: "#ccc",
+   },
+   saveButtonActive: {
+     backgroundColor: "#007bff",
+   },
+   saveButtonText: {
+     color: "white",
+     fontSize: 16,
+     fontWeight: "bold",
+   },
+   errorText: {
+     color: 'red',
+   },
+});
+
+

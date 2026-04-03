@@ -54,5 +54,9 @@ export default schemaMigrations({
       toVersion: 29,
       steps: [],
     },
+    {
+      toVersion: 30,
+      steps: [],
+    },
   ],
 });

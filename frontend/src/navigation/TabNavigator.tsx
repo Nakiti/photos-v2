@@ -4,9 +4,9 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 import ProfileStack from "./ProfileStack";
-import GroupsStack from "./GroupsStack";
-import CommunitiesListScreen from "../features/communities/screens/CommunitiesListScreen";
+import GalleriesStack from "./GalleriesStack";
 import GroupsListScreen from "../features/groups/screens/GroupsListScreen";
+import GalleriesListScreen from "../features/galleries/screens/GalleriesListScreen";
 import ProfileScreen from "../features/profile/screens/ProfileScreen"
 
 const Tab = createBottomTabNavigator();
@@ -14,7 +14,7 @@ const Tab = createBottomTabNavigator();
 const TabNavigator = () => {
   return (
     <Tab.Navigator
-      initialRouteName="Groups"
+      initialRouteName="Galleries"
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarShowLabel: false,
@@ -24,9 +24,9 @@ const TabNavigator = () => {
         tabBarIcon: ({ focused, color }) => {
           let iconName = "";
 
-          if (route.name === "Groups") {
+          if (route.name === "Galleries") {
             iconName = focused ? "images" : "images-outline";
-          } else if (route.name === "Communities") {
+          } else if (route.name === "Groups") {
             iconName = focused ? "people" : "people-outline";
           } else if (route.name === "Profile") {
             iconName = focused ? "person" : "person-outline";
@@ -41,8 +41,8 @@ const TabNavigator = () => {
         },
       })}
     >
+      <Tab.Screen name="Galleries" component={GalleriesListScreen} />
       <Tab.Screen name="Groups" component={GroupsListScreen} />
-      <Tab.Screen name="Communities" component={CommunitiesListScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );

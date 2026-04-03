@@ -89,7 +89,7 @@ export interface AddCommunityMembersResponse {
 /**
  * Bulk add all members from a community to a gallery.
  * @param galleryId The gallery id
- * @param communityId The community id
+ * @param groupId The group id
  * @returns Promise resolving to the result with addedCount and errors
  */
 export const addCommunityMembersToGallery = async (

@@ -1,8 +1,8 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const mySchema = appSchema({
-  // Version 29: Removed visible column from photos
-  version: 29,
+  // Version 30: Removed friendships table
+  version: 30,
   tables: [
     tableSchema({
       name: 'users',
@@ -69,16 +69,6 @@ export const mySchema = appSchema({
         { name: 'status', type: 'string' }, // 'queued', 'uploading', 'upload_failed', 'synced', 'sync_pending'
         { name: 'retry_after', type: 'number', isOptional: true }, // Timestamp when sync_pending photos should retry
         { name: 'created_at', type: 'number' },
-      ],
-    }),
-    tableSchema({
-      name: 'friendships',
-      columns: [
-        { name: 'requester_id', type: 'string', isIndexed: true },
-        { name: 'receiver_id', type: 'string', isIndexed: true },
-        { name: 'status', type: 'string', isIndexed: true }, // 'PENDING', 'ACCEPTED', 'BLOCKED'
-        { name: 'created_at', type: 'number' },
-        { name: 'updated_at', type: 'number' },
       ],
     }),
     tableSchema({

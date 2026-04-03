@@ -5,19 +5,16 @@ export interface Gallery {
     name: string;
     ownerId: string;
     iconUrl?: string;
-    type: 'GROUP' | 'EVENT';
+    type: 'GROUP';
     lastPhotoAt?: string | null; // ISO date string from the API
     createdAt: string; // Comes as an ISO date string from the API
     updatedAt: string;
   
-    // Event-specific fields (optional)
-    startDate?: string;
-    endDate?: string;
-    location?: string;
+
     shareableLink?: string;
     
-    // Community fields (optional)
-    communityId?: string | null;
+    // Group association (optional)
+    groupId?: string | null;
     communityName?: string | null;
     
     // Permission and settings fields (optional)
