@@ -116,11 +116,16 @@ export async function getDeletedPhotoIdsSince(galleryId: string, since: string) 
 }
 
 export const createPresignedUploadUrls = async (galleryId: string, contentType: string, userId: string, clientId?: string) => {
+  console.log(`[Photos][presign] gallery=${galleryId} user=${userId} clientId=${clientId ?? 'none'}`);
+
   // Return cached response for same clientId to deduplicate rapid duplicate requests
   if (clientId) {
     const cacheKey = `presign:${clientId}`;
     const cached = await redis.get(cacheKey);
-    if (cached) return JSON.parse(cached) as ReturnType<typeof buildPresignResult>;
+    if (cached) {
+      console.log(`[Photos][presign] cache hit clientId=${clientId}`);
+      return JSON.parse(cached) as ReturnType<typeof buildPresignResult>;
+    }
   }
 
   const membership = await prisma.membership.findFirst({
@@ -155,6 +160,7 @@ export const createPresignedUploadUrls = async (galleryId: string, contentType: 
   const finalUrlThumb = `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${s3KeyThumb}`;
 
   const result = buildPresignResult(presignedUrlFull, s3KeyFull, finalUrlFull, presignedUrlThumb, s3KeyThumb, finalUrlThumb);
+  console.log(`[Photos][presign] generated full=${s3KeyFull} thumb=${s3KeyThumb}`);
 
   if (clientId) {
     await redis.set(`presign:${clientId}`, JSON.stringify(result), 'EX', expiresIn);
@@ -210,6 +216,8 @@ export async function confirmUploadedPhoto(
   tagIds?: string[],
   clientId?: string,
 ) {
+  console.log(`[Photos][confirm] start gallery=${galleryId} uploader=${uploaderId} s3Key=${s3Key} clientId=${clientId ?? 'none'}`);
+
   const resolvedS3Url =
     s3Url ??
     `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${s3Key}`;
@@ -219,13 +227,18 @@ export async function confirmUploadedPhoto(
     where: { s3Key },
     select: PHOTO_SELECT,
   });
-  if (existing) return existing;
+  if (existing) {
+    console.log(`[Photos][confirm] idempotent hit s3Key=${s3Key} photoId=${existing.id}`);
+    return existing;
+  }
 
   // 2. Atomic rate limit: check and record in one Redis operation.
   const rateCheck = await checkAndRecordUpload(uploaderId, galleryId);
   if (!rateCheck.allowed) {
+    console.log(`[Photos][confirm] rate limit DENIED user=${uploaderId} gallery=${galleryId} count=${rateCheck.currentCount}/${rateCheck.limit}`);
     throw new RateLimitError(rateCheck.limit, rateCheck.currentCount);
   }
+  console.log(`[Photos][confirm] rate check OK user=${uploaderId} gallery=${galleryId} count=${rateCheck.currentCount}/${rateCheck.limit}`);
 
   // 3. Persist the photo record.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -284,6 +297,8 @@ export async function confirmUploadedPhoto(
     throw err;
   }
 
+  console.log(`[Photos][confirm] created photoId=${created!.id} gallery=${galleryId}`);
+
   // 4. Post-transaction: broadcast and notifications.
   broadcastNewPhoto(galleryId, {
     id: created!.id,
@@ -291,6 +306,7 @@ export async function confirmUploadedPhoto(
     uploaderId: created!.uploaderId,
     ...(clientId !== undefined ? { clientId } : {}),
   });
+  console.log(`[Photos][confirm] broadcast sent gallery=${galleryId} photoId=${created!.id} clientId=${clientId ?? 'none'}`);
 
   const [uploader, gallery] = await Promise.all([
     prisma.user.findUnique({

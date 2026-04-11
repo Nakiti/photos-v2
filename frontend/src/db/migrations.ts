@@ -86,5 +86,12 @@ export default schemaMigrations({
         }),
       ],
     },
+    {
+      // WatermelonDB cannot drop columns; the status column is simply
+      // dropped from the schema and ignored going forward. Existing rows
+      // keep the column value in SQLite but it is never read or written.
+      toVersion: 33,
+      steps: [],
+    },
   ],
 });

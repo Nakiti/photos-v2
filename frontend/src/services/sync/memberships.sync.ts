@@ -3,8 +3,6 @@ import { Q } from '@nozbe/watermelondb';
 import Membership from '../../db/models/Membership';
 import User from '../../db/models/User';
 
-// Define the shape of the data coming from your API
-// It's an array of objects, each containing membership and user data
 interface RemoteMember {
   user: {
     id: string;
@@ -14,30 +12,21 @@ interface RemoteMember {
   };
   membership: {
     id: string;
-    joinedAt: string; // ISO date string from API
-    status: 'PENDING' | 'ACCEPTED' | 'INVITED' | 'BLOCKED';
+    joinedAt: string;
     role: 'ADMIN' | 'MEMBER';
     isMuted: boolean;
   };
 }
 
-/**
- * Reconciles the member list from the server with the local WatermelonDB.
- * @param database - The WatermelonDB instance.
- * @param galleryId - The ID of the gallery being synced.
- * @param remoteMembers - The array of member data from the API.
- */
 export const syncMembers = async (
   database: Database,
   galleryId: string,
   remoteMembers: RemoteMember[],
   currentUserId: string,
 ) => {
-  const membershipsCollection =
-    database.collections.get<Membership>('memberships');
+  const membershipsCollection = database.collections.get<Membership>('memberships');
   const usersCollection = database.collections.get<User>('users');
 
-  // --- 1. Fetch existing local data ---
   const localMemberships = await membershipsCollection
     .query(Q.where('gallery_id', galleryId))
     .fetch();
@@ -51,8 +40,6 @@ export const syncMembers = async (
 
   const operations: any[] = [];
 
-  // --- 2. Loop through remote data to prep operations ---
-
   for (const remoteMember of remoteMembers) {
     const user = remoteMember.user;
     const membershipApi = remoteMember.membership;
@@ -60,10 +47,8 @@ export const syncMembers = async (
     const localMembership = localMembershipMap.get(user.id);
     const localUser = localUserMap.get(user.id);
 
-    // --- A. Upsert User Profile (This part is correct now) ---
     if (user.id !== currentUserId) {
       if (localUser) {
-        // UPDATE USER
         if (
           localUser.name !== user.name ||
           localUser.avatarUrl !== user.avatarUrl ||
@@ -78,7 +63,6 @@ export const syncMembers = async (
           );
         }
       } else {
-        // CREATE USER
         operations.push(
           usersCollection.prepareCreate((record) => {
             record._raw.id = user.id;
@@ -90,25 +74,19 @@ export const syncMembers = async (
       }
     }
 
-    // --- B. Upsert Membership (THIS WAS MISSING) ---
-    // This logic must be inside the loop.
     if (localMembership) {
-      // UPDATE MEMBERSHIP: Check if local data is stale
       if (
-        localMembership.status !== membershipApi.status ||
         localMembership.role !== membershipApi.role ||
-        localMembership.isMuted != membershipApi.isMuted
+        localMembership.isMuted !== membershipApi.isMuted
       ) {
         operations.push(
           localMembership.prepareUpdate((record) => {
-            record.status = membershipApi.status;
             record.role = membershipApi.role;
             record.isMuted = membershipApi.isMuted;
           }),
         );
       }
     } else {
-      // CREATE MEMBERSHIP: New membership
       operations.push(
         membershipsCollection.prepareCreate((record) => {
           record._raw.id = membershipApi.id;
@@ -117,39 +95,26 @@ export const syncMembers = async (
           record.joinedAt = membershipApi.joinedAt
             ? new Date(membershipApi.joinedAt).getTime()
             : Date.now();
-          record.status = membershipApi.status;
           record.role = membershipApi.role;
           record.isMuted = membershipApi.isMuted;
         }),
       );
     }
-  } // <-- End of for...of loop
+  }
 
-  // --- 3. Delete Old Memberships ---
   for (const localMembership of localMemberships) {
     if (!remoteMemberUserIds.has(localMembership.userId)) {
       operations.push(localMembership.prepareDestroyPermanently());
     }
   }
 
-  // --- 4. Execute all operations in a single batch ---
   if (operations.length > 0) {
     await database.write(async () => {
       await database.batch(...operations);
     });
-    console.log(
-      `✅ Synced ${operations.length} member operations for gallery ${galleryId}.`,
-    );
   }
 };
 
-/**
- * Optimistically (and locally) removes a member from a gallery.
- * Used for instant UI feedback in hooks like useRemoveMember.
- * @param database - The WatermelonDB instance.
- * @param galleryId - The ID of the gallery.
- * @param userIdToRemove - The ID of the user to remove.
- */
 export const removeMembershipLocally = async (
   database: Database,
   galleryId: string,
@@ -169,4 +134,3 @@ export const removeMembershipLocally = async (
     }
   });
 };
-

@@ -264,7 +264,6 @@ export async function getGalleryDetails(userId: string, galleryId: string) {
         where: { userId: userId },
         select: {
           id: true,
-          status: true,
           role: true,
           isMuted: true,
         },
@@ -309,6 +308,7 @@ export async function getGalleryById(galleryId: string) {
       id: true,
       ownerId: true,
       type: true,
+      joinRequiresApproval: true,
     },
   });
 }
@@ -453,7 +453,7 @@ export async function joinGalleryByLink(userId: string, shareableLink: string) {
   await prisma.membership.upsert({
     where: { userId_galleryId: { userId, galleryId: gallery.id } },
     update: {},
-    create: { userId, galleryId: gallery.id, status: 'ACCEPTED' as any },
+    create: ({ userId, galleryId: gallery.id, role: 'MEMBER' } as unknown) as any,
   });
   
   // Increment memberCount if this is a new membership

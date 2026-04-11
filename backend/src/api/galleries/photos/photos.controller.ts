@@ -21,8 +21,6 @@ export async function getPhotosForGallery(req: Request, res: Response) {
     const parsed = getPhotosQuerySchema.parse({ query: req.query });
     const { page, limit, tagId, since } = parsed.query as { page: number; limit: number; tagId?: string; since?: string };
     const result = await photosService.listPhotos(galleryId, page, limit, tagId, userId, since);
-
-    console.log("photos result ", result)
     return res.status(200).json(result);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -64,11 +62,10 @@ export async function requestPresignedUrl(req: Request, res: Response) {
 
     return res.status(200).json(presign);
   } catch (error) {
-    console.log(error)
-
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
     }
+    console.error(`[Photos][presign] error gallery=${req.params.galleryId}:`, error);
     return res.status(500).json({ message: 'Failed to create presigned URL' });
   }
 }
@@ -101,7 +98,7 @@ export async function confirmPhotoUpload(req: Request, res: Response) {
         retryAfter: 3600,
       });
     }
-    console.log('confirmPhotoUpload error:', error);
+    console.error(`[Photos][confirm] error gallery=${req.params.galleryId}:`, error);
     return res.status(500).json({ message: 'Failed to confirm photo upload' });
   }
 }

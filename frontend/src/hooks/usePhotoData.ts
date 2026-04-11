@@ -62,11 +62,9 @@ export const useCreateOptimisticPhoto = () => {
           if (!fullImage?.uri || !thumbnail?.uri) {
             throw new Error('Image resizing failed: invalid output URI');
           }
-  
+
           // --- 3. OPTIMISTIC LOCAL CREATION ---
           const temporaryId = uuid();
-
-          console.log("local uris ", thumbnail.uri)
           
           await database.write(async () => {
             const photosCollection = database.collections.get<Photo>('photos');
@@ -235,8 +233,6 @@ export const usePhotoUploadQueue = () => {
     // Exponential backoff: track next-allowed retry time per photo ID
     const retryDelayRef = useRef<Map<string, number>>(new Map());
     const retryNotBeforeRef = useRef<Map<string, number>>(new Map());
-    
-    console.log("queuedPhotos ", queuedPhotos.length)
 
     // 1. Observe photos that need uploading (includes sync_pending for rate-limit retry)
     useEffect(() => {
@@ -254,14 +250,16 @@ export const usePhotoUploadQueue = () => {
         // Pre-check local rate limit before wasting S3 bandwidth
         const galleriesCollection = database.collections.get<Gallery>('galleries');
         const gallery = await galleriesCollection.find(photo.galleryId).catch(() => null);
-        const limitPerHour = gallery?.uploadLimitPerHour ?? 200;
+        const limitPerHour = gallery?.uploadLimitPerHour || 200;
 
-        const { allowed: localAllowed } = await checkLocalUploadLimit(
+        const { allowed: localAllowed, currentCount } = await checkLocalUploadLimit(
           database, photo.galleryId, photo.uploaderId, limitPerHour
         );
+        console.log(`[UploadQueue] rate check photo=${photo.id} allowed=${localAllowed} count=${currentCount}/${limitPerHour}`);
 
         if (!localAllowed) {
           const retryAfter = Date.now() + 60 * 60 * 1000;
+          console.log(`[UploadQueue] rate limit hit photo=${photo.id} gallery=${photo.galleryId} — deferring to sync_pending`);
           await database.write(async () => {
             await photo.update(record => {
               record.status = 'sync_pending';
@@ -272,6 +270,7 @@ export const usePhotoUploadQueue = () => {
         }
 
         // Set status to 'uploading'
+        console.log(`[UploadQueue] status queued→uploading photo=${photo.id}`);
         await database.write(async () => {
           await photo.update(record => {
             record.status = 'uploading';

@@ -12,7 +12,7 @@ async function getGalleryUploadLimit(galleryId: string): Promise<number> {
     where: { id: galleryId },
     select: { uploadLimitPerHour: true },
   });
-  const limit = gallery?.uploadLimitPerHour ?? 200;
+  const limit = gallery?.uploadLimitPerHour || 200;
   await redis.setex(cacheKey, 3600, limit.toString());
   return limit;
 }
@@ -83,10 +83,13 @@ export const checkUploadLimit = async (userId: string, galleryId: string) => {
   const windowMs = 60 * 60 * 1000;
   const limit = await getGalleryUploadLimit(galleryId);
 
-  const [, count] = await redis.multi()
+  const results = await redis.multi()
     .zremrangebyscore(key, 0, now - windowMs)
     .zcard(key)
-    .exec() as [any, number];
+    .exec();
+
+  // multi().exec() returns [[error, result], ...] pairs — extract the zcard result from index 1
+  const count = (results![1] as [null, number])[1];
 
   return { allowed: count < limit, currentCount: count, limit };
 };

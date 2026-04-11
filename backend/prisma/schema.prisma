@@ -145,7 +145,6 @@ model Membership {
   userId    String
   galleryId String
   joinedAt  DateTime @default(now())
-  status    MembershipStatus @default(ACCEPTED)
   role      MembershipRole   @default(MEMBER)
   isMuted   Boolean @default(false)
 

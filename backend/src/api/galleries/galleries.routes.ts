@@ -20,9 +20,7 @@ import membersRoutes from './members/members.routes.js';
 import tagsRoutes from './tags/tags.routes.js';
 import {
   joinGallery as joinGalleryAsUser,
-  acceptInvite,
   leaveGallery,
-  inviteMember as inviteMemberAsAdmin,
 } from './members/members.controller.js';
 
 const router = Router();
@@ -133,15 +131,8 @@ router.post('/join/:shareableLink', isAuthenticated, joinGalleryByLink);
 // POST /api/v1/galleries/:galleryId/join
 router.post('/:galleryId/join', isAuthenticated, joinGalleryAsUser);
 
-// PUT /api/v1/galleries/:galleryId/invites/accept
-router.put('/:galleryId/invites/accept', isAuthenticated, acceptInvite);
-
 // DELETE /api/v1/galleries/:galleryId/leave
 router.delete('/:galleryId/leave', isAuthenticated, leaveGallery);
-
-// --- Admin invite route ---
-// POST /api/v1/galleries/:galleryId/invites
-router.post('/:galleryId/invites', isAuthenticated, inviteMemberAsAdmin);
 
 
 

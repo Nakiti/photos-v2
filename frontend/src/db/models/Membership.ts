@@ -1,5 +1,5 @@
 import { Model } from '@nozbe/watermelondb';
-import { field, readonly, date, relation } from '@nozbe/watermelondb/decorators';
+import { field, date, relation } from '@nozbe/watermelondb/decorators';
 
 export default class Membership extends Model {
   static table = 'memberships';
@@ -12,7 +12,6 @@ export default class Membership extends Model {
   @field('user_id') userId!: string;
   @field('gallery_id') galleryId!: string;
   @date('joined_at') joinedAt!: number;
-  @field('status') status!: 'PENDING' | 'ACCEPTED' | 'INVITED' | 'BLOCKED';
   @field('role') role!: 'ADMIN' | 'MEMBER';
   @field('is_muted') isMuted!: boolean;
 

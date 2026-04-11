@@ -46,7 +46,7 @@ const GalleryMembersScreen = () => {
   const isAdminOrOwner = useMemo(() => {
     if (!currentUser || !gallery) return false;
     if (gallery.ownerId === currentUser.id) return true;
-    return myMembership?.role === 'ADMIN' && myMembership?.status === 'ACCEPTED';
+    return myMembership?.role === 'ADMIN';
   }, [currentUser, gallery, myMembership]);
 
   const displayMembers = useMemo(() =>

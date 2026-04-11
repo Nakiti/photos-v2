@@ -1,5 +1,6 @@
 import apiClient from '../apiClient';
 import { Photo } from '../../types';
+import RNFS from 'react-native-fs';
 
 export interface GalleryPhotoItem {
   id: string;
@@ -139,27 +140,32 @@ const getPresignedUrls = async (galleryId: string, contentType: string, clientId
 
 /**
  * Upload a local file to object storage using a presigned URL.
- * Uses XMLHttpRequest instead of fetch — React Native's XHR natively streams
- * file:// URIs without loading the full image into the JS heap as a Blob,
- * avoiding the "Network request failed" error that fetch produces for large local files.
+ *
+ * Why not fetch(fileUri): fetch() on a file:// URI fails on Android ("Network request failed").
+ * Why not xhr.send({ uri, type, name }): RN's native layer treats this as multipart/form-data,
+ * so the wire Content-Type doesn't match the image/jpeg that was signed into the presigned URL → S3 403.
+ *
+ * The reliable cross-platform pattern:
+ * 1. RNFS.readFile reads the file natively (works on both iOS and Android)
+ * 2. fetch('data:...') converts base64 → Blob cleanly without manual byte manipulation
+ * 3. fetch PUT sends the Blob with a predictable Content-Type: image/jpeg
  */
-const uploadToS3 = (presignedUrl: string, fileUri: string): Promise<void> => {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('PUT', presignedUrl);
-    xhr.setRequestHeader('Content-Type', 'image/jpeg');
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        resolve();
-      } else {
-        reject(new Error(`S3 upload failed: ${xhr.status}`));
-      }
-    };
-    xhr.onerror = () => reject(new Error('Network request failed'));
-    xhr.ontimeout = () => reject(new Error('S3 upload timed out'));
-    // React Native XHR accepts { uri, type, name } and handles file reading natively
-    xhr.send({ uri: fileUri, type: 'image/jpeg', name: 'photo.jpg' } as any);
+const uploadToS3 = async (presignedUrl: string, fileUri: string): Promise<void> => {
+  const filePath = fileUri.replace(/^file:\/\//, '');
+  const base64 = await RNFS.readFile(filePath, 'base64');
+
+  const blobRes = await fetch(`data:image/jpeg;base64,${base64}`);
+  const blob = await blobRes.blob();
+
+  const s3Response = await fetch(presignedUrl, {
+    method: 'PUT',
+    body: blob,
+    headers: { 'Content-Type': 'image/jpeg' },
   });
+
+  if (!s3Response.ok) {
+    throw new Error(`S3 upload failed: ${s3Response.status}`);
+  }
 };
 
 /**
@@ -221,18 +227,23 @@ export const uploadPhotoFlow = async (
   clientId?: string,
   onPresign?: (s3Key: string) => Promise<void>,
 ): Promise<Photo> => {
+  console.log(`[Upload] presign start gallery=${galleryId} clientId=${clientId ?? 'none'}`);
   const { full, thumb } = await getPresignedUrls(galleryId, 'image/jpeg', clientId);
+  console.log(`[Upload] presign OK full=${full.s3Key} thumb=${thumb.s3Key}`);
 
   // Persist s3Key before uploading so conflict detection can match socket events
   // that race the confirm response.
   if (onPresign) await onPresign(full.s3Key);
 
+  console.log(`[Upload] s3 PUT start clientId=${clientId ?? 'none'}`);
   await Promise.all([
     uploadToS3(full.presignedUrl, fullImageUri),
     uploadToS3(thumb.presignedUrl, thumbImageUri),
   ]);
+  console.log(`[Upload] s3 PUT done s3Key=${full.s3Key}`);
 
-  return confirmUpload(galleryId, {
+  console.log(`[Upload] confirm start s3Key=${full.s3Key} gallery=${galleryId}`);
+  const photo = await confirmUpload(galleryId, {
     s3Key: full.s3Key,
     s3Url: full.finalUrl,
     thumbnailKey: thumb.s3Key,
@@ -240,6 +251,8 @@ export const uploadPhotoFlow = async (
     tagIds,
     clientId,
   });
+  console.log(`[Upload] confirm OK photoId=${photo.id} gallery=${galleryId}`);
+  return photo;
 };
 
 /**

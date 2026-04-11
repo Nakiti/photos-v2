@@ -1,8 +1,8 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const mySchema = appSchema({
-  // Version 32: Created photo_attempts table
-  version: 32,
+  // Version 33: Removed status column from memberships
+  version: 33,
   tables: [
     tableSchema({
       name: 'users',
@@ -51,7 +51,6 @@ export const mySchema = appSchema({
         { name: 'user_id', type: 'string', isIndexed: true },
         { name: 'gallery_id', type: 'string', isIndexed: true },
         { name: 'joined_at', type: 'number' },
-        { name: 'status', type: 'string', isIndexed: true }, 
         { name: 'role', type: 'string', isIndexed: true },
         { name: 'is_muted', type: 'boolean' }
       ],
