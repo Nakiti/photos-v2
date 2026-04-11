@@ -31,8 +31,8 @@ export const syncGroups = async (
     const local = localMap.get(rc.id);
     const mapRemoteToLocal = (record: Group) => {
       record.name = rc.name;
-      record.description = rc.description ?? null;
-      record.iconUrl = rc.iconUrl ?? null;
+      record.description = rc.description ?? undefined;
+      record.iconUrl = rc.iconUrl ?? undefined;
       record.ownerId = rc.ownerId;
       record.joinRequiresApproval = rc.joinRequiresApproval ?? undefined;
       record.addPermission = rc.addPermission ?? undefined;
@@ -50,8 +50,8 @@ export const syncGroups = async (
     if (local) {
       const needsUpdate =
         local.name !== rc.name ||
-        local.description !== (rc.description ?? null) ||
-        local.iconUrl !== (rc.iconUrl ?? null) ||
+        local.description !== (rc.description ?? undefined) ||
+        local.iconUrl !== (rc.iconUrl ?? undefined) ||
         local.ownerId !== rc.ownerId ||
         local.joinRequiresApproval !== rc.joinRequiresApproval ||
         local.addPermission !== rc.addPermission ||
@@ -106,8 +106,8 @@ export const syncGroupDetails = async (
 
   const mapRemoteToLocal = (record: Group) => {
     record.name = remoteGroup.name;
-    record.description = remoteGroup.description ?? null;
-    record.iconUrl = remoteGroup.iconUrl ?? null;
+    record.description = remoteGroup.description ?? undefined;
+    record.iconUrl = remoteGroup.iconUrl ?? undefined;
     record.ownerId = remoteGroup.ownerId;
     record.joinRequiresApproval = remoteGroup.joinRequiresApproval ?? undefined;
     record.addPermission = remoteGroup.addPermission ?? undefined;

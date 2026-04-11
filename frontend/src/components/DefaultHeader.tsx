@@ -31,8 +31,6 @@ const DefaultHeader = ({ title }: { title?: string }) => {
   );
 };
 
-export default DefaultHeader;
-
 const styles = StyleSheet.create({
   root: {
     backgroundColor: '#FAFAFA',

@@ -21,7 +21,7 @@ const GroupHeader: React.FC<Props> = ({
   color = '#111',
   groupId
 }) => {
-    const navigation = useNavigation<Any>()
+    const navigation = useNavigation<any>()
 
 
     return (

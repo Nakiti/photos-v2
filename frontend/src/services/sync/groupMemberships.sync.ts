@@ -43,14 +43,14 @@ export const syncGroupMembers = async (
       if (localUser) {
         if (
           localUser.name !== user.name ||
-          localUser.avatar_url !== user.avatarUrl ||
+          localUser.avatarUrl !== user.avatarUrl ||
           localUser.handle !== user.handle
         ) {
           operations.push(
             localUser.prepareUpdate(record => {
               record.name = user.name;
-              record.avatar_url = user.avatarUrl;
-              record.handle = user.handle;
+              record.avatarUrl = user.avatarUrl ?? undefined;
+              record.handle = user.handle ?? '';
             })
           );
         }
@@ -59,8 +59,8 @@ export const syncGroupMembers = async (
           usersCollection.prepareCreate(record => {
             record._raw.id = user.id;
             record.name = user.name;
-            record.avatar_url = user.avatarUrl;
-            record.handle = user.handle;
+            record.avatarUrl = user.avatarUrl ?? undefined;
+            record.handle = user.handle ?? '';
           })
         );
       }

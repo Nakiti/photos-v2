@@ -101,7 +101,7 @@ export async function confirmPhotoUpload(req: Request, res: Response) {
         retryAfter: 3600,
       });
     }
-    console.error('confirmPhotoUpload error:', error);
+    console.log('confirmPhotoUpload error:', error);
     return res.status(500).json({ message: 'Failed to confirm photo upload' });
   }
 }

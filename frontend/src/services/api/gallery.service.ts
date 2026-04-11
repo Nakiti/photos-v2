@@ -18,6 +18,7 @@ export interface CreateGalleryRequest {
   endDate?: string | null;
   location?: string | null;
   communityId?: string;
+  groupId?: string;
 }
 
 /**

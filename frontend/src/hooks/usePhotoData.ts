@@ -6,7 +6,8 @@ import Photo from "../db/models/Photo";
 import { uploadPhoto, deletePhoto, uploadPhotoFlow } from "../services/api/photos.service";
 import { useState, useEffect, useRef } from "react";
 import { updateOptimisticPhoto } from "../services/sync/photos.sync";
-import { recordLocalAttempt, findAttemptByPhotoId, markAttemptConfirmed, markAttemptRejected } from "../services/rateLimit.service";
+import { recordLocalAttempt, findAttemptByPhotoId, markAttemptConfirmed, markAttemptRejected, checkLocalUploadLimit } from "../services/rateLimit.service";
+import Gallery from "../db/models/Gallery";
 import { Q } from "@nozbe/watermelondb";
 import ImageResizer from 'react-native-image-resizer'; // 1. Import the resizer
 import RNFS from 'react-native-fs';
@@ -234,6 +235,8 @@ export const usePhotoUploadQueue = () => {
     // Exponential backoff: track next-allowed retry time per photo ID
     const retryDelayRef = useRef<Map<string, number>>(new Map());
     const retryNotBeforeRef = useRef<Map<string, number>>(new Map());
+    
+    console.log("queuedPhotos ", queuedPhotos.length)
 
     // 1. Observe photos that need uploading (includes sync_pending for rate-limit retry)
     useEffect(() => {
@@ -248,6 +251,26 @@ export const usePhotoUploadQueue = () => {
     // 2. Define the mutation that does the uploading
     const { mutate: processUpload } = useMutation({
       mutationFn: async (photo: Photo) => {
+        // Pre-check local rate limit before wasting S3 bandwidth
+        const galleriesCollection = database.collections.get<Gallery>('galleries');
+        const gallery = await galleriesCollection.find(photo.galleryId).catch(() => null);
+        const limitPerHour = gallery?.uploadLimitPerHour ?? 200;
+
+        const { allowed: localAllowed } = await checkLocalUploadLimit(
+          database, photo.galleryId, photo.uploaderId, limitPerHour
+        );
+
+        if (!localAllowed) {
+          const retryAfter = Date.now() + 60 * 60 * 1000;
+          await database.write(async () => {
+            await photo.update(record => {
+              record.status = 'sync_pending';
+              record.retryAfter = retryAfter;
+            });
+          });
+          throw Object.assign(new Error('Upload rate limit exceeded'), { response: { status: 429 } });
+        }
+
         // Set status to 'uploading'
         await database.write(async () => {
           await photo.update(record => {
@@ -259,28 +282,35 @@ export const usePhotoUploadQueue = () => {
         const tags = await photoTagsCollection.query(Q.where('photo_id', photo.id)).fetch()
         const tagIds = tags.map(t => t.tagId)
 
-        console.log("photo before upoad queue ", photo)
+        // console.log("photo before upoad queue ", photo)
 
         // Capture local paths before the optimistic record is replaced
         const localUri = photo.localUri;
         const localThumbnailUri = photo.localThumbnailUri;
 
+        if (!localUri || !localThumbnailUri) {
+          console.error(`[UploadQueue] photo ${photo.id} missing local URIs (full=${localUri}, thumb=${localThumbnailUri}) — skipping`);
+          await database.write(async () => {
+            await photo.update(record => { record.status = 'upload_failed'; });
+          });
+          throw new Error('Missing local file URIs');
+        }
+
         try {
+          console.log(`[UploadQueue] uploading photo ${photo.id} gallery=${photo.galleryId}`);
           const finalPhoto = await uploadPhotoFlow(
               photo.galleryId,
-              localUri!,
-              localThumbnailUri!,
+              localUri,
+              localThumbnailUri,
               tagIds,
               photo.id, // clientId for socket deduplication
               async (s3Key) => {
-                // Persist the assigned s3Key on the optimistic record so that the
-                // syncPhotos conflict-detection guard can match it if the socket
-                // event triggers a gallery refetch before the confirm response arrives.
                 await database.write(async () => {
                   await photo.update(record => { record.s3Key = s3Key; });
                 });
               },
-          )
+          );
+          console.log(`[UploadQueue] upload succeeded photo=${photo.id} finalId=${finalPhoto.id}`);
 
           // Sync the final data
           await updateOptimisticPhoto(database, photo.id, finalPhoto);
@@ -299,6 +329,7 @@ export const usePhotoUploadQueue = () => {
           if (localUri) RNFS.unlink(localUri).catch(() => {});
           if (localThumbnailUri) RNFS.unlink(localThumbnailUri).catch(() => {});
         } catch (uploadError: any) {
+          console.error(`[UploadQueue] upload failed photo=${photo.id}:`, uploadError?.message ?? uploadError, uploadError?.response?.status ? `HTTP ${uploadError.response.status}` : '');
           // Check if it's a 429 rate limit error
           if (uploadError?.response?.status === 429) {
             const retryAfterHeader = uploadError.response?.headers?.['retry-after'];

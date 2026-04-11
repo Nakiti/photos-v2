@@ -58,5 +58,33 @@ export default schemaMigrations({
       toVersion: 30,
       steps: [],
     },
+    {
+      toVersion: 31,
+      steps: [
+        addColumns({
+          table: 'photos',
+          columns: [
+            { name: 'retry_after', type: 'number', isOptional: true },
+          ],
+        }),
+      ],
+    },
+    {
+      toVersion: 32,
+      steps: [
+        createTable({
+          name: 'photo_attempts',
+          columns: [
+            { name: 'gallery_id', type: 'string', isIndexed: true },
+            { name: 'user_id', type: 'string', isIndexed: true },
+            { name: 'attempted_at', type: 'number', isIndexed: true },
+            { name: 'status', type: 'string', isIndexed: true },
+            { name: 'photo_id', type: 'string', isOptional: true, isIndexed: true },
+            { name: 'server_rejected', type: 'boolean', isOptional: true },
+            { name: 'retry_after', type: 'number', isOptional: true },
+          ],
+        }),
+      ],
+    },
   ],
 });

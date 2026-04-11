@@ -31,10 +31,7 @@ const GroupsListScreen = () => {
   const renderItem = ({ item }: any) => (
     <GroupCard
       name={item.name}
-      description={item.description}
-      iconUrl={item.iconUrl}
       membersCount={item.memberCount}
-      galleryCount={item.galleryCount}
       onPress={() =>
         navigation.navigate('GroupFlow', {
           screen: 'Group',

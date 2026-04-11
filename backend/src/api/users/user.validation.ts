@@ -14,8 +14,8 @@ export type UpdateMyProfileDto = z.infer<typeof updateMyProfileSchema>['body'];
 // Schema for adding/registering a device token for push notifications
 export const addDeviceTokenSchema = z.object({
   body: z.object({
-    token: z.string({ required_error: 'Device token is required' }),
-    platform: z.enum(['ios', 'android'], { required_error: 'Platform is required' }),
+    token: z.string({ message: 'Device token is required' }),
+    platform: z.enum(['ios', 'android'], { message: 'Platform is required' }),
   }),
 });
 

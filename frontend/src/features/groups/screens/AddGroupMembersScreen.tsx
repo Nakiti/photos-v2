@@ -4,7 +4,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useRoute } from '@react-navigation/native';
 import { useGroupMembers, useAddGroupMember, useRemoveGroupMember } from '../../../hooks/useGroupMembershipData';
 import { useSearchUsers } from '../../../hooks/useUser';
-import AddMemberListItem from '../../groups/components/AddMemberListItem';
+import AddMemberListItem from '../../galleries/components/AddMemberListItem';
 
 type DisplayUser = {
   id: string;
@@ -174,8 +174,7 @@ const AddGroupMembersScreen = () => {
                     } as any
                   }
                   status="member"
-                  onInvite={() => {}}
-                  onRemove={() => removeMember({ groupId, userId: m.id })}
+                  onInvite={() => removeMember({ groupId, userId: m.id })}
                   isInviting={isRemoving}
                 />
               ))

@@ -28,7 +28,7 @@ async function notifyGalleryMembers(
   let cursor: string | undefined;
 
   while (true) {
-    const batch: MemberWithDevices[] = await prisma.membership.findMany({
+    const batch = (await prisma.membership.findMany({
       where: {
         galleryId,
         userId: { notIn: Array.from(excludeUserIds) },
@@ -43,7 +43,7 @@ async function notifyGalleryMembers(
       take: MEMBER_BATCH_SIZE,
       orderBy: { id: 'asc' },
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    } as any);
+    } as any)) as unknown as MemberWithDevices[];
 
     if (batch.length === 0) break;
 
@@ -70,7 +70,7 @@ async function notifyGalleryMembers(
     }
 
     if (batch.length < MEMBER_BATCH_SIZE) break;
-    cursor = batch[batch.length - 1].id;
+    cursor = batch[batch.length - 1]!.id;
   }
 }
 

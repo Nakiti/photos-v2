@@ -15,11 +15,12 @@ export async function getNotifications(req: Request, res: Response) {
     const parsed = getNotificationsSchema.parse({ query: req.query });
     const filters = parsed.query;
 
-    const result = await notificationsService.getNotificationsForUser(userId, {
+    const notifFilters: { limit?: number; offset?: number; isRead?: boolean } = {
       limit: filters.limit,
       offset: filters.offset,
-      isRead: filters.isRead,
-    });
+    };
+    if (filters.isRead !== undefined) notifFilters.isRead = filters.isRead;
+    const result = await notificationsService.getNotificationsForUser(userId, notifFilters);
 
     return res.status(200).json(result);
   } catch (error) {

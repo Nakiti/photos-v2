@@ -10,60 +10,48 @@ export async function isAdminOrOwner(userId: string, groupId: string) {
 	if (!community) return false;
 	if (community.ownerId === userId) return true;
 	const membership = await prisma.communityMembership.findUnique({
-		where: { userId_groupId: { userId, groupId } },
-		select: { role: true } as any,
+		where: { userId_communityId: { userId, communityId: groupId } },
+		select: { role: true },
 	});
-	return !!membership && (membership as any).role === 'ADMIN';
+	return !!membership && membership.role === 'ADMIN';
 }
 
 export async function addMember(groupId: string, userIdToAdd: string) {
-	// Check if membership already exists
 	const existing = await prisma.communityMembership.findUnique({
-		where: { userId_groupId: { userId: userIdToAdd, groupId } },
-		select: { status: true } as any,
+		where: { userId_communityId: { userId: userIdToAdd, communityId: groupId } },
+		select: { status: true },
 	});
-	
+
 	const membership = await prisma.communityMembership.upsert({
-		where: { userId_groupId: { userId: userIdToAdd, groupId } },
+		where: { userId_communityId: { userId: userIdToAdd, communityId: groupId } },
 		update: {},
-		create: { userId: userIdToAdd, groupId, status: 'ACCEPTED' as any },
+		create: { userId: userIdToAdd, communityId: groupId, status: 'ACCEPTED', role: 'MEMBER' },
 	});
-	
-	// Increment memberCount if this is a new membership
+
 	if (!existing) {
 		await prisma.community.update({
 			where: { id: groupId },
-			data: {
-				memberCount: {
-					increment: 1,
-				},
-			},
+			data: { memberCount: { increment: 1 } },
 		});
 	}
-	
+
 	return membership;
 }
 
 export async function removeMember(groupId: string, userIdToRemove: string) {
-	// Check if membership exists and its status before deleting
 	const existing = await prisma.communityMembership.findUnique({
-		where: { userId_groupId: { userId: userIdToRemove, groupId } },
-		select: { status: true } as any,
+		where: { userId_communityId: { userId: userIdToRemove, communityId: groupId } },
+		select: { status: true },
 	});
-	
+
 	await prisma.communityMembership.delete({
-		where: { userId_groupId: { userId: userIdToRemove, groupId } },
+		where: { userId_communityId: { userId: userIdToRemove, communityId: groupId } },
 	});
-	
-	// Decrement memberCount if membership was ACCEPTED
-	if (existing && (existing as any).status === 'ACCEPTED') {
+
+	if (existing?.status === 'ACCEPTED') {
 		await prisma.community.update({
 			where: { id: groupId },
-			data: {
-				memberCount: {
-					decrement: 1,
-				},
-			},
+			data: { memberCount: { decrement: 1 } },
 		});
 	}
 }
@@ -73,7 +61,7 @@ export async function getMembers(
 	status?: 'PENDING' | 'ACCEPTED' | 'INVITED' | 'BLOCKED'
 ) {
 	const memberships = await prisma.communityMembership.findMany({
-		where: { groupId, ...(status ? { status } : {}) },
+		where: { communityId: groupId, ...(status ? { status } : {}) },
 		include: { user: true },
 		orderBy: { joinedAt: 'desc' },
 	});
@@ -82,110 +70,90 @@ export async function getMembers(
 			id: m.user.id,
 			name: m.user.name ?? undefined,
 			avatarUrl: m.user.avatarUrl ?? undefined,
-			handle: (m.user as any).handle,
+			handle: m.user.handle,
 		},
 		membership: {
 			id: m.id,
 			joinedAt: m.joinedAt.toISOString(),
-			role: (m.role as any),
-			status: (m.status as any),
+			role: m.role,
+			status: m.status,
 		},
 	}));
 }
 
 export async function getMembership(userId: string, groupId: string) {
 	return prisma.communityMembership.findUnique({
-		where: { userId_groupId: { userId, groupId } },
+		where: { userId_communityId: { userId, communityId: groupId } },
 	});
 }
 
 export async function joinGroup(groupId: string, userId: string) {
-	// Check if community requires approval
 	const community = await prisma.community.findUnique({
 		where: { id: groupId },
 		select: { joinRequiresApproval: true },
 	});
-	
+
 	const requiresApproval = community?.joinRequiresApproval ?? false;
 	const status: 'ACCEPTED' | 'PENDING' = requiresApproval ? 'PENDING' : 'ACCEPTED';
-	
-	// Check if membership already exists
+
 	const existing = await prisma.communityMembership.findUnique({
-		where: { userId_groupId: { userId, groupId } },
+		where: { userId_communityId: { userId, communityId: groupId } },
 	});
-	
+
 	const membership = await prisma.communityMembership.upsert({
-		where: { userId_groupId: { userId, groupId } },
+		where: { userId_communityId: { userId, communityId: groupId } },
 		update: {},
-		create: ({ userId, groupId, role: 'MEMBER', status } as unknown) as any,
+		create: { userId, communityId: groupId, role: 'MEMBER', status },
 	});
-	
-	// Increment memberCount if this is a new membership with ACCEPTED status
+
 	if (!existing && status === 'ACCEPTED') {
 		await prisma.community.update({
 			where: { id: groupId },
-			data: {
-				memberCount: {
-					increment: 1,
-				},
-			},
+			data: { memberCount: { increment: 1 } },
 		});
 	}
-	
+
 	return membership;
 }
 
-/**
- * Approve a pending membership (admin only).
- */
 export async function approveMember(groupId: string, targetUserId: string) {
 	const existing = await prisma.communityMembership.findUnique({
-		where: { userId_groupId: { userId: targetUserId, groupId } },
-		select: { status: true } as any,
+		where: { userId_communityId: { userId: targetUserId, communityId: groupId } },
+		select: { status: true },
 	});
-	const current = existing as any;
-	if (!current || current.status !== 'PENDING') return null;
-	
+	if (!existing || existing.status !== 'PENDING') return null;
+
 	const membership = await prisma.communityMembership.update({
-		where: { userId_groupId: { userId: targetUserId, groupId } },
-		data: ({ status: 'ACCEPTED' } as unknown) as any,
+		where: { userId_communityId: { userId: targetUserId, communityId: groupId } },
+		data: { status: 'ACCEPTED' },
 	});
-	
-	// Increment memberCount when status changes from PENDING to ACCEPTED
+
 	await prisma.community.update({
 		where: { id: groupId },
-		data: {
-			memberCount: {
-				increment: 1,
-			},
-		},
+		data: { memberCount: { increment: 1 } },
 	});
-	
+
 	return membership;
 }
 
 export async function leaveGroup(groupId: string, userId: string) {
 	try {
-		// Check if membership exists and its status before deleting
 		const existing = await prisma.communityMembership.findUnique({
-			where: { userId_groupId: { userId, groupId } },
-			select: { status: true } as any,
+			where: { userId_communityId: { userId, communityId: groupId } },
+			select: { status: true },
 		});
-		
-		await prisma.communityMembership.delete({ where: { userId_groupId: { userId, groupId } } });
-		
-		// Decrement memberCount if membership was ACCEPTED
-		if (existing && (existing as any).status === 'ACCEPTED') {
+
+		await prisma.communityMembership.delete({
+			where: { userId_communityId: { userId, communityId: groupId } },
+		});
+
+		if (existing?.status === 'ACCEPTED') {
 			await prisma.community.update({
 				where: { id: groupId },
-				data: {
-					memberCount: {
-						decrement: 1,
-					},
-				},
+				data: { memberCount: { decrement: 1 } },
 			});
 		}
-		
+
 		return true;
 	} catch {
 		return false;
@@ -194,16 +162,7 @@ export async function leaveGroup(groupId: string, userId: string) {
 
 export async function promoteMember(groupId: string, targetUserId: string) {
 	return prisma.communityMembership.update({
-		where: { userId_groupId: { userId: targetUserId, groupId } },
-		data: ({ role: 'ADMIN' } as unknown) as any,
+		where: { userId_communityId: { userId: targetUserId, communityId: groupId } },
+		data: { role: 'ADMIN' },
 	});
 }
-
-
-
-
-
-
-
-
-

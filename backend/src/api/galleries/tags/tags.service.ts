@@ -19,7 +19,7 @@ export async function createTag(galleryId: string, data: { name: string; color?:
     const tag = await prisma.tag.create({
       data: {
         name: data.name,
-        color: data.color,
+        color: data.color ?? null,
         galleryId,
       },
       select: {
@@ -49,12 +49,12 @@ export async function updateTag(
   });
   if (!existing) return null;
   try {
+    const tagUpdateData: { name?: string; color?: string | null } = {};
+    if (data.name !== undefined) tagUpdateData.name = data.name;
+    if (data.color !== undefined) tagUpdateData.color = data.color ?? null;
     const updated = await prisma.tag.update({
       where: { id: tagId },
-      data: {
-        name: data.name ?? undefined,
-        color: data.color ?? undefined,
-      },
+      data: tagUpdateData,
       select: {
         id: true,
         name: true,

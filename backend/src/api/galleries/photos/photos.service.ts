@@ -228,7 +228,8 @@ export async function confirmUploadedPhoto(
   }
 
   // 3. Persist the photo record.
-  let created: typeof existing;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let created: any;
   try {
     created = await prisma.$transaction(async (tx) => {
       const photo = await tx.photo.create({
@@ -288,7 +289,7 @@ export async function confirmUploadedPhoto(
     id: created!.id,
     galleryId: created!.galleryId,
     uploaderId: created!.uploaderId,
-    clientId,
+    ...(clientId !== undefined ? { clientId } : {}),
   });
 
   const [uploader, gallery] = await Promise.all([

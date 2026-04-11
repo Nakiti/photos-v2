@@ -54,7 +54,7 @@ model Gallery {
   defaultTagId       String? @unique
   photoCount         Int      @default(0)
   memberCount        Int      @default(0)
-  uploadLimitPerHour Int      @default(10)
+  uploadLimitPerHour Int      @default(200)
 
   communityId String? 
   community   Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)

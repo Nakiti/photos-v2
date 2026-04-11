@@ -17,7 +17,7 @@ type SingleImageProps = {
 };
 
 const SingleImage = ({ imageSize, images, item, index, galleryId, selectedTagId }: SingleImageProps) => {
-   const navigation = useNavigation()
+   const navigation = useNavigation<any>()
    const [imageError, setImageError] = useState(false);
 
     /**

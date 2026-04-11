@@ -28,12 +28,13 @@ const EditAddMembersPermissionScreen = () => {
    // Set initial value when gallery loads
    useEffect(() => {
       if (gallery?.addPermission) {
-         setSelectedOption(gallery.addPermission);
+         setSelectedOption(gallery.addPermission === 'ANYONE' ? 'all' : 'admin');
       }
    }, [gallery]);
 
    const isDirty = useMemo(() => {
-      return gallery?.addPermission !== selectedOption;
+      const apiValue = selectedOption === 'all' ? 'ANYONE' : 'ADMIN';
+      return gallery?.addPermission !== apiValue;
    }, [gallery?.addPermission, selectedOption]);
 
    const handleSave = () => {

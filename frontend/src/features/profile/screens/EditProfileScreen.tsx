@@ -28,19 +28,17 @@ const EditProfileScreen: React.FC = () => {
   const { mutate: updateProfile, isPending: isUpdatingProfile } = useUpdateMyProfile();
 
   const [name, setName] = useState('');
-  const [bio, setBio] = useState('');
   const [localAvatarUri, setLocalAvatarUri] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
       setName(user.name || '');
-      setBio(user.bio || '');
       setLocalAvatarUri(null);
     }
   }, [user]);
 
   const isDirty =
-    (user && (name.trim() !== (user.name || '') || bio.trim() !== (user.bio || ''))) ||
+    (user && name.trim() !== (user.name || '')) ||
     localAvatarUri !== null;
 
   const handleChangeAvatar = () => {
@@ -60,7 +58,7 @@ const EditProfileScreen: React.FC = () => {
 
   const handleSave = () => {
     if (!isDirty || isUpdatingProfile) return;
-    updateProfile({ name: name.trim(), bio: bio.trim() }, {
+    updateProfile({ name: name.trim() }, {
       onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['me'] }); navigation.goBack(); },
       onError: () => Alert.alert('Error', 'Failed to update profile.'),
     });
@@ -125,19 +123,6 @@ const EditProfileScreen: React.FC = () => {
                   onChangeText={setName}
                   placeholder="Your name"
                   placeholderTextColor="#CCCCCC"
-                  editable={!isLoading}
-                />
-              </View>
-              <View style={[styles.inputRow, styles.noBorder]}>
-                <Text style={styles.inputLabel}>Bio</Text>
-                <TextInput
-                  style={[styles.input, styles.multilineInput]}
-                  value={bio}
-                  onChangeText={setBio}
-                  placeholder="Tell us about yourself…"
-                  placeholderTextColor="#CCCCCC"
-                  multiline
-                  textAlignVertical="top"
                   editable={!isLoading}
                 />
               </View>

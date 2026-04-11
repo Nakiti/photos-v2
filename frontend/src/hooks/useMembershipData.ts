@@ -454,8 +454,8 @@ export const useMyMembership = (galleryId: string | null) => {
 export const useAddCommunityMembersToGallery = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ galleryId, communityId }: { galleryId: string; communityId: string }) =>
-      addCommunityMembersToGallery(galleryId, communityId),
+    mutationFn: ({ galleryId, groupId }: { galleryId: string; groupId: string }) =>
+      addCommunityMembersToGallery(galleryId, groupId),
     onSuccess: (data, { galleryId }) => {
       queryClient.invalidateQueries({ queryKey: ['memberships', galleryId] });
     },

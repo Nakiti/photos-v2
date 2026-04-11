@@ -2,7 +2,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as galleriesService from './galleries.service.js';
-import * as communitiesService from '../communities/communities.service.js';
+import * as groupsService from '../groups/groups.service.js';
 import {
   createGallerySchema,
   updateGallerySchema,
@@ -31,7 +31,7 @@ export async function createGallery(req: Request, res: Response) {
     const galleryData = parsed.body as CreateGalleryDto;
 
     if (galleryData.communityId) {
-      const community = await communitiesService.getCommunityDetails(ownerId, galleryData.communityId);
+      const community = await groupsService.getGroupDetails(ownerId, galleryData.communityId);
       if (!community) {
         return res.status(404).json({ message: 'Community not found or inaccessible' });
       }
@@ -76,7 +76,7 @@ export async function getMyGalleries(req: Request, res: Response) {
 export async function getGalleryDetails(req: Request, res: Response) {
   const userId = (req as any).user?.id as string | undefined;
   if (!userId) return res.status(401).json({ message: 'Unauthorized' });
-  const { galleryId } = req.params;
+  const { galleryId } = req.params as { galleryId: string };
   const gallery = await galleriesService.getGalleryDetails(userId, galleryId);
   if (!gallery) return res.status(404).json({ message: 'Gallery not found' });
   return res.status(200).json(gallery);
@@ -89,7 +89,7 @@ export async function getGalleryDetails(req: Request, res: Response) {
 export async function updateGallery(req: Request, res: Response) {
   const ownerId = (req as any).user?.id as string | undefined;
   if (!ownerId) return res.status(401).json({ message: 'Unauthorized' });
-  const { galleryId } = req.params;
+  const { galleryId } = req.params as { galleryId: string };
   console.log("dat body ", req.body)
 
   try {
@@ -103,7 +103,7 @@ export async function updateGallery(req: Request, res: Response) {
     }
 
     console.log("backed update data ", data)
-    const updated = await galleriesService.updateGallery(ownerId, galleryId, data);
+    const updated = await galleriesService.updateGallery(ownerId, galleryId, data as any);
     return res.status(200).json(updated);
   } catch (error) {
     console.log(error)
@@ -121,7 +121,7 @@ export async function updateGallery(req: Request, res: Response) {
 export async function getShareLink(req: Request, res: Response) {
   const userId = (req as any).user?.id as string | undefined;
   if (!userId) return res.status(401).json({ message: 'Unauthorized' });
-  const { galleryId } = req.params;
+  const { galleryId } = req.params as { galleryId: string };
   try {
     const shareLink = await galleriesService.createGalleryShareLink(userId, galleryId);
     return res.status(200).json({ shareLink });
@@ -138,7 +138,7 @@ export async function getShareLink(req: Request, res: Response) {
 export async function deleteGallery(req: Request, res: Response) {
   const ownerId = (req as any).user?.id as string | undefined;
   if (!ownerId) return res.status(401).json({ message: 'Unauthorized' });
-  const { galleryId } = req.params;
+  const { galleryId } = req.params as { galleryId: string };
   const result = await galleriesService.deleteGallery(ownerId, galleryId);
   if (!result) return res.status(403).json({ message: 'Forbidden' });
   return res.status(204).send();
@@ -188,7 +188,7 @@ export async function getGalleriesByCommunity(req: Request, res: Response) {
   if (!userId) return res.status(401).json({ message: 'Unauthorized' });
   const { communityId } = req.params as { communityId: string };
 
-  const community = await communitiesService.getCommunityDetails(userId, communityId);
+  const community = await groupsService.getGroupDetails(userId, communityId);
   if (!community) {
     return res.status(404).json({ message: 'Community not found' });
   }
@@ -204,7 +204,7 @@ export async function getGalleriesByCommunity(req: Request, res: Response) {
  */
 export const requestIconUpload = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { galleryId } = req.params;
+    const { galleryId } = req.params as { galleryId: string };
     const userId = (req as any).user.id; // From isAuthenticated middleware
 
     // The service will handle permission checks
@@ -213,7 +213,7 @@ export const requestIconUpload = async (req: Request, res: Response, next: NextF
     res.status(200).json({ presignedUrl, finalUrl });
   } catch (error) {
     // Handle errors (e.g., if user is not an admin)
-    if (error.message === 'Forbidden') {
+    if ((error as any).message === 'Forbidden') {
       return res.status(403).json({ message: 'You do not have permission to change this icon.' });
     }
     next(error);
@@ -264,7 +264,7 @@ export async function searchGalleries(req: Request, res: Response) {
 export async function transferOwnership(req: Request, res: Response) {
   const currentOwnerId = (req as any).user?.id as string | undefined;
   if (!currentOwnerId) return res.status(401).json({ message: 'Unauthorized' });
-  const { galleryId } = req.params;
+  const { galleryId } = req.params as { galleryId: string };
   try {
     const parsed = transferOwnershipSchema.parse({ body: req.body });
     const { newOwnerId } = parsed.body;

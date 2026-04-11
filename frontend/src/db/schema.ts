@@ -1,8 +1,8 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const mySchema = appSchema({
-  // Version 30: Removed friendships table
-  version: 30,
+  // Version 32: Created photo_attempts table
+  version: 32,
   tables: [
     tableSchema({
       name: 'users',

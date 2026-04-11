@@ -6,7 +6,7 @@ import config from '../../../config/config.js';
 const prisma = new PrismaClient();
 const SALT_ROUNDS = 10; // Standard salt rounds for bcrypt
 
-export const createUser = async (email: string, password: string, name?: string, handle: string) => {
+export const createUser = async (email: string, password: string, name: string | undefined, handle: string) => {
   // 1. Hash the password securely
   const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
@@ -15,7 +15,7 @@ export const createUser = async (email: string, password: string, name?: string,
     data: {
       email,
       password: hashedPassword,
-      name, // Optional name field
+      name: name ?? null,
       handle
     },
     // 3. Select which fields to return (exclude password)

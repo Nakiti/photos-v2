@@ -30,7 +30,7 @@ export const registerUser = async (req: Request, res: Response, next: NextFuncti
 
     // Handle other errors (like Prisma unique constraint)
     console.error("Registration error:", error);
-    if (error.code === 'P2002' && error.meta?.target?.includes('email')) {
+    if ((error as any).code === 'P2002' && (error as any).meta?.target?.includes('email')) {
       return res.status(409).json({ message: 'Email already exists' });
     }
 

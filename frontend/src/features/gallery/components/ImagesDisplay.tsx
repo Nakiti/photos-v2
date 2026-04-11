@@ -1,4 +1,4 @@
-import { FlatList, View, useWindowDimensions, StyleSheet, RefreshControl } from "react-native";
+import { FlatList, View, useWindowDimensions, StyleSheet, RefreshControl, StyleProp, ViewStyle } from "react-native";
 import SingleImage from "./SingleImage";
 
 type GalleryImage = any;
@@ -9,12 +9,13 @@ type ImagesDisplayProps = {
   selectedTagId: string;
   refreshing?: boolean;
   onRefresh?: () => void;
+  contentContainerStyle?: StyleProp<ViewStyle>;
 };
 
 const NUM_COLUMNS = 5;
 const GAP = 2;
 
-const ImagesDisplay = ({ images, galleryId, selectedTagId, refreshing, onRefresh }: ImagesDisplayProps) => {
+const ImagesDisplay = ({ images, galleryId, selectedTagId, refreshing, onRefresh, contentContainerStyle }: ImagesDisplayProps) => {
   const { width } = useWindowDimensions();
   const imageSize = (width - GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
 
@@ -48,6 +49,7 @@ const ImagesDisplay = ({ images, galleryId, selectedTagId, refreshing, onRefresh
       maxToRenderPerBatch={15}
       initialNumToRender={25}
       style={styles.list}
+      contentContainerStyle={contentContainerStyle}
     />
   );
 };

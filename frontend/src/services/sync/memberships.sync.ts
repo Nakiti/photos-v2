@@ -10,6 +10,7 @@ interface RemoteMember {
     id: string;
     name: string;
     avatarUrl?: string;
+    handle?: string;
   };
   membership: {
     id: string;
@@ -71,8 +72,8 @@ export const syncMembers = async (
           operations.push(
             localUser.prepareUpdate((record) => {
               record.name = user.name;
-              record.avatarUrl = user.avatarUrl;
-              record.handle = user.handle;
+              record.avatarUrl = user.avatarUrl ?? undefined;
+              record.handle = user.handle ?? '';
             }),
           );
         }
@@ -82,8 +83,8 @@ export const syncMembers = async (
           usersCollection.prepareCreate((record) => {
             record._raw.id = user.id;
             record.name = user.name;
-            record.avatarUrl = user.avatarUrl;
-            record.handle = user.handle;
+            record.avatarUrl = user.avatarUrl ?? undefined;
+            record.handle = user.handle ?? '';
           }),
         );
       }

@@ -8,6 +8,7 @@ export interface UserProfile extends User {
 
 export interface UpdateMyProfileRequest {
   name?: string;
+  bio?: string;
   avatarUrl?: string;
 }
 

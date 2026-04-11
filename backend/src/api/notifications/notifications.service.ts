@@ -78,7 +78,7 @@ export async function sendPushNotifications(
             code === 'messaging/registration-token-not-registered' ||
             code === 'messaging/invalid-registration-token'
           ) {
-            invalidTokens.push(chunk[index]);
+            invalidTokens.push(chunk[index]!);
           } else {
             console.error(`FCM error for token ${chunk[index]}:`, res.error);
           }

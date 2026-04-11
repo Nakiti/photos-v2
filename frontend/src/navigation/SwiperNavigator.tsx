@@ -25,8 +25,6 @@ const SwiperNavigator: React.FC = () => {
       initialRouteName="Gallery"
       // This is the key: returning null for the tabBar effectively hides it.
       tabBar={() => null}
-      // You can also explicitly set swipeEnabled, though it's true by default.
-      swipeEnabled={true}
     >
       <Tab.Screen
         name="Gallery"

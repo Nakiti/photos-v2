@@ -74,7 +74,7 @@ const EditGroupDetailsScreen = () => {
       if (!isDirty || isUpdating) return;
 
       updateGroup(
-         { groupId, data: { name: name.trim(), description: description.trim() || null } },
+         { groupId, data: { name: name.trim(), description: description.trim() || undefined } },
          {
             onSuccess: () => {
                queryClient.invalidateQueries({ queryKey: ['group', groupId] });

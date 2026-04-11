@@ -18,7 +18,7 @@ const EditDeletePermissionScreen = () => {
    const { data: myMembership } = useMyMembership(galleryId);
    const { mutate: updateGallery, isPending: isUpdating } = useUpdateGallery();
 
-   const [selectedOption, setSelectedOption] = useState<'ADMINS_AUTHORS' | 'ADMINS_AUTHORS'>('ADMINS_AUTHORS');
+   const [selectedOption, setSelectedOption] = useState<'ADMINS_AUTHORS' | 'ADMIN'>('ADMINS_AUTHORS');
 
    const options = [
       { id: "1", value: "ADMINS_AUTHORS" as const, title: "Admins and Authors", subtitle: "Admins and photo authors can delete pictures" },

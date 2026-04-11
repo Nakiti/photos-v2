@@ -34,7 +34,10 @@ export async function updateMyProfile(req: Request, res: Response) {
   try {
     const parsed = updateMyProfileSchema.parse({ body: req.body });
     const data = parsed.body as UpdateMyProfileDto;
-    const updated = await usersService.updateUserProfile(userId, data);
+    const updateData: Partial<{ name: string; avatarUrl: string }> = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.avatarUrl !== undefined) updateData.avatarUrl = data.avatarUrl;
+    const updated = await usersService.updateUserProfile(userId, updateData);
     return res.status(200).json(updated);
   } catch (error) {
     if (error instanceof z.ZodError) {

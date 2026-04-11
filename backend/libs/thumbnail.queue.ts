@@ -19,7 +19,7 @@ new Worker('thumbnail-generation', async job => {
     // 1. Download full-size image from S3
     const getCommand = new GetObjectCommand({ Bucket: s3Bucket, Key: s3Key });
     const response = await s3.send(getCommand);
-    const imageBuffer = await response.Body.transformToByteArray();
+    const imageBuffer = await response.Body!.transformToByteArray();
 
     // 2. Resize with Sharp
     const thumbnailBuffer = await sharp(imageBuffer)

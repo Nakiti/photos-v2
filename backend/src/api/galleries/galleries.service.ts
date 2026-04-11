@@ -29,16 +29,16 @@ export async function createGallery(
   data: {
     name: string;
     type: 'GROUP' | 'EVENT';
-    iconUrl?: string | null;
-    startDate?: string | null;
-    endDate?: string | null;
-    location?: string | null;
+    iconUrl?: string | null | undefined;
+    startDate?: string | null | undefined;
+    endDate?: string | null | undefined;
+    location?: string | null | undefined;
     addPermission?: string;
     deletePermission?: string;
     joinRequiresApproval?: boolean; // ⚠️ Typo: 'Aproval'
-    wantsIconUpload?: boolean;
-    defaultTagId?: string;
-    communityId?: string;
+    wantsIconUpload?: boolean | undefined;
+    defaultTagId?: string | undefined;
+    communityId?: string | undefined;
   }
 ) {
   // --- FIX 2 (Start): Destructure ALL fields ---

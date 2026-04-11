@@ -17,7 +17,7 @@ const GroupMemberScreen = () => {
   return (
     <View style={styles.container}>
         <GroupMembersHeader groupId={groupId}/>
-        <SearchBar />
+        <SearchBar value="" onChangeText={() => {}} />
         <FlatList
             data={members}
             keyExtractor={(item: any) => item.membership?.id || item.user?.id}

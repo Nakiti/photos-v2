@@ -139,25 +139,27 @@ const getPresignedUrls = async (galleryId: string, contentType: string, clientId
 
 /**
  * Upload a local file to object storage using a presigned URL.
- *
- * @param {string} presignedUrl The presigned PUT URL
- * @param {string} fileUri Absolute device URI for the file
- * @param {string} fileType MIME type to set as Content-Type
- * @returns {Promise<void>} Resolves when the upload completes
+ * Uses XMLHttpRequest instead of fetch — React Native's XHR natively streams
+ * file:// URIs without loading the full image into the JS heap as a Blob,
+ * avoiding the "Network request failed" error that fetch produces for large local files.
  */
-const uploadToS3 = async (presignedUrl: string, fileUri: string, fileType: string) => {
-  const response = await fetch(fileUri);
-  const blob = await response.blob();
-
-  const s3Response = await fetch(presignedUrl, {
-    method: 'PUT',
-    body: blob,
-    headers: { 'Content-Type': fileType || 'image/jpeg' },
+const uploadToS3 = (presignedUrl: string, fileUri: string): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', presignedUrl);
+    xhr.setRequestHeader('Content-Type', 'image/jpeg');
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        reject(new Error(`S3 upload failed: ${xhr.status}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error('Network request failed'));
+    xhr.ontimeout = () => reject(new Error('S3 upload timed out'));
+    // React Native XHR accepts { uri, type, name } and handles file reading natively
+    xhr.send({ uri: fileUri, type: 'image/jpeg', name: 'photo.jpg' } as any);
   });
-
-  if (!s3Response.ok) {
-    throw new Error(`S3 upload failed: ${s3Response.status} ${s3Response.statusText}`);
-  }
 };
 
 /**
@@ -219,21 +221,15 @@ export const uploadPhotoFlow = async (
   clientId?: string,
   onPresign?: (s3Key: string) => Promise<void>,
 ): Promise<Photo> => {
-  const fullImageResponse = await fetch(fullImageUri);
-  const fullImageBlob = await fullImageResponse.blob();
-  const contentType = fullImageBlob.type || 'image/jpeg';
+  const { full, thumb } = await getPresignedUrls(galleryId, 'image/jpeg', clientId);
 
-  // Forward clientId so the backend can deduplicate rapid duplicate presign requests.
-  const { full, thumb } = await getPresignedUrls(galleryId, contentType, clientId);
-
-  // Notify caller of the assigned s3Key before uploading so the caller can persist it
-  // for local conflict detection (prevents duplicate records if the socket event races
-  // the confirm response and triggers a gallery refetch).
+  // Persist s3Key before uploading so conflict detection can match socket events
+  // that race the confirm response.
   if (onPresign) await onPresign(full.s3Key);
 
   await Promise.all([
-    uploadToS3(full.presignedUrl, fullImageUri, contentType),
-    uploadToS3(thumb.presignedUrl, thumbImageUri, contentType),
+    uploadToS3(full.presignedUrl, fullImageUri),
+    uploadToS3(thumb.presignedUrl, thumbImageUri),
   ]);
 
   return confirmUpload(galleryId, {
@@ -295,6 +291,11 @@ export const fetchDeletedPhotoIds = async (galleryId: string, since: number): Pr
   const path = `/api/v1/galleries/${galleryId}/photos/deleted-since?since=${new Date(since).toISOString()}`;
   const response = await apiClient.get(path);
   return response.data.deletedIds as string[];
+};
+
+export const approveAllPhotos = async (galleryId: string): Promise<{ count: number }> => {
+  const response = await apiClient.post(`/api/v1/galleries/${galleryId}/photos/approve-all`);
+  return response.data as { count: number };
 };
 
 

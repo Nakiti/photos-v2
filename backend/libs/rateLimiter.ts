@@ -12,7 +12,7 @@ async function getGalleryUploadLimit(galleryId: string): Promise<number> {
     where: { id: galleryId },
     select: { uploadLimitPerHour: true },
   });
-  const limit = gallery?.uploadLimitPerHour ?? 10;
+  const limit = gallery?.uploadLimitPerHour ?? 200;
   await redis.setex(cacheKey, 3600, limit.toString());
   return limit;
 }

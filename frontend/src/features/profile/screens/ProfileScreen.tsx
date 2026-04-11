@@ -88,7 +88,7 @@ const ProfileScreen = () => {
                   resizeMode={FastImage.resizeMode.cover}
                 />
               ) : (
-                <Text style={styles.avatarInitial}>{user.name[0]}</Text>
+                <Text style={styles.avatarInitial}>{(user.name ?? user.handle ?? '?')[0]}</Text>
               )}
             </View>
             <Text style={styles.name}>{user.name}</Text>

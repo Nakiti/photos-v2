@@ -4,7 +4,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useRoute } from '@react-navigation/native';
 import { useMemberships, useInviteMember, useDenyOrRemoveMember } from '../../../hooks/useMembershipData';
 import { useSearchUsers } from '../../../hooks/useUser';
-import AddMemberListItem from '../../groups/components/AddMemberListItem';
+import AddMemberListItem from '../../galleries/components/AddMemberListItem';
 
 type DisplayUser = {
   id: string;
@@ -196,8 +196,7 @@ const AddGalleryMembersScreen = () => {
                     } as any
                   }
                   status="pending"
-                  onInvite={() => {}}
-                  onRemove={() => denyOrRemove({ galleryId, userId: p.id })}
+                  onInvite={() => denyOrRemove({ galleryId, userId: p.id })}
                   isInviting={isRemoving}
                 />
               ))

@@ -53,7 +53,7 @@ const PendingImagesScreen = () => {
 
   const approveAllMutation = useMutation({
     mutationFn: () => approveAllPhotos(galleryId),
-    onSuccess: (data) => {
+    onSuccess: (data: { count: number }) => {
       queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });
       Alert.alert('Success', `Approved ${data.count} photo${data.count !== 1 ? 's' : ''}!`);
     },

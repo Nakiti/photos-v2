@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { useAuthStore } from '../stores/auth.store';
 
-const API_URL = 'http://100.115.236.98:4000/';
+const API_URL = 'http://100.115.209.85:4000/';
 
 // Get the token directly from the Zustand store's state
 // This is a non-hook way to get the token, which is perfect for a service file.

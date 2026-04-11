@@ -16,7 +16,7 @@ export async function checkLocalUploadLimit(
   database: Database,
   galleryId: string,
   userId: string,
-  limit: number = 10
+  limit: number = 200
 ): Promise<{ allowed: boolean; currentCount: number; limit: number }> {
   const attemptsCollection = database.collections.get<PhotoAttempt>('photo_attempts');
   const now = Date.now();
@@ -179,7 +179,7 @@ export async function getRemainingUploadCount(
   database: Database,
   galleryId: string,
   userId: string,
-  limit: number = 10
+  limit: number = 200
 ): Promise<number> {
   const { currentCount } = await checkLocalUploadLimit(database, galleryId, userId, limit);
   return Math.max(0, limit - currentCount);

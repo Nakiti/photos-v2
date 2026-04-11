@@ -30,15 +30,13 @@ const EditJoinPermissionScreen = () => {
 
    // Set initial value when gallery loads
    useEffect(() => {
-      if (gallery?.joinRequiresApproval) {
-         // Map frontend "all" | "admin_approval" to boolean
-         setRequiresApproval(gallery.joinRequiresApproval === 'admin_approval');
+      if (gallery?.joinRequiresApproval !== undefined) {
+         setRequiresApproval(gallery.joinRequiresApproval);
       }
    }, [gallery]);
 
    const isDirty = useMemo(() => {
-      const currentValue = gallery?.joinRequiresApproval === 'admin_approval';
-      return currentValue !== requiresApproval;
+      return gallery?.joinRequiresApproval !== requiresApproval;
    }, [gallery?.joinRequiresApproval, requiresApproval]);
 
    const handleSave = () => {
