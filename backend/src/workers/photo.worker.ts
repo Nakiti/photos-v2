@@ -32,7 +32,6 @@ async function notifyGalleryMembers(
       where: {
         galleryId,
         userId: { notIn: Array.from(excludeUserIds) },
-        status: 'ACCEPTED',
         isMuted: false,
       },
       select: {
@@ -49,20 +48,21 @@ async function notifyGalleryMembers(
 
     const tokens = batch.flatMap(m => m.user.devices).map(d => d.token);
 
-    if (tokens.length > 0) {
-      await Promise.all(
-        batch.map(member =>
-          createNotificationRecord(
-            member.userId,
-            member.userId, // actorId not meaningful for system notifications
-            'SYSTEM',
-            notificationData as any,
-            galleryId,
-            'Gallery',
-          )
+    // Create in-app notification records for all members regardless of push token availability
+    await Promise.allSettled(
+      batch.map(member =>
+        createNotificationRecord(
+          member.userId,
+          member.userId,
+          'SYSTEM',
+          notificationData as any,
+          galleryId,
+          'Gallery',
         )
-      );
+      )
+    );
 
+    if (tokens.length > 0) {
       const deadTokens = await sendPushNotifications(tokens, title, body, pushData);
       if (deadTokens.length > 0) {
         await prisma.device.deleteMany({ where: { token: { in: deadTokens } } });

@@ -1,5 +1,5 @@
 import { Model } from '@nozbe/watermelondb';
-import { field, readonly, date } from '@nozbe/watermelondb/decorators';
+import { field } from '@nozbe/watermelondb/decorators';
 
 export default class PhotoTag extends Model {
   static table = 'photo_tags';
@@ -11,5 +11,4 @@ export default class PhotoTag extends Model {
 
   @field('photo_id') photoId!: string;
   @field('tag_id') tagId!: string;
-  @readonly @date('created_at') createdAt!: number;
 }

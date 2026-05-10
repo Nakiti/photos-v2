@@ -4,10 +4,11 @@ import { broadcastNewPhoto, broadcastPhotoDeleted, broadcastPhotoUpdated } from 
 import { photoQueue } from '../../../../libs/queue.js';
 import {v4 as uuidv4} from "uuid"
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { S3Client, PutObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectsCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { smartThrottleNewPhoto, createNotificationRecord, sendPushNotifications } from '../../notifications/notifications.service.js';
 import { checkAndRecordUpload } from '../../../../libs/rateLimiter.js';
 import { redis } from '../../../../libs/redis.js';
+
 
 export class RateLimitError extends Error {
   readonly limit: number;
@@ -30,6 +31,18 @@ const s3ClientV3 = new S3Client({
   region: config.aws.region!,
 });
 
+const PHOTO_VIEW_URL_TTL = 60 * 60 * 24; // 24 hours
+
+async function withPresignedPhotoUrls(photo: { s3Key: string; thumbnailKey: string | null; [key: string]: any }) {
+  const [s3Url, thumbnailUrl] = await Promise.all([
+    getSignedUrl(s3ClientV3, new GetObjectCommand({ Bucket: config.aws.s3Bucket!, Key: photo.s3Key }), { expiresIn: PHOTO_VIEW_URL_TTL }),
+    photo.thumbnailKey
+      ? getSignedUrl(s3ClientV3, new GetObjectCommand({ Bucket: config.aws.s3Bucket!, Key: photo.thumbnailKey }), { expiresIn: PHOTO_VIEW_URL_TTL })
+      : null,
+  ]);
+  return { ...photo, s3Url, thumbnailUrl };
+}
+
 export async function listPhotos(galleryId: string, page: number, limit: number, tagId?: string, userId?: string, since?: string) {
   const skip = (page - 1) * limit;
   
@@ -41,7 +54,7 @@ export async function listPhotos(galleryId: string, page: number, limit: number,
     }),
     userId
       ? prisma.membership.findFirst({
-          where: { galleryId, userId, status: 'ACCEPTED' },
+          where: { galleryId, userId },
           select: { role: true },
         })
       : null,
@@ -52,6 +65,9 @@ export async function listPhotos(galleryId: string, page: number, limit: number,
 
   // Build where clause
   const where: any = { galleryId, deletedAt: null };
+  if (!isOwner && !isAdmin) {
+    where.visible = 'VISIBLE';
+  }
   if (tagId) {
     where.photoTags = { some: { tagId } };
   }
@@ -65,8 +81,10 @@ export async function listPhotos(galleryId: string, page: number, limit: number,
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
+        s3Key: true,
         s3Url: true,
         thumbnailUrl: true,
+        thumbnailKey: true,
         uploaderId: true,
         galleryId: true,
         visible: true,
@@ -89,7 +107,8 @@ export async function listPhotos(galleryId: string, page: number, limit: number,
     }),
     prisma.photo.count({ where }),
   ]);
-  return { items, total, page, limit };
+  const presignedItems = await Promise.all(items.map(withPresignedPhotoUrls));
+  return { items: presignedItems, total, page, limit };
 }
 
 export async function getPhotoIdsForGallery(galleryId: string) {
@@ -129,7 +148,7 @@ export const createPresignedUploadUrls = async (galleryId: string, contentType: 
   }
 
   const membership = await prisma.membership.findFirst({
-    where: { galleryId, userId, status: 'ACCEPTED' },
+    where: { galleryId, userId },
   });
   if (!membership) throw new Error('Forbidden');
 
@@ -229,7 +248,7 @@ export async function confirmUploadedPhoto(
   });
   if (existing) {
     console.log(`[Photos][confirm] idempotent hit s3Key=${s3Key} photoId=${existing.id}`);
-    return existing;
+    return withPresignedPhotoUrls(existing);
   }
 
   // 2. Atomic rate limit: check and record in one Redis operation.
@@ -289,7 +308,7 @@ export async function confirmUploadedPhoto(
         where: { s3Key },
         select: PHOTO_SELECT,
       });
-      if (raceWinner) return raceWinner;
+      if (raceWinner) return withPresignedPhotoUrls(raceWinner);
     }
 
     // Transaction failed for other reasons: clean up the orphaned S3 objects.
@@ -324,7 +343,7 @@ export async function confirmUploadedPhoto(
 
   await smartThrottleNewPhoto(galleryId, uploaderName, galleryName, created!.id);
 
-  return created!;
+  return withPresignedPhotoUrls(created!);
 }
 
 export async function deletePhoto(requesterId: string, galleryId: string, photoId: string) {
@@ -337,17 +356,20 @@ export async function deletePhoto(requesterId: string, galleryId: string, photoI
   const isUploader = photo.uploaderId === requesterId;
   if (!isOwner && !isUploader) return false;
 
-  await prisma.$transaction(async (tx) => {
-    await tx.photo.update({
-      where: { id: photoId },
+  const deleted = await prisma.$transaction(async (tx) => {
+    const { count } = await tx.photo.updateMany({
+      where: { id: photoId, deletedAt: null },
       data: { deletedAt: new Date() },
     });
+    if (count === 0) return false;
     await tx.gallery.update({
       where: { id: galleryId },
       data: { photoCount: { decrement: 1 } },
     });
+    return true;
   });
 
+  if (!deleted) return false;
   broadcastPhotoDeleted(galleryId, photoId);
   return true;
 }
@@ -357,10 +379,12 @@ export async function deletePhoto(requesterId: string, galleryId: string, photoI
  */
 
 export async function getPhotoLikeStatus(userId: string, galleryId: string, photoId: string) {
-  const membership = await prisma.membership.findFirst({
-    where: { galleryId, userId, status: 'ACCEPTED' },
-  });
+  const [membership, photo] = await Promise.all([
+    prisma.membership.findFirst({ where: { galleryId, userId } }),
+    prisma.photo.findFirst({ where: { id: photoId, galleryId }, select: { id: true } }),
+  ]);
   if (!membership) throw new Error('Forbidden');
+  if (!photo) throw new Error('Not found');
 
   const [like, likeCount] = await Promise.all([
     prisma.photoLike.findUnique({ where: { photoId_userId: { photoId, userId } } }),
@@ -371,7 +395,7 @@ export async function getPhotoLikeStatus(userId: string, galleryId: string, phot
 
 export async function likePhoto(userId: string, galleryId: string, photoId: string) {
   const membership = await prisma.membership.findFirst({
-    where: { galleryId, userId, status: 'ACCEPTED' },
+    where: { galleryId, userId },
   });
   if (!membership) throw new Error('Forbidden');
 
@@ -392,7 +416,6 @@ export async function likePhoto(userId: string, galleryId: string, photoId: stri
   // Notify the photo uploader (not if they liked their own photo)
   if (photo.uploaderId !== userId) {
     // Dedup: only send one like notification per user per photo per hour
-    const { redis } = await import('../../../../libs/redis.js');
     const dedupKey = `like:notif:${photoId}:${userId}`;
     const alreadyNotified = await redis.set(dedupKey, '1', 'EX', 3600, 'NX');
 
@@ -434,10 +457,12 @@ export async function likePhoto(userId: string, galleryId: string, photoId: stri
 }
 
 export async function unlikePhoto(userId: string, galleryId: string, photoId: string) {
-  const membership = await prisma.membership.findFirst({
-    where: { galleryId, userId, status: 'ACCEPTED' },
-  });
+  const [membership, photo] = await Promise.all([
+    prisma.membership.findFirst({ where: { galleryId, userId } }),
+    prisma.photo.findFirst({ where: { id: photoId, galleryId }, select: { id: true } }),
+  ]);
   if (!membership) throw new Error('Forbidden');
+  if (!photo) throw new Error('Not found');
 
   await prisma.photoLike.deleteMany({ where: { photoId, userId } });
   const likeCount = await prisma.photoLike.count({ where: { photoId } });

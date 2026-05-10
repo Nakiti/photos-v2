@@ -1,7 +1,7 @@
 // src/api/galleries/galleries.service.ts
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import config from '../../../config/config.js';
 import {v4 as uuidv4} from "uuid"
@@ -16,8 +16,17 @@ const s3 = new S3Client({
     secretAccessKey: config.aws.secretAccessKey!,
   },
   region: config.aws.region!,
-}); 
+});
 
+async function presignIconUrl(iconUrl: string | null | undefined): Promise<string | null | undefined> {
+  if (!iconUrl) return iconUrl;
+  try {
+    const key = new URL(iconUrl).pathname.slice(1);
+    return await getSignedUrl(s3, new GetObjectCommand({ Bucket: config.aws.s3Bucket!, Key: key }), { expiresIn: 60 * 60 * 24 * 7 });
+  } catch {
+    return iconUrl;
+  }
+}
 
 /**
  * Create a new gallery owned by the given user.
@@ -113,7 +122,6 @@ export async function createGallery(
         galleryId: gallery.id,
         userId: ownerId,
         role: 'ADMIN',
-        status: 'ACCEPTED',
       },
     });
 
@@ -133,31 +141,19 @@ export async function createGallery(
   });
 
   // --- FIX 1: Move this ENTIRE block OUTSIDE the transaction ---
-  if (wantsIconUpload) {
-    const { presignedUrl, finalUrl } = await generateIconPresignedUrl(
-      ownerId,
-      newGallery.id
-    );
+  const galleryBase = {
+    ...newGallery,
+    iconUrl: await presignIconUrl(newGallery.iconUrl),
+    communityName: newGallery.community?.name ?? null,
+    community: undefined,
+  };
 
-    // Return both the gallery and the upload info
-    return {
-      gallery: {
-        ...newGallery,
-        communityName: newGallery.community?.name ?? null,
-        community: undefined, // Remove nested community object
-      },
-      uploadInfo: { presignedUrl, finalUrl },
-    };
+  if (wantsIconUpload) {
+    const { presignedUrl, finalUrl } = await generateIconPresignedUrl(ownerId, newGallery.id);
+    return { gallery: galleryBase, uploadInfo: { presignedUrl, finalUrl } };
   }
 
-  // If no upload was requested, just return the gallery with communityName
-  return { 
-    gallery: {
-      ...newGallery,
-      communityName: newGallery.community?.name ?? null,
-      community: undefined, // Remove nested community object
-    }
-  };
+  return { gallery: galleryBase };
 }
 
 /**
@@ -205,13 +201,12 @@ export async function getMyGalleries(userId: string) {
     },
   });
 
-  console.log("user galleries ", galleries)
-  // Map to include communityName
-  return galleries.map(gallery => ({
+  return Promise.all(galleries.map(async gallery => ({
     ...gallery,
+    iconUrl: await presignIconUrl(gallery.iconUrl),
     communityName: gallery.community?.name ?? null,
-    community: undefined, // Remove nested community object
-  }));
+    community: undefined,
+  })));
 }
 
 /**
@@ -289,9 +284,9 @@ export async function getGalleryDetails(userId: string, galleryId: string) {
   const myMembership = memberships[0]; 
   const memberCount = _count.memberships;
 
-  // Return the clean, combined object
   return {
     ...galleryDetails,
+    iconUrl: await presignIconUrl(galleryDetails.iconUrl),
     communityName: community?.name ?? null,
     myMembership: myMembership,
     memberCount: memberCount,
@@ -332,10 +327,10 @@ export async function updateGallery(
     where: { id: galleryId },
     data: ({
       name: data.name,
-      iconUrl: data.iconUrl ?? null,
-      startDate: data.startDate ? new Date(data.startDate) : null,
-      endDate: data.endDate ? new Date(data.endDate) : null,
-      location: data.location ?? null,
+      ...(data.iconUrl !== undefined ? { iconUrl: data.iconUrl } : {}),
+      ...(data.startDate !== undefined ? { startDate: data.startDate ? new Date(data.startDate) : null } : {}),
+      ...(data.endDate !== undefined ? { endDate: data.endDate ? new Date(data.endDate) : null } : {}),
+      ...(data.location !== undefined ? { location: data.location } : {}),
       addPermission: (data as any).addPermission,
       deletePermission: (data as any).deletePermission,
       joinRequiresApproval: data.joinRequiresApproval,
@@ -376,13 +371,13 @@ export async function updateGallery(
   }
   const result = {
     ...updated,
+    iconUrl: await presignIconUrl(updated.iconUrl),
     communityName: updated.community?.name ?? null,
-    community: undefined, // Remove nested community object
+    community: undefined,
   };
-  
-  // Broadcast gallery update to gallery room
+
   broadcastGalleryUpdated(galleryId, result);
-  
+
   return result;
 }
 
@@ -444,29 +439,23 @@ export async function joinGalleryByLink(userId: string, shareableLink: string) {
     select: { id: true },
   });
   if (!gallery) return null;
-  
-  // Check if membership already exists
-  const existing = await prisma.membership.findUnique({
-    where: { userId_galleryId: { userId, galleryId: gallery.id } },
-  });
-  
-  await prisma.membership.upsert({
-    where: { userId_galleryId: { userId, galleryId: gallery.id } },
-    update: {},
-    create: ({ userId, galleryId: gallery.id, role: 'MEMBER' } as unknown) as any,
-  });
-  
-  // Increment memberCount if this is a new membership
-  if (!existing) {
-    await prisma.gallery.update({
-      where: { id: gallery.id },
-      data: {
-        memberCount: {
-          increment: 1,
-        },
-      },
+
+  await prisma.$transaction(async (tx) => {
+    const existing = await tx.membership.findUnique({
+      where: { userId_galleryId: { userId, galleryId: gallery.id } },
+      select: { id: true },
     });
-  }
+
+    if (!existing) {
+      await tx.membership.create({
+        data: ({ userId, galleryId: gallery.id, role: 'MEMBER' } as unknown) as any,
+      });
+      await tx.gallery.update({
+        where: { id: gallery.id },
+        data: { memberCount: { increment: 1 } },
+      });
+    }
+  });
   const joinedGallery = await prisma.gallery.findUnique({
     where: { id: gallery.id },
     select: {
@@ -498,11 +487,12 @@ export async function joinGalleryByLink(userId: string, shareableLink: string) {
   });
   
   if (!joinedGallery) return null;
-  
+
   return {
     ...joinedGallery,
+    iconUrl: await presignIconUrl(joinedGallery.iconUrl),
     communityName: joinedGallery.community?.name ?? null,
-    community: undefined, // Remove nested community object
+    community: undefined,
   };
 }
 
@@ -556,10 +546,11 @@ export async function getGalleriesByCommunityId(communityId: string) {
     },
   });
 
-  return galleries.map(({ community, ...gallery }) => ({
+  return Promise.all(galleries.map(async ({ community, ...gallery }) => ({
     ...gallery,
+    iconUrl: await presignIconUrl(gallery.iconUrl),
     communityName: community?.name ?? null,
-  }));
+  })));
 }
 
 /**
@@ -616,14 +607,14 @@ export async function transferOwnership(
 
   const membership = await prisma.membership.findUnique({
     where: { userId_galleryId: { userId: newOwnerId, galleryId } },
-    select: { id: true, status: true },
+    select: { id: true },
   });
-  if (!membership || membership.status !== 'ACCEPTED') {
-    throw new Error('New owner must be an accepted member of the gallery');
+  if (!membership) {
+    throw new Error('New owner must be a member of the gallery');
   }
 
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.gallery.update({
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.gallery.update({
       where: { id: galleryId },
       data: { ownerId: newOwnerId },
       select: {
@@ -636,13 +627,14 @@ export async function transferOwnership(
         community: { select: { name: true } },
       },
     });
-    // Promote new owner to ADMIN role if not already
     await tx.membership.update({
       where: { userId_galleryId: { userId: newOwnerId, galleryId } },
       data: { role: 'ADMIN' },
     });
-    return { ...updated, communityName: updated.community?.name ?? null, community: undefined };
+    return result;
   });
+
+  return { ...updated, iconUrl: await presignIconUrl(updated.iconUrl), communityName: updated.community?.name ?? null, community: undefined };
 }
 
 /**
@@ -703,14 +695,17 @@ export async function searchGalleries(
     galleryWhere = andConditions;
   }
 
-  // Add access control: user must be owner or member
-  const finalWhere: any = {
-    ...galleryWhere,
+  // Add access control: user must be owner or member.
+  // Use explicit AND so search conditions are never overwritten by the access-control OR.
+  const accessControl = {
     OR: [
       { ownerId: userId },
       { memberships: { some: { userId } } },
     ],
   };
+  const finalWhere: any = Object.keys(galleryWhere).length > 0
+    ? { AND: [galleryWhere, accessControl] }
+    : accessControl;
 
   // Execute the search query
   const galleries = await prisma.gallery.findMany({
@@ -757,12 +752,11 @@ export async function searchGalleries(
   // Get total count for pagination
   const total = await prisma.gallery.count({ where: finalWhere });
 
-  // Map to include member count and community name
-  const galleriesWithCount = galleries.map((g) => ({
+  const galleriesWithCount = await Promise.all(galleries.map(async (g) => ({
     id: g.id,
     name: g.name,
     type: g.type,
-    iconUrl: g.iconUrl,
+    iconUrl: await presignIconUrl(g.iconUrl),
     startDate: g.startDate,
     endDate: g.endDate,
     location: g.location,
@@ -778,7 +772,7 @@ export async function searchGalleries(
       createdAt: g.createdAt,
       updatedAt: g.updatedAt,
       memberCount: g._count.memberships,
-  }));
+  })));
 
   return {
     galleries: galleriesWithCount,

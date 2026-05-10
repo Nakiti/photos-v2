@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { v4 as uuidv4 } from 'uuid';
 import config from '../../../config/config.js';
@@ -13,6 +13,19 @@ const s3 = new S3Client({
 	},
 	region: config.aws.region!,
 });
+
+async function presignIconUrl(iconUrl: string | null | undefined): Promise<string | null | undefined> {
+	if (!iconUrl) return iconUrl;
+	try {
+		const key = new URL(iconUrl).pathname.slice(1);
+		return await getSignedUrl(s3, new GetObjectCommand({
+			Bucket: config.aws.s3Bucket!,
+			Key: key,
+		}), { expiresIn: 60 * 60 * 24 * 7 }); // 7 days
+	} catch {
+		return iconUrl;
+	}
+}
 
 export async function createGroup(
 	ownerId: string,
@@ -61,6 +74,8 @@ export async function createGroup(
 		return newGroup;
 	});
 
+	const presignedGroup = { ...group, iconUrl: await presignIconUrl(group.iconUrl) };
+
 	if (wantsIconUpload) {
 		const key = `community-icons/${group.id}/${uuidv4()}.png`;
 		const presignedUrl = await getSignedUrl(
@@ -69,15 +84,14 @@ export async function createGroup(
 				Bucket: config.aws.s3Bucket!,
 				Key: key,
 				ContentType: 'image/png',
-				ACL: 'public-read',
 			}),
 			{ expiresIn: 60 * 5 }
 		);
 		const finalUrl = `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${key}`;
-		return { community: group, uploadInfo: { presignedUrl, finalUrl } };
+		return { community: presignedGroup, uploadInfo: { presignedUrl, finalUrl } };
 	}
 
-	return { community: group };
+	return { community: presignedGroup };
 }
 
 export async function getMyGroups(userId: string) {
@@ -126,11 +140,17 @@ export async function getMyGroups(userId: string) {
 	});
 
 	const memberships = memberOf.map((m) => m.community);
-	return { owned, memberships };
+
+	const [ownedWithIcons, membershipsWithIcons] = await Promise.all([
+		Promise.all(owned.map(async (c) => ({ ...c, iconUrl: await presignIconUrl(c.iconUrl) }))),
+		Promise.all(memberships.map(async (c) => ({ ...c, iconUrl: await presignIconUrl(c.iconUrl) }))),
+	]);
+
+	return { owned: ownedWithIcons, memberships: membershipsWithIcons };
 }
 
 export async function getGroupById(groupId: string) {
-	return prisma.community.findUnique({
+	const group = await prisma.community.findUnique({
 		where: { id: groupId },
 		select: {
 			id: true,
@@ -147,6 +167,8 @@ export async function getGroupById(groupId: string) {
 			updatedAt: true,
 		},
 	});
+	if (!group) return null;
+	return { ...group, iconUrl: await presignIconUrl(group.iconUrl) };
 }
 
 export async function getGroupDetails(userId: string, groupId: string) {
@@ -155,13 +177,14 @@ export async function getGroupDetails(userId: string, groupId: string) {
 		where: { id: groupId },
 	});
 	if (!group) return null;
-	if (group.ownerId === userId) return group;
 
-	const membership = await prisma.communityMembership.findUnique({
+	const canAccess = group.ownerId === userId || await prisma.communityMembership.findUnique({
 		where: { userId_communityId: { userId, communityId: groupId } },
+		select: { id: true },
 	});
-	if (!membership) return null;
-	return group;
+	if (!canAccess) return null;
+
+	return { ...group, iconUrl: await presignIconUrl(group.iconUrl) };
 }
 
 export async function updateGroup(
@@ -221,7 +244,6 @@ export async function generateIconPresignedUrl(userId: string, groupId: string) 
 			Bucket: config.aws.s3Bucket!,
 			Key: key,
 			ContentType: 'image/png',
-			ACL: 'public-read',
 		}),
 		{ expiresIn: 60 * 5 }
 	);
@@ -260,9 +282,9 @@ export async function transferOwnership(
 	}
 
 	// Transfer ownership in a transaction
-	return prisma.$transaction(async (tx) => {
+	const updated = await prisma.$transaction(async (tx) => {
 		// 1. Update group owner
-		const updated = await tx.community.update({
+		const result = await tx.community.update({
 			where: { id: groupId },
 			data: { ownerId: newOwnerId },
 			select: {
@@ -288,8 +310,10 @@ export async function transferOwnership(
 			create: { userId: newOwnerId, communityId: groupId, role: 'ADMIN' },
 		});
 
-		return updated;
+		return result;
 	});
+
+	return { ...updated, iconUrl: await presignIconUrl(updated.iconUrl) };
 }
 
 export async function createGroupShareLink(userId: string, groupId: string): Promise<string> {

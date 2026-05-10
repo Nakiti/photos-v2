@@ -3,13 +3,13 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "./useAuth";
 import {v4 as uuid} from "uuid"
 import Photo from "../db/models/Photo";
-import { uploadPhoto, deletePhoto, uploadPhotoFlow } from "../services/api/photos.service";
+import { deletePhoto, uploadPhotoFlow } from "../services/api/photos.service";
 import { useState, useEffect, useRef } from "react";
 import { updateOptimisticPhoto } from "../services/sync/photos.sync";
 import { recordLocalAttempt, findAttemptByPhotoId, markAttemptConfirmed, markAttemptRejected, checkLocalUploadLimit } from "../services/rateLimit.service";
 import Gallery from "../db/models/Gallery";
 import { Q } from "@nozbe/watermelondb";
-import ImageResizer from 'react-native-image-resizer'; // 1. Import the resizer
+import ImageResizer from 'react-native-image-resizer';
 import RNFS from 'react-native-fs';
 import PhotoTag from "../db/models/PhotoTag";
 
@@ -26,80 +26,57 @@ const IMAGE_FORMAT = 'JPEG';
  */
 export const useCreateOptimisticPhoto = () => {
     const database = useDatabase();
-    const queryClient = useQueryClient();
     const { user } = useAuth();
-  
+
     return useMutation({
       mutationFn: async (variables: { galleryId: string; localUri: string, tagIds: string[] }) => {
         const { galleryId, localUri, tagIds } = variables;
         if (!user) throw new Error('User not authenticated');
-  
+
         try {
-          // --- 2. CLIENT-SIDE RESIZING ---
-          // Create the "full" 1MB version
-          const fullImage = await ImageResizer.createResizedImage(
-            localUri,
-            FULL_IMAGE_WIDTH,
-            FULL_IMAGE_WIDTH, // Using same for max height
-            IMAGE_FORMAT,
-            FULL_IMAGE_QUALITY,
-            0, // Rotation
-            undefined // Output path
-          );
-
-          // Create the "thumbnail" 30KB version
-          const thumbnail = await ImageResizer.createResizedImage(
-            localUri,
-            THUMB_IMAGE_WIDTH,
-            THUMB_IMAGE_WIDTH,
-            IMAGE_FORMAT,
-            THUMB_IMAGE_QUALITY,
-            0,
-            undefined
-          );
-          // --- End Resizing ---
-
-          if (!fullImage?.uri || !thumbnail?.uri) {
-            throw new Error('Image resizing failed: invalid output URI');
-          }
-
-          // --- 3. OPTIMISTIC LOCAL CREATION ---
+          // Copy the picker's temporary file to Documents so it survives app
+          // restarts and OS cache eviction. Resize for upload happens at upload time.
+          // Resize a display thumbnail now so the gallery shows something immediately.
           const temporaryId = uuid();
-          
+          const destPath = `${RNFS.DocumentDirectoryPath}/photo_${temporaryId}.jpg`;
+          await RNFS.copyFile(localUri.replace(/^file:\/\//, ''), destPath);
+          const persistedUri = `file://${destPath}`;
+
+          const displayThumb = await ImageResizer.createResizedImage(
+            persistedUri, THUMB_IMAGE_WIDTH, THUMB_IMAGE_WIDTH, IMAGE_FORMAT, THUMB_IMAGE_QUALITY, 0, undefined
+          );
+
           await database.write(async () => {
             const photosCollection = database.collections.get<Photo>('photos');
             const photoTagsCollection = database.collections.get<PhotoTag>('photo_tags');
-  
-            // Prepare the temporary Photo record (to batch with tag creates)
+
             const newPhotoOp = photosCollection.prepareCreate(record => {
               record._raw.id = temporaryId;
               record.galleryId = galleryId;
               record.uploaderId = user.id;
-              record.localUri = fullImage.uri; // Save path to 1MB file
-              record.localThumbnailUri = thumbnail.uri; // Save path to 30KB file
+              record.localUri = persistedUri;
+              record.localThumbnailUri = displayThumb?.uri ?? persistedUri;
               record.status = 'queued';
-              // created_at is required by schema; set at creation time
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               (record as any)._raw.created_at = Date.now();
             });
-  
-            // Create optimistic PhotoTag records
+
             const tagOperations = tagIds.map(tagId =>
               photoTagsCollection.prepareCreate(record => {
                 record.photoId = temporaryId;
                 record.tagId = tagId;
               })
             );
-            
+
             await database.batch(newPhotoOp, ...tagOperations);
           });
-  
+
           // Record the upload attempt for rate limiting
           await recordLocalAttempt(database, galleryId, user.id, temporaryId);
-  
+
         } catch (error) {
           console.error("Failed to create optimistic photo record:", error);
-          throw error; 
+          throw error;
         }
       },
       onError: (error) => {
@@ -111,82 +88,68 @@ export const useCreateOptimisticPhoto = () => {
   /**
    * Hook for creating multiple photos in a single batch operation.
    * More efficient than calling useCreateOptimisticPhoto multiple times.
-   * Resizes all images in parallel and executes a single database batch write.
+   * Executes a single database batch write; resizing happens at upload time.
    */
   export const useCreateOptimisticPhotos = () => {
     const database = useDatabase();
     const { user } = useAuth();
-  
+
     return useMutation({
-      mutationFn: async (variables: { 
-        galleryId: string; 
-        localUris: string[]; 
-        tagIds: string[] 
+      mutationFn: async (variables: {
+        galleryId: string;
+        localUris: string[];
+        tagIds: string[]
       }) => {
         const { galleryId, localUris, tagIds } = variables;
         if (!user) throw new Error('User not authenticated');
         if (localUris.length === 0) return { count: 0 };
 
         try {
-          // --- 1. RESIZE ALL IMAGES IN PARALLEL ---
-          const resizePromises = localUris.map(localUri => 
-            Promise.all([
-              ImageResizer.createResizedImage(
-                localUri,
-                FULL_IMAGE_WIDTH,
-                FULL_IMAGE_WIDTH,
-                IMAGE_FORMAT,
-                FULL_IMAGE_QUALITY,
-                0,
-                undefined
-              ),
-              ImageResizer.createResizedImage(
-                localUri,
-                THUMB_IMAGE_WIDTH,
-                THUMB_IMAGE_WIDTH,
-                IMAGE_FORMAT,
-                THUMB_IMAGE_QUALITY,
-                0,
-                undefined
-              )
-            ])
-          );
-
-          const resizeResults = await Promise.all(resizePromises);
-          // resizeResults is an array of [fullImage, thumbnail] pairs
-
-          for (let i = 0; i < resizeResults.length; i++) {
-            const [full, thumb] = resizeResults[i];
-            if (!full?.uri || !thumb?.uri) {
-              throw new Error(`Image resizing failed for item ${i}: invalid output URI`);
-            }
+          // Copy each picker temp file to Documents so it survives app restarts
+          // and OS cache eviction. Also resize a display thumbnail immediately
+          // so the gallery shows something before the upload completes.
+          const createdPaths: string[] = [];
+          let persistedEntries: { persistedUri: string; thumbUri: string }[];
+          try {
+            persistedEntries = await Promise.all(
+              localUris.map(async (localUri) => {
+                const destPath = `${RNFS.DocumentDirectoryPath}/photo_${uuid()}.jpg`;
+                await RNFS.copyFile(localUri.replace(/^file:\/\//, ''), destPath);
+                createdPaths.push(destPath);
+                const persistedUri = `file://${destPath}`;
+                const thumb = await ImageResizer.createResizedImage(
+                  persistedUri, THUMB_IMAGE_WIDTH, THUMB_IMAGE_WIDTH, IMAGE_FORMAT, THUMB_IMAGE_QUALITY, 0, undefined
+                );
+                return { persistedUri, thumbUri: thumb?.uri ?? persistedUri };
+              })
+            );
+          } catch (copyError) {
+            await Promise.allSettled(createdPaths.map(p => RNFS.unlink(p)));
+            throw copyError;
           }
 
-          // --- 2. PREPARE ALL DATABASE OPERATIONS ---
           const photosCollection = database.collections.get<Photo>('photos');
           const photoTagsCollection = database.collections.get<PhotoTag>('photo_tags');
           const operations: any[] = [];
           const temporaryIds: string[] = [];
 
-          for (let i = 0; i < resizeResults.length; i++) {
-            const [fullImage, thumbnail] = resizeResults[i];
+          for (let i = 0; i < persistedEntries.length; i++) {
+            const { persistedUri, thumbUri } = persistedEntries[i];
             const temporaryId = uuid();
             temporaryIds.push(temporaryId);
 
-            // Prepare photo creation
             const newPhotoOp = photosCollection.prepareCreate(record => {
               record._raw.id = temporaryId;
               record.galleryId = galleryId;
               record.uploaderId = user.id;
-              record.localUri = fullImage.uri;
-              record.localThumbnailUri = thumbnail.uri;
+              record.localUri = persistedUri;
+              record.localThumbnailUri = thumbUri;
               record.status = 'queued';
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               (record as any)._raw.created_at = Date.now();
             });
             operations.push(newPhotoOp);
 
-            // Prepare tag operations for this photo
             const tagOperations = tagIds.map(tagId =>
               photoTagsCollection.prepareCreate(record => {
                 record.photoId = temporaryId;
@@ -196,18 +159,16 @@ export const useCreateOptimisticPhoto = () => {
             operations.push(...tagOperations);
           }
 
-          // --- 3. EXECUTE SINGLE BATCH OPERATION ---
           await database.write(async () => {
             await database.batch(...operations);
           });
 
-          // --- 4. RECORD UPLOAD ATTEMPTS FOR RATE-LIMIT TRACKING ---
           await Promise.all(
             temporaryIds.map(id => recordLocalAttempt(database, galleryId, user.id, id))
           );
 
-          console.log(`[Batch] Created ${resizeResults.length} optimistic photos`);
-          return { count: resizeResults.length };
+          console.log(`[Batch] Created ${persistedEntries.length} optimistic photos`);
+          return { count: localUris.length };
         } catch (error) {
           console.error("Failed to create optimistic photos:", error);
           throw error;
@@ -230,6 +191,8 @@ export const usePhotoUploadQueue = () => {
     const database = useDatabase();
     const [queuedPhotos, setQueuedPhotos] = useState<Photo[]>([]);
     const activeUploadsRef = useRef(0);
+    // Track photos currently being processed to prevent double-firing on rapid emissions
+    const inFlightIdsRef = useRef<Set<string>>(new Set());
     // Exponential backoff: track next-allowed retry time per photo ID
     const retryDelayRef = useRef<Map<string, number>>(new Map());
     const retryNotBeforeRef = useRef<Map<string, number>>(new Map());
@@ -283,24 +246,41 @@ export const usePhotoUploadQueue = () => {
 
         // console.log("photo before upoad queue ", photo)
 
-        // Capture local paths before the optimistic record is replaced
-        const localUri = photo.localUri;
-        const localThumbnailUri = photo.localThumbnailUri;
+        // Capture the original asset URI stored at queue time
+        const originalUri = photo.localUri;
 
-        if (!localUri || !localThumbnailUri) {
-          console.error(`[UploadQueue] photo ${photo.id} missing local URIs (full=${localUri}, thumb=${localThumbnailUri}) — skipping`);
+        if (!originalUri) {
+          console.error(`[UploadQueue] photo ${photo.id} missing localUri — skipping`);
           await database.write(async () => {
             await photo.update(record => { record.status = 'upload_failed'; });
           });
-          throw new Error('Missing local file URIs');
+          throw new Error('Missing local file URI');
         }
+
+        // Resize immediately before upload so temp files are never persisted
+        // across app sessions and can't be evicted by the OS.
+        console.log(`[UploadQueue] resizing photo=${photo.id}`);
+        const [fullImage, thumbnail] = await Promise.all([
+          ImageResizer.createResizedImage(originalUri, FULL_IMAGE_WIDTH, FULL_IMAGE_WIDTH, IMAGE_FORMAT, FULL_IMAGE_QUALITY, 0, undefined),
+          ImageResizer.createResizedImage(originalUri, THUMB_IMAGE_WIDTH, THUMB_IMAGE_WIDTH, IMAGE_FORMAT, THUMB_IMAGE_QUALITY, 0, undefined),
+        ]);
+
+        if (!fullImage?.uri || !thumbnail?.uri) {
+          await database.write(async () => {
+            await photo.update(record => { record.status = 'upload_failed'; });
+          });
+          throw new Error('Image resizing failed');
+        }
+
+        const fullUri = fullImage.uri;
+        const thumbUri = thumbnail.uri;
 
         try {
           console.log(`[UploadQueue] uploading photo ${photo.id} gallery=${photo.galleryId}`);
           const finalPhoto = await uploadPhotoFlow(
               photo.galleryId,
-              localUri,
-              localThumbnailUri,
+              fullUri,
+              thumbUri,
               tagIds,
               photo.id, // clientId for socket deduplication
               async (s3Key) => {
@@ -324,9 +304,10 @@ export const usePhotoUploadQueue = () => {
           retryDelayRef.current.delete(photo.id);
           retryNotBeforeRef.current.delete(photo.id);
 
-          // Clean up temporary resized files from device storage
-          if (localUri) RNFS.unlink(localUri).catch(() => {});
-          if (localThumbnailUri) RNFS.unlink(localThumbnailUri).catch(() => {});
+          // Clean up: resized temp files and the persisted Documents copy
+          RNFS.unlink(fullUri).catch(() => {});
+          RNFS.unlink(thumbUri).catch(() => {});
+          RNFS.unlink(originalUri.replace(/^file:\/\//, '')).catch(() => {});
         } catch (uploadError: any) {
           console.error(`[UploadQueue] upload failed photo=${photo.id}:`, uploadError?.message ?? uploadError, uploadError?.response?.status ? `HTTP ${uploadError.response.status}` : '');
           // Check if it's a 429 rate limit error
@@ -389,14 +370,18 @@ export const usePhotoUploadQueue = () => {
       });
 
       const slots = UPLOAD_CONCURRENCY - activeUploadsRef.current;
-      const toProcess = pendingPhotos.slice(0, Math.max(0, slots));
+      const toProcess = pendingPhotos
+        .filter(p => !inFlightIdsRef.current.has(p.id))
+        .slice(0, Math.max(0, slots));
 
       if (toProcess.length > 0) {
         console.log(`[UploadQueue] ${pendingPhotos.length} pending, ${activeUploadsRef.current} active — starting ${toProcess.length}`);
         toProcess.forEach(photo => {
+          inFlightIdsRef.current.add(photo.id);
           activeUploadsRef.current++;
           processUpload(photo, {
             onSettled: () => {
+              inFlightIdsRef.current.delete(photo.id);
               activeUploadsRef.current--;
             },
           });
@@ -411,19 +396,22 @@ export const usePhotoUploadQueue = () => {
   export const useDeletePhoto = () => {
     const database = useDatabase();
     const queryClient = useQueryClient();
-  
+
     return useMutation({
       mutationFn: async (photo: Photo) => {
         return deletePhoto(photo.galleryId, photo.id);
       },
-      onMutate: async (photo: Photo) => {
-        // Optimistic delete
+      onSuccess: async (_data, photo) => {
+        const photoTagsCollection = database.collections.get<PhotoTag>('photo_tags');
+        const tags = await photoTagsCollection.query(Q.where('photo_id', photo.id)).fetch();
         await database.write(async () => {
-          await photo.destroyPermanently();
+          await database.batch(
+            ...tags.map(t => t.prepareDestroyPermanently()),
+            photo.prepareDestroyPermanently(),
+          );
         });
       },
       onError: (_error, photo) => {
-        // Rollback by invalidating
         queryClient.invalidateQueries({ queryKey: ['gallery', photo.galleryId] });
       },
     });

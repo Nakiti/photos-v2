@@ -1,7 +1,7 @@
 // src/api/users/user.service.ts
 import { PrismaClient } from '@prisma/client';
 import config from '../../../config/config.js';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import { v4 as uuidv4 } from 'uuid';
@@ -15,7 +15,17 @@ const s3 = new S3Client({
     secretAccessKey: config.aws.secretAccessKey!,
   },
   region: config.aws.region!,
-}); 
+});
+
+async function presignAvatarUrl(avatarUrl: string | null | undefined): Promise<string | null | undefined> {
+  if (!avatarUrl) return avatarUrl;
+  try {
+    const key = new URL(avatarUrl).pathname.slice(1);
+    return await getSignedUrl(s3, new GetObjectCommand({ Bucket: config.aws.s3Bucket!, Key: key }), { expiresIn: 60 * 60 * 24 * 7 });
+  } catch {
+    return avatarUrl;
+  }
+}
 
 /**
  * Fetch the current user's profile by id using a safe select (no password).
@@ -34,7 +44,8 @@ export async function getUserProfile(userId: string) {
       updatedAt: true,
     },
   });
-  return user;
+  if (!user) return null;
+  return { ...user, avatarUrl: await presignAvatarUrl(user.avatarUrl) };
 }
 
 /**
@@ -56,7 +67,7 @@ export async function updateUserProfile(userId: string, data: Partial<{ name: st
       updatedAt: true,
     },
   });
-  return updated;
+  return { ...updated, avatarUrl: await presignAvatarUrl(updated.avatarUrl) };
 }
 
 /**
@@ -149,8 +160,10 @@ export async function searchUsers(filters: {
   // Get total count for pagination
   const total = await prisma.user.count({ where });
 
+  const presignedUsers = await Promise.all(users.map(async u => ({ ...u, avatarUrl: await presignAvatarUrl(u.avatarUrl) })));
+
   return {
-    users,
+    users: presignedUsers,
     pagination: {
       total,
       limit,

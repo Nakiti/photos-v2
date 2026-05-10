@@ -4,7 +4,7 @@ import { useAuthStore } from '../stores/auth.store';
 import { socket } from './socketClient';
 
 // Avoid using process.env directly to prevent dependency on Node types in RN
-const API_URL = 'http://100.115.209.85:4000/';
+const API_URL = 'http://localhost:4000/';
 
 const apiClient = axios.create({
     baseURL: API_URL,

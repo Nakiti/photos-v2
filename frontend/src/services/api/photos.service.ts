@@ -164,7 +164,8 @@ const uploadToS3 = async (presignedUrl: string, fileUri: string): Promise<void> 
   });
 
   if (!s3Response.ok) {
-    throw new Error(`S3 upload failed: ${s3Response.status}`);
+    const body = await s3Response.text().catch(() => '(unreadable)');
+    throw new Error(`S3 upload failed: ${s3Response.status} — ${body}`);
   }
 };
 

@@ -275,7 +275,7 @@ export async function transferOwnership(req: Request, res: Response) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
     }
-    if (error instanceof Error && error.message.includes('accepted member')) {
+    if (error instanceof Error && error.message.includes('member of the gallery')) {
       return res.status(400).json({ message: error.message });
     }
     return res.status(500).json({ message: 'Failed to transfer ownership' });

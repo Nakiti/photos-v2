@@ -137,6 +137,11 @@ import { TagApi } from "../api/tags.service";
             })
           );
           createCount += 1;
+        } else {
+          // The upload queue's updateOptimisticPhoto will re-point tags from the temp ID to
+          // the permanent ID once the confirm response arrives — skip tag reconciliation here
+          // to avoid creating orphaned photo_tags rows against the permanent ID.
+          continue;
         }
       }
   
@@ -232,7 +237,10 @@ export const reconcileDeletedPhotosSince = async (
 
   const photosCollection = database.collections.get<Photo>('photos');
   const localPhotos = await photosCollection
-    .query(Q.where('id', Q.oneOf(deletedPhotoIds)), Q.where('status', 'synced'))
+    .query(
+      Q.where('id', Q.oneOf(deletedPhotoIds)),
+      Q.where('status', Q.notEq('uploading')),
+    )
     .fetch();
 
   if (localPhotos.length === 0) return;
