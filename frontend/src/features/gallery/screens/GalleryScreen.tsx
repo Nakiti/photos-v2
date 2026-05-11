@@ -19,6 +19,7 @@ type GalleryImage = {
   id?: string;
   fullsize: string;
   thumbnail: string;
+  localThumbnailUri: string;
   is_uploaded: number;
   uploaderId?: string;
   uploaderInitials: string;
@@ -35,7 +36,12 @@ const GalleryScreen = () => {
   const { tags } = useGalleryTags(galleryId);
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
   const [selectedUploaderId, setSelectedUploaderId] = useState<string | null>(null);
-  const { gallery, photos, isSyncing } = useGallery(galleryId, { tagId: selectedTagId, uploaderId: selectedUploaderId });
+  const likedOnly = selectedTagId === '__liked__';
+  const { gallery, photos, isSyncing } = useGallery(galleryId, {
+    tagId: likedOnly ? null : selectedTagId,
+    uploaderId: selectedUploaderId,
+    likedOnly,
+  });
   const { mutate: createOptimisticPhotos } = useCreateOptimisticPhotos();
 
   // Pull-to-refresh
@@ -116,6 +122,7 @@ const GalleryScreen = () => {
         id: p.id,
         fullsize: p.s3Url || p.localUri || '',
         thumbnail: p.thumbnailUri || p.localThumbnailUri || '',
+        localThumbnailUri: p.localThumbnailUri || '',
         is_uploaded: p.status === 'synced' ? 1 : 0,
         uploaderId: p.uploaderId,
         uploaderInitials: initialsMap.get(p.uploaderId) ?? '',

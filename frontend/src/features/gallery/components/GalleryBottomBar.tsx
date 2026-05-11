@@ -2,6 +2,8 @@ import { View, StyleSheet, TouchableOpacity, Pressable, Text } from "react-nativ
 import Icon from "react-native-vector-icons/Ionicons"
 import { useMemo, useState } from "react"
 
+const LIKED_SENTINEL = '__liked__';
+
 type GalleryBottomBarProps = {
   onPressUpload?: () => void;
   onPressCamera?: () => void;
@@ -29,6 +31,7 @@ const GalleryBottomBar = ({
 
   const currentLabel = useMemo(() => {
     if (!selectedTagId) return 'All Photos';
+    if (selectedTagId === LIKED_SENTINEL) return 'Liked';
     return tags.find(t => t.id === selectedTagId)?.name || 'Filters';
   }, [selectedTagId, tags]);
 
@@ -66,14 +69,42 @@ const GalleryBottomBar = ({
         {/* Tag Menu */}
         {isFiltersOpen && (
           <View style={[styles.menu, styles.menuLeft]}>
-            {[{ id: '__all__', name: 'All Photos' } as any, ...tags].map((t, index) => {
-              const isAll = t.id === '__all__';
-              const selected = isAll ? !selectedTagId : selectedTagId === t.id;
+            {/* All Photos */}
+            <TouchableOpacity
+              onPress={() => handleSelectTag(null)}
+              style={styles.menuItem}
+              activeOpacity={0.6}
+            >
+              <Text style={[styles.menuText, !selectedTagId && styles.menuTextSelected]}>
+                All Photos
+              </Text>
+              {!selectedTagId && <Icon name="checkmark" size={13} color="rgba(255,255,255,0.9)" />}
+            </TouchableOpacity>
+
+            {/* Liked */}
+            <TouchableOpacity
+              onPress={() => handleSelectTag(LIKED_SENTINEL)}
+              style={[styles.menuItem, styles.menuItemBorder]}
+              activeOpacity={0.6}
+            >
+              <Text style={[styles.menuText, selectedTagId === LIKED_SENTINEL && styles.menuTextSelected]}>
+                Liked
+              </Text>
+              <Icon
+                name={selectedTagId === LIKED_SENTINEL ? 'heart' : 'heart-outline'}
+                size={13}
+                color={selectedTagId === LIKED_SENTINEL ? '#ef4444' : 'rgba(255,255,255,0.4)'}
+              />
+            </TouchableOpacity>
+
+            {/* Tags */}
+            {tags.map((t) => {
+              const selected = selectedTagId === t.id;
               return (
                 <TouchableOpacity
                   key={t.id}
-                  onPress={() => handleSelectTag(isAll ? null : t.id)}
-                  style={[styles.menuItem, index !== 0 && styles.menuItemBorder]}
+                  onPress={() => handleSelectTag(t.id)}
+                  style={[styles.menuItem, styles.menuItemBorder]}
                   activeOpacity={0.6}
                 >
                   <Text style={[styles.menuText, selected && styles.menuTextSelected]}>

@@ -140,4 +140,4 @@ export const worker = new Worker('photo-notifications', async (job) => {
   );
 }, {
   connection: redisConnection,
-});
+}); 

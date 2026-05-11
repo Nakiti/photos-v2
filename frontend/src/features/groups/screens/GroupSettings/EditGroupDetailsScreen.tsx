@@ -1,297 +1,318 @@
-import { useRoute, useNavigation } from "@react-navigation/native";
-import React, { useState, useEffect, useMemo, useLayoutEffect } from "react";
-import { 
-    View, Text, TouchableOpacity, StyleSheet, TextInput, 
-    TouchableWithoutFeedback, Keyboard, 
-    Alert, ActivityIndicator, SafeAreaView, ScrollView, Platform, KeyboardAvoidingView
+import { useRoute } from "@react-navigation/native";
+import React, { useState, useEffect, useMemo } from "react";
+import {
+  View, Text, TouchableOpacity, StyleSheet, TextInput,
+  TouchableWithoutFeedback, Keyboard, Alert, ActivityIndicator,
+  SafeAreaView, KeyboardAvoidingView, Platform,
 } from "react-native";
 import FastImage from "react-native-fast-image";
 import { launchImageLibrary, ImagePickerResponse } from "react-native-image-picker";
 import { useGroup, useUpdateGroup, useUpdateGroupIcon } from "../../../../hooks/useGroupData";
 import { useQueryClient } from "@tanstack/react-query";
-import Ionicons from 'react-native-vector-icons/Ionicons';
-
-// Components
+import Ionicons from "react-native-vector-icons/Ionicons";
 
 const EditGroupDetailsScreen = () => {
-   const route = useRoute();
-   const navigation = useNavigation();
-   const queryClient = useQueryClient();
-   const { groupId } = route.params as { groupId: string };
+  const route = useRoute();
+  const queryClient = useQueryClient();
+  const { groupId } = route.params as { groupId: string };
 
-   // --- Hooks ---
-   const { group } = useGroup(groupId);
-   const { mutate: updateGroup, isPending: isUpdating } = useUpdateGroup();
-   const { mutate: updateGroupIcon, isPending: isUploadingIcon } = useUpdateGroupIcon(groupId);
+  const { group } = useGroup(groupId);
+  const { mutate: updateGroup, isPending: isUpdating } = useUpdateGroup();
+  const { mutate: updateGroupIcon, isPending: isUploadingIcon } = useUpdateGroupIcon(groupId);
 
-   // --- State ---
-   const [name, setName] = useState<string>('');
-   const [description, setDescription] = useState<string>('');
-   const [localImageUri, setLocalImageUri] = useState<string | null>(null);
-   const [initial, setInitial] = useState<{ name: string; description: string; iconUrl: string | null }>({ name: '', description: '', iconUrl: null });
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [pendingIconUri, setPendingIconUri] = useState<string | null>(null);
+  const [displayLocalUri, setDisplayLocalUri] = useState<string | null>(null);
+  const [initial, setInitial] = useState({ name: '', description: '', iconUrl: null as string | null });
 
-   // Populate State
-   useEffect(() => {
-      if (group) {
-         setName(group.name || '');
-         setDescription(group.description || '');
-         setLocalImageUri(null);
-         setInitial({ name: group.name || '', description: group.description || '', iconUrl: group.iconUrl || null });
+  useEffect(() => {
+    if (group) {
+      setName(group.name || '');
+      setDescription(group.description || '');
+      setInitial({ name: group.name || '', description: group.description || '', iconUrl: group.iconUrl || null });
+    }
+  }, [groupId, group]);
+
+  useEffect(() => {
+    setPendingIconUri(null);
+    setDisplayLocalUri(null);
+  }, [groupId]);
+
+  const isDirty = useMemo(() =>
+    name.trim() !== initial.name || description.trim() !== initial.description || pendingIconUri !== null,
+    [name, description, pendingIconUri, initial]
+  );
+
+  const isLoading = isUpdating || isUploadingIcon;
+
+  const handleChangeImage = () => {
+    launchImageLibrary({ mediaType: 'photo', quality: 0.8 }, (response: ImagePickerResponse) => {
+      if (response.didCancel) return;
+      if (response.errorMessage) { Alert.alert('Error', response.errorMessage); return; }
+      if (response.assets?.[0]?.uri) {
+        const uri = response.assets[0].uri;
+        setPendingIconUri(uri);
+        setDisplayLocalUri(uri);
+        updateGroupIcon(uri, {
+          onSuccess: () => {
+            setPendingIconUri(null);
+            queryClient.invalidateQueries({ queryKey: ['group', groupId] });
+          },
+          onError: (err) => {
+            setPendingIconUri(null);
+            setDisplayLocalUri(null);
+            Alert.alert('Upload Failed', (err as Error)?.message || 'Unable to update image');
+          },
+        });
       }
-   }, [group]);
+    });
+  };
 
-   const isDirty = useMemo(() => {
-      return (
-         name.trim() !== initial.name ||
-         description.trim() !== initial.description
-      );
-   }, [name, description, initial]);
+  const handleSave = () => {
+    if (!isDirty || isUpdating) return;
+    updateGroup(
+      { groupId, data: { name: name.trim() || initial.name, description: description.trim() || undefined } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ['group', groupId] });
+          queryClient.invalidateQueries({ queryKey: ['groups'] });
+          setInitial(prev => ({ ...prev, name: name.trim() || prev.name, description: description.trim() }));
+        },
+        onError: () => Alert.alert('Error', 'Failed to update group.'),
+      }
+    );
+  };
 
-   // --- Handlers ---
-   const handleChangeImage = () => {
-      launchImageLibrary({ mediaType: 'photo', quality: 0.8 }, (response: ImagePickerResponse) => {
-         if (response.didCancel || response.errorCode || !response.assets?.[0]?.uri) return;
+  const coverUri = displayLocalUri || initial.iconUrl || undefined;
 
-         const uri = response.assets[0].uri;
-         setLocalImageUri(uri); // Optimistic UI
-         
-         // Upload Immediately
-         updateGroupIcon(uri, {
-             onSuccess: () => {
-                 setLocalImageUri(null);
-                 queryClient.invalidateQueries({queryKey: ['group', groupId]})
-                 Alert.alert("Updated", "Group cover photo updated successfully.");
-             },
-             onError: () => {
-                 setLocalImageUri(null); // Revert
-                 Alert.alert("Error", "Failed to upload image.");
-             }
-         });
-      });
-   };
-
-   const handleSave = () => {
-      if (!isDirty || isUpdating) return;
-
-      updateGroup(
-         { groupId, data: { name: name.trim(), description: description.trim() || undefined } },
-         {
-            onSuccess: () => {
-               queryClient.invalidateQueries({ queryKey: ['group', groupId] });
-               queryClient.invalidateQueries({ queryKey: ['groups'] });
-               navigation.goBack();
-            },
-            onError: () => Alert.alert('Error', 'Failed to update group details.'),
-         }
-      );
-   };
-
-   // Render Loading for Image
-   const isLoadingImage = isUploadingIcon;
-
-   return (
+  return (
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <View style={styles.root}>
-         
-         <KeyboardAvoidingView 
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
+        <SafeAreaView style={{ flex: 1 }}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={{ flex: 1 }}
-         >
-            <ScrollView contentContainerStyle={styles.scrollContent}>
-                
-                {/* 1. Banner Image Section */}
-                <Text style={styles.sectionLabel}>COVER PHOTO</Text>
-                <TouchableOpacity 
-                    style={styles.bannerContainer} 
-                    onPress={handleChangeImage}
-                    disabled={isLoadingImage}
-                    activeOpacity={0.8}
+          >
+            <View style={styles.container}>
+
+              {/* Avatar */}
+              <View style={styles.avatarSection}>
+                <TouchableOpacity
+                  onPress={handleChangeImage}
+                  disabled={isLoading}
+                  activeOpacity={0.7}
+                  style={styles.avatarWrap}
                 >
-                    {localImageUri || initial.iconUrl || group?.iconUrl ? (
-                        <FastImage
-                            style={styles.bannerImage}
-                            source={{ uri: localImageUri || initial.iconUrl || group?.iconUrl || '' }}
-                            resizeMode={FastImage.resizeMode.cover}
-                        />
+                  {coverUri ? (
+                    <FastImage
+                      style={styles.avatar}
+                      source={{ uri: coverUri, priority: FastImage.priority.high }}
+                      resizeMode={FastImage.resizeMode.cover}
+                    />
+                  ) : (
+                    <View style={styles.avatarPlaceholder} />
+                  )}
+                  <View style={styles.editBadge}>
+                    {isUploadingIcon ? (
+                      <ActivityIndicator size="small" color="#FFF" />
                     ) : (
-                        <View style={styles.bannerPlaceholder}>
-                             <Ionicons name="image-outline" size={40} color="#C7C7CC" />
-                             <Text style={styles.placeholderText}>Add Cover Photo</Text>
-                        </View>
+                      <Ionicons name="camera" size={13} color="#FFF" />
                     )}
-
-                    {/* Overlay Icon */}
-                    <View style={styles.editIconOverlay}>
-                        {isLoadingImage ? (
-                            <ActivityIndicator size="small" color="#FFF" />
-                        ) : (
-                            <Ionicons name="camera" size={18} color="#FFF" />
-                        )}
-                    </View>
+                  </View>
                 </TouchableOpacity>
+                <TouchableOpacity onPress={handleChangeImage} disabled={isLoading}>
+                  <Text style={styles.changePhotoText}>Change photo</Text>
+                </TouchableOpacity>
+              </View>
 
-                {/* 2. Form Fields */}
-                <View style={styles.formContainer}>
-                    
-                    {/* Name Input */}
-                    <Text style={styles.sectionLabel}>DETAILS</Text>
-                    <View style={styles.inputWrapper}>
-                        <Text style={styles.inputLabel}>Name</Text>
-                        <TextInput
-                            style={styles.textInput}
-                            value={name}
-                            onChangeText={setName}
-                            placeholder="Group Name"
-                            placeholderTextColor="#C7C7CC"
-                        />
-                    </View>
-
-                    {/* Description Input */}
-                    <View style={[styles.inputWrapper, styles.textAreaWrapper]}>
-                         <TextInput
-                            style={styles.textArea}
-                            value={description}
-                            onChangeText={setDescription}
-                            placeholder="Description (Optional)"
-                            placeholderTextColor="#C7C7CC"
-                            multiline
-                            textAlignVertical="top"
-                         />
-                    </View>
-
+              {/* Fields */}
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>Details</Text>
+                <View style={styles.card}>
+                  <View style={styles.inputRow}>
+                    <Text style={styles.inputLabel}>Name</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={name}
+                      onChangeText={setName}
+                      placeholder="Group name"
+                      placeholderTextColor="#CCCCCC"
+                      editable={!isLoading}
+                    />
+                  </View>
+                  <View style={[styles.inputRow, styles.noBorder, styles.descriptionRow]}>
+                    <Text style={[styles.inputLabel, styles.descriptionLabel]}>Description</Text>
+                    <TextInput
+                      style={[styles.input, styles.multilineInput]}
+                      value={description}
+                      onChangeText={setDescription}
+                      placeholder="Add a description…"
+                      placeholderTextColor="#CCCCCC"
+                      multiline
+                      textAlignVertical="top"
+                      editable={!isLoading}
+                    />
+                  </View>
                 </View>
+              </View>
 
-            </ScrollView>
-
-            {/* 3. Sticky Save Button */}
-            <SafeAreaView style={styles.footer}>
-                <TouchableOpacity 
-                    style={[styles.saveButton, (!isDirty && !isUpdating) && styles.disabledButton]} 
-                    onPress={handleSave}
-                    disabled={!isDirty || isUpdating}
+              {/* Save */}
+              <View style={styles.footer}>
+                <TouchableOpacity
+                  style={[styles.saveBtn, (!isDirty || isLoading) && styles.saveBtnDisabled]}
+                  onPress={handleSave}
+                  disabled={!isDirty || isLoading}
+                  activeOpacity={0.7}
                 >
-                    {isUpdating ? (
-                        <ActivityIndicator color="#FFF" />
-                    ) : (
-                        <Text style={styles.saveButtonText}>Save Changes</Text>
-                    )}
+                  {isUpdating ? (
+                    <ActivityIndicator color="#FFF" />
+                  ) : (
+                    <Text style={[styles.saveBtnText, (!isDirty || isLoading) && styles.saveBtnTextDisabled]}>
+                      Save changes
+                    </Text>
+                  )}
                 </TouchableOpacity>
-            </SafeAreaView>
+              </View>
 
-         </KeyboardAvoidingView>
+            </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       </View>
-   );
+    </TouchableWithoutFeedback>
+  );
 };
 
 export default EditGroupDetailsScreen;
 
 const styles = StyleSheet.create({
-   root: {
-      flex: 1,
-      backgroundColor: "#F2F2F7", // System Gray 6 Background for Form feel
-   },
-   scrollContent: {
-       paddingBottom: 100, // Space for footer
-   },
+  root: {
+    flex: 1,
+    backgroundColor: '#FAFAFA',
+  },
+  container: {
+    flex: 1,
+    paddingHorizontal: 20,
+  },
 
-   // --- Banner Image ---
-   sectionLabel: {
-       fontSize: 12,
-       fontWeight: '600',
-       color: '#8E8E93',
-       marginTop: 24,
-       marginBottom: 8,
-       marginLeft: 16,
-       letterSpacing: 0.5,
-   },
-   bannerContainer: {
-       height: 180,
-       width: '100%',
-       backgroundColor: '#E5E5EA',
-       position: 'relative',
-       marginBottom: 8,
-   },
-   bannerImage: {
-       width: '100%',
-       height: '100%',
-   },
-   bannerPlaceholder: {
-       flex: 1,
-       alignItems: 'center',
-       justifyContent: 'center',
-       gap: 8,
-   },
-   placeholderText: {
-       color: '#8E8E93',
-       fontWeight: '500',
-   },
-   editIconOverlay: {
-       position: 'absolute',
-       bottom: 12,
-       right: 12,
-       backgroundColor: 'rgba(0,0,0,0.6)',
-       padding: 8,
-       borderRadius: 20,
-   },
+  // Avatar
+  avatarSection: {
+    alignItems: 'center',
+    paddingVertical: 28,
+  },
+  avatarWrap: {
+    position: 'relative',
+    marginBottom: 10,
+  },
+  avatar: {
+    width: 88,
+    height: 88,
+    borderRadius: 28,
+    backgroundColor: '#EFEFEF',
+  },
+  avatarPlaceholder: {
+    width: 88,
+    height: 88,
+    borderRadius: 28,
+    backgroundColor: '#EFEFEF',
+  },
+  editBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    backgroundColor: '#111111',
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2.5,
+    borderColor: '#FAFAFA',
+  },
+  changePhotoText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#888888',
+  },
 
-   // --- Form ---
-   formContainer: {
-       marginTop: 0,
-   },
-   inputWrapper: {
-       backgroundColor: '#FFFFFF',
-       paddingHorizontal: 16,
-       paddingVertical: 12,
-       borderBottomWidth: StyleSheet.hairlineWidth,
-       borderBottomColor: '#C6C6C8',
-       flexDirection: 'row',
-       alignItems: 'center',
-   },
-   inputLabel: {
-       width: 80,
-       fontSize: 16,
-       fontWeight: '500',
-       color: '#000',
-   },
-   textInput: {
-       flex: 1,
-       fontSize: 16,
-       color: '#000',
-   },
-   
-   // Text Area
-   textAreaWrapper: {
-       alignItems: 'flex-start',
-       paddingVertical: 12,
-       minHeight: 120,
-   },
-   textArea: {
-       flex: 1,
-       fontSize: 16,
-       color: '#000',
-       height: '100%',
-   },
+  // Section
+  section: {
+    marginBottom: 24,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#AAAAAA',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E5E5E5',
+    overflow: 'hidden',
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#EBEBEB',
+  },
+  descriptionRow: {
+    alignItems: 'flex-start',
+  },
+  noBorder: {
+    borderBottomWidth: 0,
+  },
+  inputLabel: {
+    width: 90,
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111111',
+  },
+  descriptionLabel: {
+    marginTop: 2,
+  },
+  input: {
+    flex: 1,
+    fontSize: 14,
+    color: '#111111',
+    padding: 0,
+  },
+  multilineInput: {
+    minHeight: 72,
+    paddingTop: 2,
+  },
 
-   // --- Footer ---
-   footer: {
-       backgroundColor: '#FFFFFF',
-       borderTopWidth: 1,
-       borderTopColor: '#F2F2F7',
-       paddingHorizontal: 16,
-       paddingVertical: 12,
-   },
-   saveButton: {
-       backgroundColor: '#000000',
-       height: 50,
-       borderRadius: 25,
-       alignItems: 'center',
-       justifyContent: 'center',
-   },
-   disabledButton: {
-       backgroundColor: '#C7C7CC', // Disabled Grey
-   },
-   saveButtonText: {
-       color: '#FFFFFF',
-       fontSize: 16,
-       fontWeight: '600',
-   },
+  // Footer
+  footer: {
+    marginTop: 'auto',
+    paddingTop: 16,
+    paddingBottom: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E5E5E5',
+  },
+  saveBtn: {
+    backgroundColor: '#111111',
+    height: 48,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveBtnDisabled: {
+    backgroundColor: '#EFEFEF',
+  },
+  saveBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+  },
+  saveBtnTextDisabled: {
+    color: '#BBBBBB',
+  },
 });

@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { buildMediaUrl, toMediaUrl } from '../../../libs/media.js';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { v4 as uuidv4 } from 'uuid';
 import config from '../../../config/config.js';
@@ -14,18 +15,7 @@ const s3 = new S3Client({
 	region: config.aws.region!,
 });
 
-async function presignIconUrl(iconUrl: string | null | undefined): Promise<string | null | undefined> {
-	if (!iconUrl) return iconUrl;
-	try {
-		const key = new URL(iconUrl).pathname.slice(1);
-		return await getSignedUrl(s3, new GetObjectCommand({
-			Bucket: config.aws.s3Bucket!,
-			Key: key,
-		}), { expiresIn: 60 * 60 * 24 * 7 }); // 7 days
-	} catch {
-		return iconUrl;
-	}
-}
+
 
 export async function createGroup(
 	ownerId: string,
@@ -74,7 +64,7 @@ export async function createGroup(
 		return newGroup;
 	});
 
-	const presignedGroup = { ...group, iconUrl: await presignIconUrl(group.iconUrl) };
+	const presignedGroup = { ...group, iconUrl: toMediaUrl(group.iconUrl) };
 
 	if (wantsIconUpload) {
 		const key = `community-icons/${group.id}/${uuidv4()}.png`;
@@ -87,7 +77,7 @@ export async function createGroup(
 			}),
 			{ expiresIn: 60 * 5 }
 		);
-		const finalUrl = `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${key}`;
+		const finalUrl = buildMediaUrl(key);
 		return { community: presignedGroup, uploadInfo: { presignedUrl, finalUrl } };
 	}
 
@@ -141,10 +131,8 @@ export async function getMyGroups(userId: string) {
 
 	const memberships = memberOf.map((m) => m.community);
 
-	const [ownedWithIcons, membershipsWithIcons] = await Promise.all([
-		Promise.all(owned.map(async (c) => ({ ...c, iconUrl: await presignIconUrl(c.iconUrl) }))),
-		Promise.all(memberships.map(async (c) => ({ ...c, iconUrl: await presignIconUrl(c.iconUrl) }))),
-	]);
+	const ownedWithIcons = owned.map(c => ({ ...c, iconUrl: toMediaUrl(c.iconUrl) }));
+	const membershipsWithIcons = memberships.map(c => ({ ...c, iconUrl: toMediaUrl(c.iconUrl) }));
 
 	return { owned: ownedWithIcons, memberships: membershipsWithIcons };
 }
@@ -168,7 +156,7 @@ export async function getGroupById(groupId: string) {
 		},
 	});
 	if (!group) return null;
-	return { ...group, iconUrl: await presignIconUrl(group.iconUrl) };
+	return { ...group, iconUrl: toMediaUrl(group.iconUrl) };
 }
 
 export async function getGroupDetails(userId: string, groupId: string) {
@@ -184,7 +172,7 @@ export async function getGroupDetails(userId: string, groupId: string) {
 	});
 	if (!canAccess) return null;
 
-	return { ...group, iconUrl: await presignIconUrl(group.iconUrl) };
+	return { ...group, iconUrl: toMediaUrl(group.iconUrl) };
 }
 
 export async function updateGroup(
@@ -247,7 +235,7 @@ export async function generateIconPresignedUrl(userId: string, groupId: string) 
 		}),
 		{ expiresIn: 60 * 5 }
 	);
-	const finalUrl = `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${key}`;
+	const finalUrl = buildMediaUrl(key);
 	return { presignedUrl, finalUrl };
 }
 
@@ -313,7 +301,7 @@ export async function transferOwnership(
 		return result;
 	});
 
-	return { ...updated, iconUrl: await presignIconUrl(updated.iconUrl) };
+	return { ...updated, iconUrl: toMediaUrl(updated.iconUrl) };
 }
 
 export async function createGroupShareLink(userId: string, groupId: string): Promise<string> {

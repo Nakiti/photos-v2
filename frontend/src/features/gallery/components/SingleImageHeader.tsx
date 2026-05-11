@@ -9,9 +9,11 @@ type Props = {
   takenAt?: string;
   onBack: () => void;
   onLayout?: (e: LayoutChangeEvent) => void;
+  canDelete?: boolean;
+  onPressDelete?: () => void;
 };
 
-const SingleImageHeader = ({ visible, uploaderName, takenAt, onBack, onLayout }: Props) => {
+const SingleImageHeader = ({ visible, uploaderName, takenAt, onBack, onLayout, canDelete, onPressDelete }: Props) => {
   return (
     <View
       style={[styles.header, { opacity: visible ? 1 : 0 }]}
@@ -26,7 +28,13 @@ const SingleImageHeader = ({ visible, uploaderName, takenAt, onBack, onLayout }:
           <Text numberOfLines={1} style={styles.title}>{uploaderName || "Photo"}</Text>
           {!!takenAt && <Text numberOfLines={1} style={styles.subtitle}>{takenAt}</Text>}
         </View>
-        <View style={styles.rightPlaceholder} />
+        {canDelete ? (
+          <TouchableOpacity onPress={onPressDelete} style={styles.roundButton}>
+            <Ionicons name="trash-outline" size={18} color="#111" />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.rightPlaceholder} />
+        )}
       </View>
     </View>
   );

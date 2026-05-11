@@ -267,6 +267,11 @@ export const deletePhoto = async (galleryId: string, photoId: string): Promise<v
   await apiClient.delete(`/api/v1/galleries/${galleryId}/photos/${photoId}`);
 };
 
+export const getLikedPhotoIds = async (galleryId: string): Promise<string[]> => {
+  const response = await apiClient.get(`/api/v1/galleries/${galleryId}/photos/liked`);
+  return response.data.photoIds as string[];
+};
+
 export const getPhotoLikeStatus = async (
   galleryId: string,
   photoId: string

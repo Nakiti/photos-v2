@@ -22,10 +22,12 @@ const config = {
     region: process.env.AWS_REGION,
     s3Bucket: process.env.AWS_S3_BUCKET,
   },
+  cloudfront: {
+    baseUrl: process.env.CLOUDFRONT_BASE_URL,
+  },
   branch: {
     key: process.env.BRANCH_IO_KEY,
   },
-  // Add other configurations as needed
 };
 
 export default config;

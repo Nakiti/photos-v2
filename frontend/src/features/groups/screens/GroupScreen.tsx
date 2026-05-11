@@ -145,7 +145,7 @@ const GroupScreen = () => {
       title={item.name}
       icon={item.iconUrl || ''}
       communityName={undefined}
-      lastUploadedBy=""
+      lastUploadedBy={item.lastUploadedByName ?? ''}
       unseenCount={0}
       lastUpdated={item.lastPhotoAt ? new Date(item.lastPhotoAt).toISOString() : new Date().toISOString()}
       onPress={() => handleGalleryPress(item.id)}

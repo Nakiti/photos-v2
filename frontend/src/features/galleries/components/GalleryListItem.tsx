@@ -30,7 +30,7 @@ const getTimeAgo = (dateString: string) => {
 
 const GalleryListItem = ({
   id, icon, title, lastUploadedBy, unseenCount,
-  lastUpdated, onPress,
+  lastUpdated, communityName, onPress,
 }: GalleryListItemProps) => {
   const timeLabel = useMemo(() => getTimeAgo(lastUpdated), [lastUpdated]);
   const hasUnread = unseenCount > 0;
@@ -60,7 +60,7 @@ const GalleryListItem = ({
       {/* Content */}
       <View style={styles.content}>
 
-        {/* Row 1: title + timestamp + chevron */}
+        {/* Row 1: title + community badge + timestamp */}
         <View style={styles.topRow}>
           <Text
             style={[styles.title, hasUnread && styles.titleUnread]}
@@ -68,15 +68,20 @@ const GalleryListItem = ({
           >
             {title}
           </Text>
+          {communityName ? (
+            <View style={styles.communityBadge}>
+              <Text style={styles.communityBadgeText} numberOfLines={1}>{communityName}</Text>
+            </View>
+          ) : null}
           <Text style={[styles.time, hasUnread && styles.timeUnread]}>
             {timeLabel}
           </Text>
         </View>
 
-        {/* Row 2: preview only */}
+        {/* Row 2: preview */}
         <Text
           style={[styles.preview, hasUnread && styles.previewUnread]}
-          numberOfLines={2}
+          numberOfLines={1}
         >
           {preview}
         </Text>
@@ -130,7 +135,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    flex: 1,
+    flexShrink: 1,
     fontSize: 15,
     fontWeight: '500',
     color: '#111111',
@@ -145,6 +150,8 @@ const styles = StyleSheet.create({
     color: '#BBBBBB',
     fontWeight: '400',
     flexShrink: 0,
+    marginLeft: 'auto',
+    paddingLeft: 6,
   },
   timeUnread: {
     color: '#888888',
@@ -154,11 +161,26 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
 
+  communityBadge: {
+    backgroundColor: '#F0F0F0',
+    borderRadius: 5,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    flexShrink: 0,
+    maxWidth: 120,
+  },
+  communityBadgeText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#888888',
+    letterSpacing: 0.1,
+  },
   preview: {
     fontSize: 13,
     color: '#BBBBBB',
     fontWeight: '400',
     lineHeight: 18,
+    flexShrink: 1,
   },
   previewUnread: {
     color: '#666666',

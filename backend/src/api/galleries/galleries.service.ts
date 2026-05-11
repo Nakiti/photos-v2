@@ -1,7 +1,8 @@
 // src/api/galleries/galleries.service.ts
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { buildMediaUrl, toMediaUrl } from '../../../libs/media.js';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import config from '../../../config/config.js';
 import {v4 as uuidv4} from "uuid"
@@ -17,16 +18,6 @@ const s3 = new S3Client({
   },
   region: config.aws.region!,
 });
-
-async function presignIconUrl(iconUrl: string | null | undefined): Promise<string | null | undefined> {
-  if (!iconUrl) return iconUrl;
-  try {
-    const key = new URL(iconUrl).pathname.slice(1);
-    return await getSignedUrl(s3, new GetObjectCommand({ Bucket: config.aws.s3Bucket!, Key: key }), { expiresIn: 60 * 60 * 24 * 7 });
-  } catch {
-    return iconUrl;
-  }
-}
 
 /**
  * Create a new gallery owned by the given user.
@@ -143,7 +134,7 @@ export async function createGallery(
   // --- FIX 1: Move this ENTIRE block OUTSIDE the transaction ---
   const galleryBase = {
     ...newGallery,
-    iconUrl: await presignIconUrl(newGallery.iconUrl),
+    iconUrl: toMediaUrl(newGallery.iconUrl),
     communityName: newGallery.community?.name ?? null,
     community: undefined,
   };
@@ -198,15 +189,27 @@ export async function getMyGalleries(userId: string) {
           name: true,
         },
       },
+      photos: {
+        where: { deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: {
+          uploader: {
+            select: { name: true },
+          },
+        },
+      },
     },
   });
 
-  return Promise.all(galleries.map(async gallery => ({
+  return galleries.map(gallery => ({
     ...gallery,
-    iconUrl: await presignIconUrl(gallery.iconUrl),
+    iconUrl: toMediaUrl(gallery.iconUrl),
     communityName: gallery.community?.name ?? null,
+    lastUploadedByName: gallery.photos[0]?.uploader?.name ?? null,
     community: undefined,
-  })));
+    photos: undefined,
+  }));
 }
 
 /**
@@ -286,7 +289,7 @@ export async function getGalleryDetails(userId: string, galleryId: string) {
 
   return {
     ...galleryDetails,
-    iconUrl: await presignIconUrl(galleryDetails.iconUrl),
+    iconUrl: toMediaUrl(galleryDetails.iconUrl),
     communityName: community?.name ?? null,
     myMembership: myMembership,
     memberCount: memberCount,
@@ -371,7 +374,7 @@ export async function updateGallery(
   }
   const result = {
     ...updated,
-    iconUrl: await presignIconUrl(updated.iconUrl),
+    iconUrl: toMediaUrl(updated.iconUrl),
     communityName: updated.community?.name ?? null,
     community: undefined,
   };
@@ -490,7 +493,7 @@ export async function joinGalleryByLink(userId: string, shareableLink: string) {
 
   return {
     ...joinedGallery,
-    iconUrl: await presignIconUrl(joinedGallery.iconUrl),
+    iconUrl: toMediaUrl(joinedGallery.iconUrl),
     communityName: joinedGallery.community?.name ?? null,
     community: undefined,
   };
@@ -543,14 +546,25 @@ export async function getGalleriesByCommunityId(communityId: string) {
           name: true,
         },
       },
+      photos: {
+        where: { deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: {
+          uploader: {
+            select: { name: true },
+          },
+        },
+      },
     },
   });
 
-  return Promise.all(galleries.map(async ({ community, ...gallery }) => ({
+  return galleries.map(({ community, photos, ...gallery }) => ({
     ...gallery,
-    iconUrl: await presignIconUrl(gallery.iconUrl),
+    iconUrl: toMediaUrl(gallery.iconUrl),
     communityName: community?.name ?? null,
-  })));
+    lastUploadedByName: photos[0]?.uploader?.name ?? null,
+  }));
 }
 
 /**
@@ -576,7 +590,7 @@ export const generateIconPresignedUrl = async (userId: string, galleryId: string
   const presignedUrl = await getSignedUrl(s3, command, { expiresIn });
 
   // 3. Generate Final URL (This is the permanent, cacheable URL)
-  const finalUrl = `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${s3Key}`;
+  const finalUrl = buildMediaUrl(s3Key);
 
   await prisma.gallery.update({
     where: { id: galleryId },
@@ -634,7 +648,7 @@ export async function transferOwnership(
     return result;
   });
 
-  return { ...updated, iconUrl: await presignIconUrl(updated.iconUrl), communityName: updated.community?.name ?? null, community: undefined };
+  return { ...updated, iconUrl: toMediaUrl(updated.iconUrl), communityName: updated.community?.name ?? null, community: undefined };
 }
 
 /**
@@ -752,11 +766,11 @@ export async function searchGalleries(
   // Get total count for pagination
   const total = await prisma.gallery.count({ where: finalWhere });
 
-  const galleriesWithCount = await Promise.all(galleries.map(async (g) => ({
+  const galleriesWithCount = galleries.map((g) => ({
     id: g.id,
     name: g.name,
     type: g.type,
-    iconUrl: await presignIconUrl(g.iconUrl),
+    iconUrl: toMediaUrl(g.iconUrl),
     startDate: g.startDate,
     endDate: g.endDate,
     location: g.location,
@@ -772,7 +786,7 @@ export async function searchGalleries(
       createdAt: g.createdAt,
       updatedAt: g.updatedAt,
       memberCount: g._count.memberships,
-  })));
+  }));
 
   return {
     galleries: galleriesWithCount,

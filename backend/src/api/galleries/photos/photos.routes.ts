@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { isAuthenticated } from '../../../middleware/auth.middleware.js';
 import { checkUploadRateLimit } from '../../../middleware/rateLimiter.middleware.js';
-import { getPhotosForGallery, getPhotoIdsForSync, requestPresignedUrl, confirmPhotoUpload, deletePhoto, getPhotoLikeStatus, likePhoto, unlikePhoto, getDeletedPhotoIds } from './photos.controller.js';
+import { getPhotosForGallery, getPhotoIdsForSync, requestPresignedUrl, confirmPhotoUpload, deletePhoto, getPhotoLikeStatus, likePhoto, unlikePhoto, getDeletedPhotoIds, getLikedPhotoIds } from './photos.controller.js';
 import photoTagsRoutes from './photoTags/photoTags.routes.js';
 
 // This router is merged into the galleries router, so the path is relative.
@@ -24,6 +24,7 @@ router.get('/', isAuthenticated, getPhotosForGallery);
  */
 router.get('/sync', isAuthenticated, getPhotoIdsForSync);
 router.get('/deleted-since', isAuthenticated, getDeletedPhotoIds);
+router.get('/liked', isAuthenticated, getLikedPhotoIds);
 
 
 // --- POST Routes ---

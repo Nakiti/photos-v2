@@ -10,9 +10,12 @@ type Props = {
   activeTagId: string | null;
   onSelect: (tagId: string | null) => void;
   bottomOffset?: number;
+  showLikedOption?: boolean;
 };
 
-const SingleImageTagDropdown = ({ visible, tags, activeTagId, onSelect, bottomOffset = 72 }: Props) => {
+const LIKED_SENTINEL = '__liked__';
+
+const SingleImageTagDropdown = ({ visible, tags, activeTagId, onSelect, bottomOffset = 72, showLikedOption }: Props) => {
   if (!visible) return null;
   return (
     <View style={[styles.dropdownContainer, { bottom: bottomOffset + 8 }]}>
@@ -29,6 +32,26 @@ const SingleImageTagDropdown = ({ visible, tags, activeTagId, onSelect, bottomOf
             <View style={{ width: 16 }} />
           )}
         </TouchableOpacity>
+        {showLikedOption && (
+          <>
+            <View style={styles.divider} />
+            <TouchableOpacity
+              style={styles.dropdownItem}
+              onPress={() => onSelect(LIKED_SENTINEL as any)}
+              activeOpacity={0.85}
+            >
+              <Text style={[styles.itemText, activeTagId === LIKED_SENTINEL && styles.itemTextSelected]}>
+                Liked
+              </Text>
+              <Ionicons
+                name={activeTagId === LIKED_SENTINEL ? 'heart' : 'heart-outline'}
+                size={16}
+                color={activeTagId === LIKED_SENTINEL ? '#ef4444' : '#aaa'}
+              />
+            </TouchableOpacity>
+            <View style={styles.divider} />
+          </>
+        )}
         {tags.map((t) => {
           const selected = activeTagId === t.id;
           return (
@@ -73,6 +96,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 8,
     paddingVertical: 4,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginHorizontal: 12,
   },
   dropdownItem: {
     paddingVertical: 10,

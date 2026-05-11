@@ -1,4 +1,4 @@
-import { Text, TouchableOpacity, View, StyleSheet } from "react-native";
+import { Text, TouchableOpacity, View, StyleSheet, Image } from "react-native";
 import Icon from "react-native-vector-icons/Ionicons";
 import FastImage from "react-native-fast-image";
 import { useNavigation } from "@react-navigation/native";
@@ -57,6 +57,14 @@ const SingleImage = ({ imageSize, images, item, index, galleryId, selectedTagId 
 
    return (
       <TouchableOpacity style={[styles.imageContainer, { width: imageSize, height: imageSize }]} onPress={handlePress}>
+         {/* Background: local thumbnail shown instantly while FastImage loads from CloudFront */}
+         {item.localThumbnailUri ? (
+            <Image
+               style={StyleSheet.absoluteFill}
+               source={{ uri: item.localThumbnailUri }}
+               resizeMode="cover"
+            />
+         ) : null}
          {imageError ? (
             <View style={styles.errorPlaceholder}>
                <Icon name="image-outline" size={20} color="#555" />
@@ -90,6 +98,7 @@ export default SingleImage;
 const styles = StyleSheet.create({
    imageContainer: {
       overflow: 'hidden',
+      backgroundColor: '#e8e8e8',
    },
    image: {
       flex: 1, 

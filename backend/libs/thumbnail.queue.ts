@@ -3,6 +3,7 @@ import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3
 import { PrismaClient } from '@prisma/client';
 import sharp from 'sharp';
 import config from '../config/config.js';
+import { buildMediaUrl } from './media.js';
 import { redisConnection } from './redis.js';
 
 const prisma = new PrismaClient();
@@ -39,7 +40,7 @@ new Worker('thumbnail-generation', async job => {
     await s3.send(putCommand);
 
     // 4. Update the Photo record with the new thumbnailUrl
-    const thumbnailUrl = `https://${s3Bucket}.s3.${config.aws.region}.amazonaws.com/${thumbnailKey}`;
+    const thumbnailUrl = buildMediaUrl(thumbnailKey);
     await prisma.photo.update({
       where: { id: photoId },
       data: { thumbnailUrl: thumbnailUrl },

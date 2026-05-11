@@ -49,7 +49,7 @@ const GalleriesListScreen = () => {
       title={item.name}
       icon={item.iconUrl || ''}
       communityName={item.communityName ?? undefined}
-      lastUploadedBy=""
+      lastUploadedBy={item.lastUploadedByName ?? ''}
       unseenCount={0}
       lastUpdated={item.lastPhotoAt
         ? new Date(item.lastPhotoAt).toISOString()

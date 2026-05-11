@@ -93,5 +93,27 @@ export default schemaMigrations({
       toVersion: 33,
       steps: [],
     },
+    {
+      toVersion: 34,
+      steps: [
+        addColumns({
+          table: 'galleries',
+          columns: [
+            { name: 'last_uploaded_by_name', type: 'string', isOptional: true },
+          ],
+        }),
+      ],
+    },
+    {
+      toVersion: 35,
+      steps: [
+        addColumns({
+          table: 'photos',
+          columns: [
+            { name: 'is_liked', type: 'boolean', isOptional: true },
+          ],
+        }),
+      ],
+    },
   ],
 });

@@ -1,173 +1,202 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import {
+  View, Text, TouchableOpacity, StyleSheet, Alert,
+  SafeAreaView, ActivityIndicator,
+} from "react-native";
 import { useRoute } from "@react-navigation/native";
 import { useGroup, useUpdateGroup } from "../../../../hooks/useGroupData";
 import { useMyGroupMembership } from "../../../../hooks/useGroupMembershipData";
-import { ActivityIndicator } from "react-native-paper";
 import { useQueryClient } from "@tanstack/react-query";
-
-interface EditDeletePermissionProps { groupId: string | number }
+import Ionicons from "react-native-vector-icons/Ionicons";
 
 const EditDeletePermissionScreen = () => {
-   const route = useRoute();
-   const queryClient = useQueryClient();
-   const { groupId } = route.params as { groupId: string };
+  const route = useRoute();
+  const queryClient = useQueryClient();
+  const { groupId } = route.params as { groupId: string };
 
-   // Fetch group data and user's membership
-   const { group: community, isLoading, isError, error } = useGroup(groupId);
-   const { data: myMembership } = useMyGroupMembership(groupId);
-   const { mutate: updateGroup, isPending: isUpdating } = useUpdateGroup();
+  const { group: community, isLoading } = useGroup(groupId);
+  const { data: myMembership } = useMyGroupMembership(groupId);
+  const { mutate: updateGroup, isPending: isUpdating } = useUpdateGroup();
 
-   const [selectedOption, setSelectedOption] = useState<'ADMINS_AUTHORS' | 'ADMIN'>('ADMINS_AUTHORS');
+  const [selectedOption, setSelectedOption] = useState<'ADMINS_AUTHORS' | 'ADMIN'>('ADMINS_AUTHORS');
 
-   const options = [
-      { id: "1", value: "ADMINS_AUTHORS" as const, title: "Admins and Authors", subtitle: "Admins and photo authors can delete pictures" },
-      { id: "2", value: "ADMIN" as const, title: "Admins", subtitle: "Only admins can delete pictures" },
-   ];
+  const options = [
+    { id: "1", value: "ADMINS_AUTHORS" as const, title: "Admins and Authors", subtitle: "Admins and photo authors can delete pictures" },
+    { id: "2", value: "ADMIN" as const, title: "Admins Only", subtitle: "Only admins can delete pictures" },
+  ];
 
-   // Set initial value when community loads
-   useEffect(() => {
-      if (community?.deletePermission) {
-         setSelectedOption(community.deletePermission);
+  useEffect(() => {
+    if (community?.deletePermission) {
+      setSelectedOption(community.deletePermission);
+    }
+  }, [community]);
+
+  const isDirty = useMemo(() => {
+    return community?.deletePermission !== selectedOption;
+  }, [community?.deletePermission, selectedOption]);
+
+  const handleSave = () => {
+    if (!isDirty || isUpdating) return;
+    updateGroup(
+      { groupId, data: { deletePermission: selectedOption } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: ['group', groupId] });
+        },
+        onError: () => {
+          Alert.alert('Error', 'Failed to update permission.');
+        },
       }
-   }, [community]);
+    );
+  };
 
-   const isDirty = useMemo(() => {
-      return community?.deletePermission !== selectedOption;
-   }, [community?.deletePermission, selectedOption]);
-
-   const handleSave = () => {
-      if (!isDirty || isUpdating) return;
-
-      updateGroup(
-         { groupId, data: { deletePermission: selectedOption } },
-         {
-            onSuccess: () => {
-               Alert.alert('Success', 'Delete permission updated!');
-               queryClient.invalidateQueries({ queryKey: ['group', groupId] });
-            },
-            onError: () => {
-               Alert.alert('Error', 'Failed to update permission.');
-            },
-         }
-      );
-   };
-
-   if (isLoading) {
-      return (
-         <View style={[styles.container, styles.center]}>
-            <ActivityIndicator size="large" color="#0000ff" />
-         </View>
-      );
-   }
-
-   if (isError) {
-      return (
-         <View style={[styles.container, styles.center]}>
-            <Text style={styles.errorText}>Failed to load community: {error?.message || 'Unknown error'}</Text>
-         </View>
-      );
-   }
-
-   const userRole = myMembership?.role;
-   const canEdit = userRole === 'ADMIN' || community?.ownerId === myMembership?.userId;
-
-   return (
-      <View style={styles.container}>
-         <Text style={styles.title}>Who can delete pictures?</Text>
-
-         <View style={styles.optionsContainer}>
-         {options.map((item, index) => (
-            <TouchableOpacity
-               key={item.id}
-               style={[styles.option, index !== options.length - 1 && styles.optionBorder]}
-               onPress={() => setSelectedOption(item.value)}
-               disabled={!canEdit}
-            >
-               <View>
-                  <Text style={styles.optionTitle}>{item.title}</Text>
-                  <Text style={styles.optionSubtitle}>{item.subtitle}</Text>
-               </View>
-               {selectedOption === item.value && <Text style={{ color: 'green', fontSize: 18 }}>✓</Text>}
-            </TouchableOpacity>
-         ))}
-         </View>
-
-         {canEdit && <TouchableOpacity
-            style={[
-               styles.saveButton,
-               (!isDirty || isUpdating) ? styles.saveButtonDisabled : styles.saveButtonActive
-            ]}
-            disabled={!isDirty || isUpdating}
-            onPress={handleSave}
-         >
-            <Text style={styles.saveButtonText}>{isUpdating ? 'Saving...' : 'Save'}</Text>
-         </TouchableOpacity>}
+  if (isLoading) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="small" color="#999" />
       </View>
-   );
+    );
+  }
+
+  const canEdit = myMembership?.role === 'ADMIN' || community?.ownerId === myMembership?.userId;
+
+  return (
+    <View style={styles.root}>
+      <SafeAreaView style={{ flex: 1 }}>
+        <View style={styles.content}>
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Who can delete photos?</Text>
+            <View style={styles.card}>
+              {options.map((item, index) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[styles.optionRow, index === options.length - 1 && styles.optionRowLast]}
+                  onPress={() => setSelectedOption(item.value)}
+                  disabled={!canEdit}
+                  activeOpacity={0.5}
+                >
+                  <View style={styles.optionText}>
+                    <Text style={styles.optionTitle}>{item.title}</Text>
+                    <Text style={styles.optionSubtitle}>{item.subtitle}</Text>
+                  </View>
+                  {selectedOption === item.value && (
+                    <Ionicons name="checkmark" size={18} color="#111111" />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+        {canEdit && (
+          <View style={styles.footer}>
+            <TouchableOpacity
+              style={[styles.saveBtn, (!isDirty || isUpdating) && styles.saveBtnDisabled]}
+              onPress={handleSave}
+              disabled={!isDirty || isUpdating}
+              activeOpacity={0.7}
+            >
+              {isUpdating ? (
+                <ActivityIndicator color={isDirty ? '#FFF' : '#BBBBBB'} />
+              ) : (
+                <Text style={[styles.saveBtnText, (!isDirty || isUpdating) && styles.saveBtnTextDisabled]}>
+                  Save changes
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+      </SafeAreaView>
+    </View>
+  );
 };
 
 export default EditDeletePermissionScreen;
 
 const styles = StyleSheet.create({
-   container: {
-     flex: 1,
-     backgroundColor: "white",
-     padding: 20,
-   },
-   center: {
-     justifyContent: 'center',
-     alignItems: 'center',
-   },
-   title: {
-     color: "black",
-     fontSize: 16,
-     marginBottom: 10,
-     paddingHorizontal: 2,
-     fontWeight: "600",
-   },
-   optionsContainer: {
-     backgroundColor: "#f2f2f2",
-     borderRadius: 10,
-   },
-   option: {
-     padding: 15,
-     flexDirection: "row",
-     justifyContent: "space-between",
-     alignItems: "center",
-   },
-   optionBorder: {
-     borderBottomWidth: 1,
-     borderBottomColor: "#ddd",
-   },
-   optionTitle: {
-     color: "black",
-     fontSize: 16,
-   },
-   optionSubtitle: {
-     color: "#666",
-     fontSize: 14,
-   },
-   saveButton: {
-     marginTop: 20,
-     paddingVertical: 12,
-     borderRadius: 8,
-     alignItems: "center",
-   },
-   saveButtonDisabled: {
-     backgroundColor: "#ccc",
-   },
-   saveButtonActive: {
-     backgroundColor: "#007bff",
-   },
-   saveButtonText: {
-     color: "white",
-     fontSize: 16,
-     fontWeight: "bold",
-   },
-   errorText: {
-     color: 'red',
-   },
+  root: {
+    flex: 1,
+    backgroundColor: '#FAFAFA',
+  },
+  loading: {
+    flex: 1,
+    backgroundColor: '#FAFAFA',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#AAAAAA',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E5E5E5',
+    overflow: 'hidden',
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#EBEBEB',
+  },
+  optionRowLast: {
+    borderBottomWidth: 0,
+  },
+  optionText: {
+    flex: 1,
+    marginRight: 12,
+  },
+  optionTitle: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#111111',
+    letterSpacing: -0.1,
+  },
+  optionSubtitle: {
+    fontSize: 13,
+    color: '#AAAAAA',
+    marginTop: 2,
+  },
+  footer: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 20,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E5E5E5',
+  },
+  saveBtn: {
+    backgroundColor: '#111111',
+    height: 48,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveBtnDisabled: {
+    backgroundColor: '#EFEFEF',
+  },
+  saveBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+  },
+  saveBtnTextDisabled: {
+    color: '#BBBBBB',
+  },
 });
-
-

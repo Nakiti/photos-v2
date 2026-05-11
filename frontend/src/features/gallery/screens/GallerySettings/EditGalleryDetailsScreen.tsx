@@ -22,21 +22,32 @@ const EditGalleryDetailsScreen = () => {
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [localImageUri, setLocalImageUri] = useState<string | null>(null);
+  // pendingIconUri: set while an icon upload is in-flight (drives isDirty)
+  const [pendingIconUri, setPendingIconUri] = useState<string | null>(null);
+  // displayLocalUri: the local file to show — persists after upload completes so
+  // the avatar never goes blank waiting for FastImage to cache the new CloudFront URL
+  const [displayLocalUri, setDisplayLocalUri] = useState<string | null>(null);
   const [initial, setInitial] = useState({ name: '', description: '', iconUrl: null as string | null });
 
+  // Populate form fields whenever gallery data arrives or changes (e.g. after icon sync).
+  // Intentionally does NOT reset displayLocalUri — that would cause the blank-avatar flash.
   useEffect(() => {
     if (gallery) {
       setName(gallery.name || '');
       setDescription('');
-      setLocalImageUri(null);
       setInitial({ name: gallery.name || '', description: '', iconUrl: gallery.iconUrl || null });
     }
   }, [galleryId, gallery]);
 
+  // Reset local display state only when navigating to a different gallery.
+  useEffect(() => {
+    setPendingIconUri(null);
+    setDisplayLocalUri(null);
+  }, [galleryId]);
+
   const isDirty = useMemo(() =>
-    name !== initial.name || description !== initial.description || localImageUri !== null,
-    [name, description, localImageUri, initial]
+    name !== initial.name || description !== initial.description || pendingIconUri !== null,
+    [name, description, pendingIconUri, initial]
   );
 
   const isLoading = isUpdating || isUploadingIcon;
@@ -47,10 +58,18 @@ const EditGalleryDetailsScreen = () => {
       if (response.errorMessage) { Alert.alert('Error', response.errorMessage); return; }
       if (response.assets?.[0]?.uri) {
         const uri = response.assets[0].uri;
-        setLocalImageUri(uri);
+        setPendingIconUri(uri);
+        setDisplayLocalUri(uri);
         updateGalleryIcon(uri, {
-          onSuccess: () => { setLocalImageUri(null); queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] }); },
-          onError: (err) => Alert.alert('Upload Failed', (err as Error)?.message || 'Unable to update image'),
+          onSuccess: () => {
+            setPendingIconUri(null); // clear dirty; keep displayLocalUri so avatar stays visible
+            queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });
+          },
+          onError: (err) => {
+            setPendingIconUri(null);
+            setDisplayLocalUri(null);
+            Alert.alert('Upload Failed', (err as Error)?.message || 'Unable to update image');
+          },
         });
       }
     });
@@ -65,14 +84,13 @@ const EditGalleryDetailsScreen = () => {
           queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });
           queryClient.invalidateQueries({ queryKey: ['galleries'] });
           setInitial(prev => ({ ...prev, name: name.trim() || prev.name, description }));
-          setLocalImageUri(null);
         },
         onError: () => Alert.alert('Error', 'Failed to update gallery.'),
       }
     );
   };
 
-  const coverUri = localImageUri || initial.iconUrl || undefined;
+  const coverUri = displayLocalUri || initial.iconUrl || undefined;
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>

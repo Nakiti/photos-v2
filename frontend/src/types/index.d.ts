@@ -26,6 +26,9 @@ export interface Gallery {
     photoCount?: number;
     memberCount?: number;
 
+    // Last activity
+    lastUploadedByName?: string | null;
+
     // Permission and settings fields (optional)
     joinRequiresApproval?: boolean;
     addPermission?: string;

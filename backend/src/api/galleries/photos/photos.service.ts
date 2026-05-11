@@ -4,7 +4,8 @@ import { broadcastNewPhoto, broadcastPhotoDeleted, broadcastPhotoUpdated } from 
 import { photoQueue } from '../../../../libs/queue.js';
 import {v4 as uuidv4} from "uuid"
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { S3Client, PutObjectCommand, DeleteObjectsCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3';
+import { buildMediaUrl } from '../../../../libs/media.js';
 import { smartThrottleNewPhoto, createNotificationRecord, sendPushNotifications } from '../../notifications/notifications.service.js';
 import { checkAndRecordUpload } from '../../../../libs/rateLimiter.js';
 import { redis } from '../../../../libs/redis.js';
@@ -31,16 +32,12 @@ const s3ClientV3 = new S3Client({
   region: config.aws.region!,
 });
 
-const PHOTO_VIEW_URL_TTL = 60 * 60 * 24; // 24 hours
-
-async function withPresignedPhotoUrls(photo: { s3Key: string; thumbnailKey: string | null; [key: string]: any }) {
-  const [s3Url, thumbnailUrl] = await Promise.all([
-    getSignedUrl(s3ClientV3, new GetObjectCommand({ Bucket: config.aws.s3Bucket!, Key: photo.s3Key }), { expiresIn: PHOTO_VIEW_URL_TTL }),
-    photo.thumbnailKey
-      ? getSignedUrl(s3ClientV3, new GetObjectCommand({ Bucket: config.aws.s3Bucket!, Key: photo.thumbnailKey }), { expiresIn: PHOTO_VIEW_URL_TTL })
-      : null,
-  ]);
-  return { ...photo, s3Url, thumbnailUrl };
+function withCloudFrontUrls(photo: { s3Key: string; thumbnailKey: string | null; [key: string]: any }) {
+  return {
+    ...photo,
+    s3Url: buildMediaUrl(photo.s3Key),
+    thumbnailUrl: photo.thumbnailKey ? buildMediaUrl(photo.thumbnailKey) : null,
+  };
 }
 
 export async function listPhotos(galleryId: string, page: number, limit: number, tagId?: string, userId?: string, since?: string) {
@@ -107,8 +104,7 @@ export async function listPhotos(galleryId: string, page: number, limit: number,
     }),
     prisma.photo.count({ where }),
   ]);
-  const presignedItems = await Promise.all(items.map(withPresignedPhotoUrls));
-  return { items: presignedItems, total, page, limit };
+  return { items: items.map(withCloudFrontUrls), total, page, limit };
 }
 
 export async function getPhotoIdsForGallery(galleryId: string) {
@@ -175,8 +171,8 @@ export const createPresignedUploadUrls = async (galleryId: string, contentType: 
     getSignedUrl(s3ClientV3, commandThumb, { expiresIn }),
   ]);
 
-  const finalUrlFull = `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${s3KeyFull}`;
-  const finalUrlThumb = `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${s3KeyThumb}`;
+  const finalUrlFull = buildMediaUrl(s3KeyFull);
+  const finalUrlThumb = buildMediaUrl(s3KeyThumb);
 
   const result = buildPresignResult(presignedUrlFull, s3KeyFull, finalUrlFull, presignedUrlThumb, s3KeyThumb, finalUrlThumb);
   console.log(`[Photos][presign] generated full=${s3KeyFull} thumb=${s3KeyThumb}`);
@@ -237,9 +233,7 @@ export async function confirmUploadedPhoto(
 ) {
   console.log(`[Photos][confirm] start gallery=${galleryId} uploader=${uploaderId} s3Key=${s3Key} clientId=${clientId ?? 'none'}`);
 
-  const resolvedS3Url =
-    s3Url ??
-    `https://${config.aws.s3Bucket}.s3.${config.aws.region}.amazonaws.com/${s3Key}`;
+  const resolvedS3Url = s3Url ?? buildMediaUrl(s3Key);
 
   // 1. Idempotency: if this s3Key was already confirmed, return the existing record.
   const existing = await prisma.photo.findUnique({
@@ -248,7 +242,7 @@ export async function confirmUploadedPhoto(
   });
   if (existing) {
     console.log(`[Photos][confirm] idempotent hit s3Key=${s3Key} photoId=${existing.id}`);
-    return withPresignedPhotoUrls(existing);
+    return withCloudFrontUrls(existing);
   }
 
   // 2. Atomic rate limit: check and record in one Redis operation.
@@ -308,7 +302,7 @@ export async function confirmUploadedPhoto(
         where: { s3Key },
         select: PHOTO_SELECT,
       });
-      if (raceWinner) return withPresignedPhotoUrls(raceWinner);
+      if (raceWinner) return withCloudFrontUrls(raceWinner);
     }
 
     // Transaction failed for other reasons: clean up the orphaned S3 objects.
@@ -343,7 +337,7 @@ export async function confirmUploadedPhoto(
 
   await smartThrottleNewPhoto(galleryId, uploaderName, galleryName, created!.id);
 
-  return withPresignedPhotoUrls(created!);
+  return withCloudFrontUrls(created!);
 }
 
 export async function deletePhoto(requesterId: string, galleryId: string, photoId: string) {
@@ -354,7 +348,13 @@ export async function deletePhoto(requesterId: string, galleryId: string, photoI
   if (!photo || photo.galleryId !== galleryId || photo.deletedAt !== null) return false;
   const isOwner = photo.gallery.ownerId === requesterId;
   const isUploader = photo.uploaderId === requesterId;
-  if (!isOwner && !isUploader) return false;
+  if (!isOwner && !isUploader) {
+    const membership = await prisma.membership.findUnique({
+      where: { userId_galleryId: { userId: requesterId, galleryId } },
+      select: { role: true },
+    });
+    if (membership?.role !== 'ADMIN') return false;
+  }
 
   const deleted = await prisma.$transaction(async (tx) => {
     const { count } = await tx.photo.updateMany({
@@ -362,6 +362,7 @@ export async function deletePhoto(requesterId: string, galleryId: string, photoI
       data: { deletedAt: new Date() },
     });
     if (count === 0) return false;
+    await tx.photoLike.deleteMany({ where: { photoId } });
     await tx.gallery.update({
       where: { id: galleryId },
       data: { photoCount: { decrement: 1 } },
@@ -372,6 +373,14 @@ export async function deletePhoto(requesterId: string, galleryId: string, photoI
   if (!deleted) return false;
   broadcastPhotoDeleted(galleryId, photoId);
   return true;
+}
+
+export async function getMyLikedPhotoIds(userId: string, galleryId: string): Promise<string[]> {
+  const likes = await prisma.photoLike.findMany({
+    where: { userId, photo: { galleryId, deletedAt: null } },
+    select: { photoId: true },
+  });
+  return likes.map(l => l.photoId);
 }
 
 /**

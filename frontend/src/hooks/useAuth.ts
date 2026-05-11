@@ -12,7 +12,7 @@ import { socket } from '../services/socketClient';
 import { Platform } from 'react-native';
 import messaging from '@react-native-firebase/messaging';
 
-async function registerPushToken() {
+export async function registerPushToken() {
   try {
     const authStatus = await messaging().requestPermission();
     const granted =

@@ -19,6 +19,7 @@ export default class Photo extends Model {
   @text('thumbnail_url') thumbnailUri?: string;
   @field('status') status!: 'queued' | 'uploading' | 'upload_failed' | 'synced' | 'sync_pending';
   @field('retry_after') retryAfter?: number;
+  @field('is_liked') isLiked?: boolean;
   @readonly @date('created_at') createdAt!: number;
 
   @relation('galleries', 'gallery_id') gallery!: any;

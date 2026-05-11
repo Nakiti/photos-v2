@@ -60,13 +60,6 @@ const SingleImageBottomBar = ({
 
         <View style={[styles.sideGroup, { justifyContent: "flex-end" }]}>
           <TouchableOpacity
-            onPress={onPressUpload}
-            style={styles.circleBtn}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="cloud-upload-outline" size={20} color="#111" />
-          </TouchableOpacity>
-          <TouchableOpacity
             onPress={onPressLike}
             style={styles.circleBtn}
             activeOpacity={0.8}
@@ -100,7 +93,7 @@ const styles = StyleSheet.create({
   barRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
+    paddingHorizontal: 20,
   },
   sideGroup: {
     width: 120,

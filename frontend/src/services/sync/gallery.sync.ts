@@ -43,7 +43,8 @@ export const syncGalleries = async (database: Database, remoteGalleries: Gallery
         local.startDate !== remoteStartDate ||
         local.endDate !== remoteEndDate ||
         local.location !== remoteGallery.location ||
-        local.shareableLink !== remoteGallery.shareableLink;
+        local.shareableLink !== remoteGallery.shareableLink ||
+        local.lastUploadedByName !== (remoteGallery.lastUploadedByName ?? undefined);
       if (needsUpdate) {
         operations.push(
           local.prepareUpdate(record => {
@@ -63,6 +64,7 @@ export const syncGalleries = async (database: Database, remoteGalleries: Gallery
             record.endDate = remoteEndDate ?? undefined;
             record.location = remoteGallery.location ?? undefined;
             record.shareableLink = remoteGallery.shareableLink ?? undefined;
+            record.lastUploadedByName = remoteGallery.lastUploadedByName ?? undefined;
           })
         );
       }
@@ -89,6 +91,7 @@ export const syncGalleries = async (database: Database, remoteGalleries: Gallery
           record.endDate = remoteGallery.endDate ? new Date(remoteGallery.endDate).getTime() : undefined;
           record.location = remoteGallery.location ?? undefined;
           record.shareableLink = remoteGallery.shareableLink ?? undefined;
+          record.lastUploadedByName = (remoteGallery as any).lastUploadedByName ?? undefined;
         })
       );
     }
@@ -157,6 +160,9 @@ export const syncGalleryDetails = async (
     record.lastPhotoAt = remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : undefined
     record.photoCount = remoteGallery.photoCount ?? 0
     record.memberCount = remoteGallery.memberCount ?? 0
+    if (remoteGallery.lastUploadedByName !== undefined) {
+      record.lastUploadedByName = remoteGallery.lastUploadedByName ?? undefined;
+    }
     // Rate limiting fields
     if ((remoteGallery as any).uploadLimitPerHour !== undefined) {
       record.uploadLimitPerHour = (remoteGallery as any).uploadLimitPerHour;
@@ -228,7 +234,8 @@ export const syncCommunityGalleries = async (
         // Check dates (convert remote to timestamp for comparison)
         local.startDate !== (remoteGallery.startDate ? new Date(remoteGallery.startDate).getTime() : null) ||
         local.endDate !== (remoteGallery.endDate ? new Date(remoteGallery.endDate).getTime() : null) ||
-        local.lastPhotoAt !== (remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : null);
+        local.lastPhotoAt !== (remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : null) ||
+        local.lastUploadedByName !== (remoteGallery.lastUploadedByName ?? undefined);
 
       if (needsUpdate) {
         operations.push(
@@ -254,6 +261,7 @@ export const syncCommunityGalleries = async (
             record.lastPhotoAt = remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : undefined;
             record.photoCount = remoteGallery.photoCount ?? 0;
             record.memberCount = remoteGallery.memberCount ?? 0;
+            record.lastUploadedByName = remoteGallery.lastUploadedByName ?? undefined;
             // Update timestamps
             if ('created_at' in (record as any)._raw && remoteGallery.createdAt) {
               (record as any)._raw.created_at = new Date(remoteGallery.createdAt).getTime();
@@ -290,6 +298,7 @@ export const syncCommunityGalleries = async (
           record.lastPhotoAt = remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : undefined;
           record.photoCount = remoteGallery.photoCount ?? 0;
           record.memberCount = remoteGallery.memberCount ?? 0;
+          record.lastUploadedByName = remoteGallery.lastUploadedByName ?? undefined;
           // Set timestamps
           if (remoteGallery.createdAt) {
             (record as any)._raw.created_at = new Date(remoteGallery.createdAt).getTime();

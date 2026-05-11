@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Switch,
   SafeAreaView,
   Alert,
 } from 'react-native';
@@ -23,7 +22,6 @@ const SettingsRow = ({
   label,
   value,
   onPress,
-  isSwitch,
   isDestructive,
   hasChevron = true,
   isLast = false,
@@ -31,28 +29,16 @@ const SettingsRow = ({
   <TouchableOpacity
     style={[styles.row, isLast && styles.rowLast]}
     onPress={onPress}
-    activeOpacity={isSwitch ? 1 : 0.5}
-    disabled={!onPress && !isSwitch}
+    activeOpacity={0.5}
+    disabled={!onPress}
   >
     <Text style={[styles.rowLabel, isDestructive && styles.rowLabelDestructive]}>
       {label}
     </Text>
     <View style={styles.rowRight}>
-      {isSwitch ? (
-        <Switch
-          value={value}
-          onValueChange={onPress}
-          trackColor={{ false: '#E5E5E5', true: '#111111' }}
-          thumbColor="#FFFFFF"
-          ios_backgroundColor="#E5E5E5"
-        />
-      ) : (
-        <>
-          {value && <Text style={styles.rowValue}>{value}</Text>}
-          {hasChevron && !isDestructive && (
-            <Ionicons name="chevron-forward" size={14} color="#CECECE" style={{ marginLeft: 4 }} />
-          )}
-        </>
+      {value && <Text style={styles.rowValue}>{value}</Text>}
+      {hasChevron && !isDestructive && (
+        <Ionicons name="chevron-forward" size={14} color="#CECECE" style={{ marginLeft: 4 }} />
       )}
     </View>
   </TouchableOpacity>
@@ -62,7 +48,11 @@ const ProfileScreen = () => {
   const navigation = useNavigation<any>();
   const { user } = useUser();
   const { logout } = useAuth();
-  const [showHidden, setShowHidden] = React.useState(false);
+
+  const handleClearCache = async () => {
+    await Promise.all([FastImage.clearDiskCache(), FastImage.clearMemoryCache()]);
+    Alert.alert('Cache cleared');
+  };
 
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -103,11 +93,6 @@ const ProfileScreen = () => {
             <SettingsRow
               label="Edit Profile"
               onPress={() => navigation.navigate('ProfileFlow', { screen: 'EditProfile' })}
-            />
-            <SettingsRow
-              label="Appearance"
-              value="System"
-              onPress={() => {}}
               isLast
             />
           </View>
@@ -136,15 +121,8 @@ const ProfileScreen = () => {
           <SectionLabel title="Gallery" />
           <View style={styles.card}>
             <SettingsRow
-              label="Show Hidden Galleries"
-              isSwitch
-              value={showHidden}
-              onPress={() => setShowHidden(!showHidden)}
-            />
-            <SettingsRow
               label="Clear Cache"
-              value="1.2 GB"
-              onPress={() => Alert.alert('Cache Cleared')}
+              onPress={handleClearCache}
               hasChevron={false}
               isLast
             />

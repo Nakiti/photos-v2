@@ -1,8 +1,8 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const mySchema = appSchema({
-  // Version 33: Removed status column from memberships
-  version: 33,
+  // Version 35: Added is_liked to photos
+  version: 35,
   tables: [
     tableSchema({
       name: 'users',
@@ -41,6 +41,7 @@ export const mySchema = appSchema({
         { name: 'upload_limit_per_hour', type: 'number', isOptional: true },
         { name: 'rate_limit_state_token', type: 'string', isOptional: true },
         { name: 'rate_limit_last_synced', type: 'number', isOptional: true },
+        { name: 'last_uploaded_by_name', type: 'string', isOptional: true },
         { name: 'created_at', type: 'number' },
         { name: 'updated_at', type: 'number' },
       ],
@@ -67,6 +68,7 @@ export const mySchema = appSchema({
         { name: 'thumbnail_url', type: 'string', isOptional: true },
         { name: 'status', type: 'string' }, // 'queued', 'uploading', 'upload_failed', 'synced', 'sync_pending'
         { name: 'retry_after', type: 'number', isOptional: true }, // Timestamp when sync_pending photos should retry
+        { name: 'is_liked', type: 'boolean', isOptional: true },
         { name: 'created_at', type: 'number' },
       ],
     }),

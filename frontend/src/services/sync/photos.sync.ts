@@ -302,6 +302,9 @@ export const updateOptimisticPhoto = async (
           record.s3Key = finalPhoto.s3Key;
           record.s3Url = finalPhoto.s3Url;
           record.thumbnailUri = (finalPhoto as any).thumbnailUrl;
+          // Preserve the local thumbnail so the grid cell stays visible while
+          // FastImage loads the CloudFront URL after the FlatList key change.
+          record.localThumbnailUri = tempRecord.localThumbnailUri;
           record.status = 'synced';
           // Use the server-assigned timestamp so the local sync cursor stays accurate.
           if (finalPhoto.createdAt) {
@@ -327,4 +330,16 @@ export const updateOptimisticPhoto = async (
         console.error('Error updating optimistic photo:', error);
       }
     });
+};
+
+export const syncLikedStatus = async (database: Database, galleryId: string, likedPhotoIds: string[]) => {
+  const photosCollection = database.collections.get<Photo>('photos');
+  const localPhotos = await photosCollection.query(Q.where('gallery_id', galleryId)).fetch();
+  const likedSet = new Set(likedPhotoIds);
+  const ops = localPhotos
+    .filter(p => (p.isLiked ?? false) !== likedSet.has(p.id))
+    .map(p => p.prepareUpdate(r => { r.isLiked = likedSet.has(p.id); }));
+  if (ops.length > 0) {
+    await database.write(async () => { await database.batch(...ops); });
+  }
 };

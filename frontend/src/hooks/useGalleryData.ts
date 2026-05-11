@@ -9,9 +9,9 @@ import { syncGalleries, syncGalleryDetails } from '../services/sync/gallery.sync
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createGallery, getGalleryDetails } from '../services/api/gallery.service';
 import { UpdateGalleryRequest } from '../types/gallery.types';
-import { fetchPhotoIdsForSync, fetchPhotos, fetchDeletedPhotoIds } from '../services/api/photos.service';
+import { fetchPhotoIdsForSync, fetchPhotos, fetchDeletedPhotoIds, deletePhoto, getLikedPhotoIds } from '../services/api/photos.service';
 import { getRateLimitState } from '../services/api/gallery.service';
-import { syncPhotos, reconcileDeletedPhotos, reconcileDeletedPhotosSince } from '../services/sync/photos.sync';
+import { syncPhotos, reconcileDeletedPhotos, reconcileDeletedPhotosSince, syncLikedStatus } from '../services/sync/photos.sync';
 import Photo from '../db/models/Photo';
 import { CreateGalleryRequest } from '../services/api/gallery.service';
 
@@ -103,13 +103,14 @@ export const useGalleries = (
  */
 export const useLocalGallery = (
   galleryId: string | null,
-  options?: { tagId?: string | null; uploaderId?: string | null },
+  options?: { tagId?: string | null; uploaderId?: string | null; likedOnly?: boolean },
 ) => {
   const database = useDatabase();
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const selectedTagId = options?.tagId ?? null;
   const selectedUploaderId = options?.uploaderId ?? null;
+  const likedOnly = options?.likedOnly ?? false;
 
   useEffect(() => {
     if (!galleryId) {
@@ -125,6 +126,7 @@ export const useLocalGallery = (
     const conditions = [Q.where('gallery_id', galleryId)] as any[];
     if (selectedTagId) conditions.push(Q.on('photo_tags', 'tag_id', selectedTagId));
     if (selectedUploaderId) conditions.push(Q.where('uploader_id', selectedUploaderId));
+    if (likedOnly) conditions.push(Q.where('is_liked', true));
 
     const photosSub = photosCollection
       .query(...conditions, Q.sortBy('created_at', Q.desc))
@@ -135,7 +137,7 @@ export const useLocalGallery = (
       gallerySub.unsubscribe();
       photosSub.unsubscribe();
     };
-  }, [database, galleryId, selectedTagId, selectedUploaderId]);
+  }, [database, galleryId, selectedTagId, selectedUploaderId, likedOnly]);
 
   return { gallery, photos };
 };
@@ -157,12 +159,13 @@ const reconciliationCache = new Map<string, number>();
  *
  * @param galleryId The ID of the gallery to fetch.
  */
-export const useGallery = (galleryId: string | null, options?: { tagId?: string | null; uploaderId?: string | null }) => {
+export const useGallery = (galleryId: string | null, options?: { tagId?: string | null; uploaderId?: string | null; likedOnly?: boolean }) => {
   const database = useDatabase();
   const [gallery, setGallery] = useState<Gallery | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const selectedTagId = options?.tagId ?? null;
   const selectedUploaderId = options?.uploaderId ?? null;
+  const likedOnly = options?.likedOnly ?? false;
 
   // 1. OBSERVE LOCAL DATA
   useEffect(() => {
@@ -183,6 +186,9 @@ export const useGallery = (galleryId: string | null, options?: { tagId?: string 
     if (selectedUploaderId) {
       conditions.push(Q.where('uploader_id', selectedUploaderId));
     }
+    if (likedOnly) {
+      conditions.push(Q.where('is_liked', true));
+    }
     const photosSubscription = photosCollection
       .query(...conditions, Q.sortBy('created_at', Q.desc))
       .observe()
@@ -194,7 +200,7 @@ export const useGallery = (galleryId: string | null, options?: { tagId?: string 
       gallerySubscription.unsubscribe();
       photosSubscription.unsubscribe();
     };
-  }, [database, galleryId, selectedTagId, selectedUploaderId]);
+  }, [database, galleryId, selectedTagId, selectedUploaderId, likedOnly]);
 
   // 2. GALLERY META QUERY — details + rate limit
   // Invalidated by: gallery_updated socket events, window focus, reconnect.
@@ -276,6 +282,9 @@ export const useGallery = (galleryId: string | null, options?: { tagId?: string 
         await reconcileDeletedPhotosSince(database, galleryId, reconciliationData as string[]);
       }
       reconciliationCache.set(galleryId, now);
+
+      const likedIds = await getLikedPhotoIds(galleryId);
+      await syncLikedStatus(database, galleryId, likedIds);
 
       return newPhotos.length;
     },
@@ -427,6 +436,27 @@ export const useUpdateGalleryIcon = (galleryId: string | null) => {
     },
     onError: (error) => {
       console.error('Failed to update gallery icon:', error);
+    },
+  });
+};
+
+export const useDeletePhoto = () => {
+  const database = useDatabase();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ galleryId, photoId }: { galleryId: string; photoId: string }) =>
+      deletePhoto(galleryId, photoId),
+    onSuccess: async (_, { galleryId, photoId }) => {
+      await database.write(async () => {
+        try {
+          const photo = await database.collections.get<Photo>('photos').find(photoId);
+          await database.batch(photo.prepareDestroyPermanently());
+        } catch {
+          // already removed locally
+        }
+      });
+      queryClient.invalidateQueries({ queryKey: ['gallery', galleryId, 'photos'] });
     },
   });
 };

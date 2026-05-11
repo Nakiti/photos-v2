@@ -12,6 +12,8 @@ import { Q } from "@nozbe/watermelondb";
 import ImageResizer from 'react-native-image-resizer';
 import RNFS from 'react-native-fs';
 import PhotoTag from "../db/models/PhotoTag";
+import NetInfo from "@react-native-community/netinfo";
+import { getPreferences } from "../services/preferences.service";
 
 // Define our quality settings
 const FULL_IMAGE_WIDTH = 1920; // Max width/height for "full" image
@@ -190,12 +192,26 @@ const UPLOAD_CONCURRENCY = 3;
 export const usePhotoUploadQueue = () => {
     const database = useDatabase();
     const [queuedPhotos, setQueuedPhotos] = useState<Photo[]>([]);
+    const [syncOverCellular, setSyncOverCellular] = useState(false);
+    const [connectionType, setConnectionType] = useState<string | null>(null);
     const activeUploadsRef = useRef(0);
     // Track photos currently being processed to prevent double-firing on rapid emissions
     const inFlightIdsRef = useRef<Set<string>>(new Set());
     // Exponential backoff: track next-allowed retry time per photo ID
     const retryDelayRef = useRef<Map<string, number>>(new Map());
     const retryNotBeforeRef = useRef<Map<string, number>>(new Map());
+
+    // Load cellular preference once on mount
+    useEffect(() => {
+      getPreferences().then(prefs => setSyncOverCellular(prefs.syncOverCellular));
+    }, []);
+
+    // Subscribe to network type changes so the queue re-evaluates when connectivity changes
+    useEffect(() => {
+      NetInfo.fetch().then(state => setConnectionType(state.type));
+      const unsubscribe = NetInfo.addEventListener(state => setConnectionType(state.type));
+      return unsubscribe;
+    }, []);
 
     // 1. Observe photos that need uploading (includes sync_pending for rate-limit retry)
     useEffect(() => {
@@ -259,9 +275,12 @@ export const usePhotoUploadQueue = () => {
 
         // Resize immediately before upload so temp files are never persisted
         // across app sessions and can't be evicted by the OS.
-        console.log(`[UploadQueue] resizing photo=${photo.id}`);
+        const prefs = await getPreferences();
+        const fullWidth = prefs.uploadQuality === 'original' ? 4032 : FULL_IMAGE_WIDTH;
+        const fullQuality = prefs.uploadQuality === 'original' ? 100 : FULL_IMAGE_QUALITY;
+        console.log(`[UploadQueue] resizing photo=${photo.id} quality=${prefs.uploadQuality}`);
         const [fullImage, thumbnail] = await Promise.all([
-          ImageResizer.createResizedImage(originalUri, FULL_IMAGE_WIDTH, FULL_IMAGE_WIDTH, IMAGE_FORMAT, FULL_IMAGE_QUALITY, 0, undefined),
+          ImageResizer.createResizedImage(originalUri, fullWidth, fullWidth, IMAGE_FORMAT, fullQuality, 0, undefined),
           ImageResizer.createResizedImage(originalUri, THUMB_IMAGE_WIDTH, THUMB_IMAGE_WIDTH, IMAGE_FORMAT, THUMB_IMAGE_QUALITY, 0, undefined),
         ]);
 
@@ -357,8 +376,9 @@ export const usePhotoUploadQueue = () => {
     // 3. Process the queue when it changes — up to UPLOAD_CONCURRENCY in parallel
     useEffect(() => {
       const now = Date.now();
+      const blockedByCellular = connectionType === 'cellular' && !syncOverCellular;
       const pendingPhotos = queuedPhotos.filter(p => {
-        if (p.status === 'queued') return true;
+        if (p.status === 'queued') return !blockedByCellular;
         if (p.status === 'upload_failed') {
           const notBefore = retryNotBeforeRef.current.get(p.id) || 0;
           return now >= notBefore;
@@ -387,7 +407,7 @@ export const usePhotoUploadQueue = () => {
           });
         });
       }
-    }, [queuedPhotos, processUpload]);
+    }, [queuedPhotos, processUpload, connectionType, syncOverCellular]);
   };
   
   /**

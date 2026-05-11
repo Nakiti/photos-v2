@@ -34,6 +34,7 @@ export default class Gallery extends Model {
   @field('upload_limit_per_hour') uploadLimitPerHour?: number;
   @field('rate_limit_state_token') rateLimitStateToken?: string;
   @field('rate_limit_last_synced') rateLimitLastSynced?: number;
+  @text('last_uploaded_by_name') lastUploadedByName?: string;
   @readonly @date('created_at') createdAt!: number;
   @readonly @date('updated_at') updatedAt!: number;
 

@@ -166,6 +166,22 @@ export async function unlikePhoto(req: Request, res: Response) {
 }
 
 /**
+ * GET /api/v1/galleries/:galleryId/photos/liked
+ * Returns IDs of photos liked by the current user in a gallery.
+ */
+export async function getLikedPhotoIds(req: Request, res: Response) {
+  const userId = (req as any).user?.id as string | undefined;
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+  const { galleryId } = req.params as { galleryId: string };
+  try {
+    const photoIds = await photosService.getMyLikedPhotoIds(userId, galleryId);
+    return res.status(200).json({ photoIds });
+  } catch {
+    return res.status(500).json({ message: 'Failed to fetch liked photos' });
+  }
+}
+
+/**
  * GET /api/v1/galleries/:galleryId/photos/deleted-since
  * Returns photo IDs soft-deleted since a given timestamp. Used for delta reconciliation.
  */

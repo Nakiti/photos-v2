@@ -1,12 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, StyleSheet } from "react-native";
+import { Alert, View, StyleSheet } from "react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
-import { useLocalGallery } from "../../../hooks/useGalleryData";
+import { useLocalGallery, useDeletePhoto } from "../../../hooks/useGalleryData";
 import { useDatabase } from "@nozbe/watermelondb/react";
+import { Q } from "@nozbe/watermelondb";
 import UserModel from "../../../db/models/User";
+import MembershipModel from "../../../db/models/Membership";
+import PhotoModel from "../../../db/models/Photo";
 import { useGalleryTags } from "../../../hooks/useGalleryTagData";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPhotoLikeStatus, likePhoto, unlikePhoto } from "../../../services/api/photos.service";
+import { useAuth } from "../../../hooks/useAuth";
 import SingleImageHeader from "../../gallery/components/SingleImageHeader";
 import SingleImageBottomBar from "../../gallery/components/SingleImageBottomBar";
 import SingleImageTagDropdown from "../../gallery/components/SingleImageTagDropdown";
@@ -24,9 +28,15 @@ const SingleImageScreen = () => {
   };
 
   const [activeTagId, setActiveTagId] = useState<string | null>(selectedTagId ?? null);
-  const { gallery, photos } = useLocalGallery(galleryId, { tagId: activeTagId });
+  const likedOnly = activeTagId === '__liked__';
+  const { gallery, photos } = useLocalGallery(galleryId, {
+    tagId: likedOnly ? null : activeTagId,
+    likedOnly,
+  });
   const { tags } = useGalleryTags(galleryId);
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuth();
+  const deleteMutation = useDeletePhoto();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [overlaysVisible, setOverlaysVisible] = useState(true);
   const [headerHeight, setHeaderHeight] = useState(0);
@@ -95,6 +105,12 @@ const SingleImageScreen = () => {
       });
       return { prev };
     },
+    onSuccess: async () => {
+      try {
+        const photo = await database.collections.get<PhotoModel>('photos').find(currentPhotoId!);
+        await database.write(async () => { await photo.update(r => { r.isLiked = !liked; }); });
+      } catch {}
+    },
     onError: (_err, _vars, context: any) => {
       queryClient.setQueryData(['photoLike', galleryId, currentPhotoId], context?.prev);
     },
@@ -130,6 +146,43 @@ const SingleImageScreen = () => {
     };
   }, [database, current?.uploaderId]);
 
+  const [canDelete, setCanDelete] = useState(false);
+
+  useEffect(() => {
+    if (!currentUser || !gallery) { setCanDelete(false); return; }
+    const isUploader = current?.uploaderId === currentUser.id;
+    const isOwner = gallery.ownerId === currentUser.id;
+    if (isUploader || isOwner) { setCanDelete(true); return; }
+    let cancelled = false;
+    database.collections.get<MembershipModel>('memberships')
+      .query(Q.where('gallery_id', galleryId), Q.where('user_id', currentUser.id))
+      .fetch()
+      .then(([m]) => { if (!cancelled) setCanDelete(m?.role === 'ADMIN'); })
+      .catch(() => { if (!cancelled) setCanDelete(false); });
+    return () => { cancelled = true; };
+  }, [current?.uploaderId, gallery?.ownerId, currentUser?.id, galleryId, database]);
+
+  const handleDelete = () => {
+    if (!currentPhotoId) return;
+    Alert.alert(
+      'Delete photo',
+      'This photo will be permanently deleted.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteMutation.mutate(
+              { galleryId, photoId: currentPhotoId },
+              { onSuccess: () => { if (items.length <= 1) navigation.goBack(); } },
+            );
+          },
+        },
+      ],
+    );
+  };
+
   const takenAt =
     current?.createdAt ? new Date(current.createdAt).toLocaleString() : "";
 
@@ -157,6 +210,8 @@ const SingleImageScreen = () => {
         takenAt={takenAt}
         onBack={() => navigation.goBack()}
         onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
+        canDelete={canDelete}
+        onPressDelete={handleDelete}
       />
 
       <SingleImageTagDropdown
@@ -164,6 +219,7 @@ const SingleImageScreen = () => {
         tags={tags as any}
         activeTagId={activeTagId}
         bottomOffset={bottomBarHeight}
+        showLikedOption
         onSelect={(tagId) => {
           setActiveTagId(tagId);
           setDropdownOpen(false);
@@ -174,7 +230,11 @@ const SingleImageScreen = () => {
         visible={overlaysVisible}
         dropdownOpen={dropdownOpen}
         activeTagName={
-          activeTagId ? (tags as any).find((t: any) => t.id === activeTagId)?.name ?? "Tag" : "All photos"
+          activeTagId === '__liked__'
+            ? 'Liked'
+            : activeTagId
+              ? (tags as any).find((t: any) => t.id === activeTagId)?.name ?? 'Tag'
+              : 'All photos'
         }
         onToggleDropdown={() => setDropdownOpen((v) => !v)}
         onLayout={(e) => setBottomBarHeight(e.nativeEvent.layout.height)}
