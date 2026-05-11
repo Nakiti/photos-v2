@@ -6,7 +6,7 @@ import {
   SafeAreaView, KeyboardAvoidingView, Platform,
 } from "react-native";
 import FastImage from "react-native-fast-image";
-import { launchImageLibrary, ImagePickerResponse } from "react-native-image-picker";
+import { useImagePicker } from "../../../../hooks/useImagePicker";
 import { useGroup, useUpdateGroup, useUpdateGroupIcon } from "../../../../hooks/useGroupData";
 import { useQueryClient } from "@tanstack/react-query";
 import Ionicons from "react-native-vector-icons/Ionicons";
@@ -46,26 +46,25 @@ const EditGroupDetailsScreen = () => {
 
   const isLoading = isUpdating || isUploadingIcon;
 
+  const { pickImages } = useImagePicker();
+
   const handleChangeImage = () => {
-    launchImageLibrary({ mediaType: 'photo', quality: 0.8 }, (response: ImagePickerResponse) => {
-      if (response.didCancel) return;
-      if (response.errorMessage) { Alert.alert('Error', response.errorMessage); return; }
-      if (response.assets?.[0]?.uri) {
-        const uri = response.assets[0].uri;
-        setPendingIconUri(uri);
-        setDisplayLocalUri(uri);
-        updateGroupIcon(uri, {
-          onSuccess: () => {
-            setPendingIconUri(null);
-            queryClient.invalidateQueries({ queryKey: ['group', groupId] });
-          },
-          onError: (err) => {
-            setPendingIconUri(null);
-            setDisplayLocalUri(null);
-            Alert.alert('Upload Failed', (err as Error)?.message || 'Unable to update image');
-          },
-        });
-      }
+    pickImages({ quality: 0.8 }, ([asset]) => {
+      if (!asset) return;
+      const uri = asset.uri;
+      setPendingIconUri(uri);
+      setDisplayLocalUri(uri);
+      updateGroupIcon(uri, {
+        onSuccess: () => {
+          setPendingIconUri(null);
+          queryClient.invalidateQueries({ queryKey: ['group', groupId] });
+        },
+        onError: (err) => {
+          setPendingIconUri(null);
+          setDisplayLocalUri(null);
+          Alert.alert('Upload Failed', (err as Error)?.message || 'Unable to update image');
+        },
+      });
     });
   };
 

@@ -2,7 +2,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as usersService from './user.service.js';
-import { addDeviceTokenSchema, updateMyProfileSchema, searchUsersSchema, type AddDeviceTokenDto, type UpdateMyProfileDto, type SearchUsersDto } from './user.validation.js';
+import { addDeviceTokenSchema, removeDeviceTokenSchema, updateMyProfileSchema, searchUsersSchema, type AddDeviceTokenDto, type RemoveDeviceTokenDto, type UpdateMyProfileDto, type SearchUsersDto } from './user.validation.js';
 
 /**
  * GET /api/v1/users/me 
@@ -72,6 +72,26 @@ export async function addDeviceToken(req: Request, res: Response) {
       });
     }
     return res.status(500).json({ message: 'Failed to register device' });
+  }
+}
+
+/**
+ * DELETE /api/v1/users/me/devices
+ * Unregister a device token so the user stops receiving push notifications on this device.
+ */
+export async function removeDeviceToken(req: Request, res: Response) {
+  const userId = (req as any).user?.id as string | undefined;
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+  try {
+    const parsed = removeDeviceTokenSchema.parse({ body: req.body });
+    const { token } = parsed.body as RemoveDeviceTokenDto;
+    await usersService.removeDevice(userId, token);
+    return res.status(204).send();
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
+    }
+    return res.status(500).json({ message: 'Failed to remove device' });
   }
 }
 

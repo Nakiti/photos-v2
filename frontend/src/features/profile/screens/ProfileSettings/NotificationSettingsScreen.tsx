@@ -10,6 +10,7 @@ import {
 import messaging from '@react-native-firebase/messaging';
 import { getPreferences, setPreference } from '../../../../services/preferences.service';
 import { registerPushToken } from '../../../../hooks/useAuth';
+import { removeDeviceToken } from '../../../../services/api/userService';
 
 const NotificationSettingsScreen = () => {
   const [pauseAll, setPauseAll] = useState(false);
@@ -26,7 +27,11 @@ const NotificationSettingsScreen = () => {
     setPauseAll(value);
     await setPreference('pauseNotifications', value);
     if (value) {
-      try { await messaging().deleteToken(); } catch {}
+      try {
+        const token = await messaging().getToken();
+        await removeDeviceToken(token);
+        await messaging().deleteToken();
+      } catch {}
     } else {
       await registerPushToken();
     }

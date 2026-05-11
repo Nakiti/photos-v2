@@ -1,28 +1,27 @@
 import apiClient from '../apiClient';
-import { User } from '../../types'; // Assuming you have a User type
+import { User } from '../../types';
 
-// The expected response from a successful login/register
-interface AuthResponse {
+export interface AuthResponse {
   token: string;
+  refreshToken: string;
   user: User;
 }
 
-/**
- * Registers a new user.
- * @param data - The user's registration details (email, password, name).
- * @returns A promise that resolves to an AuthResponse object.
- */
 export const register = async (data: any): Promise<AuthResponse> => {
   const response = await apiClient.post('/api/v1/auth/register', data);
   return response.data;
 };
 
-/**
- * Logs in an existing user.
- * @param data - The user's login credentials (email, password).
- * @returns A promise that resolves to an AuthResponse object.
- */
 export const login = async (data: any): Promise<AuthResponse> => {
   const response = await apiClient.post('/api/v1/auth/login', data);
   return response.data;
+};
+
+export const refreshTokens = async (refreshToken: string): Promise<{ token: string; refreshToken: string }> => {
+  const response = await apiClient.post('/api/v1/auth/refresh', { refreshToken });
+  return response.data;
+};
+
+export const logout = async (refreshToken: string): Promise<void> => {
+  await apiClient.post('/api/v1/auth/logout', { refreshToken });
 };

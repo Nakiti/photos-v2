@@ -67,6 +67,10 @@ export const addDeviceToken = async (
   return response.data;
 };
 
+export const removeDeviceToken = async (token: string): Promise<void> => {
+  await apiClient.delete('/api/v1/users/me/devices', { data: { token } });
+};
+
 /**
  * @param imageUri The 'file://...' URI of the image on the device (from image picker).
  * @returns The updated UserProfile object.

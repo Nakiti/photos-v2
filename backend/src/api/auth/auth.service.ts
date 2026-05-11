@@ -1,52 +1,70 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import config from '../../../config/config.js'; 
+import { randomBytes, createHash } from 'crypto';
+import config from '../../../config/config.js';
+import { redis } from '../../../libs/redis.js';
 
 const prisma = new PrismaClient();
-const SALT_ROUNDS = 10; // Standard salt rounds for bcrypt
+const SALT_ROUNDS = 10;
+const ACCESS_TOKEN_TTL = '15m';
+const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
+
+function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+function redisKey(hashedToken: string): string {
+  return `rt:${hashedToken}`;
+}
+
+async function issueRefreshToken(userId: string): Promise<string> {
+  const raw = randomBytes(32).toString('hex');
+  const hashed = hashToken(raw);
+  await redis.setex(redisKey(hashed), REFRESH_TOKEN_TTL_SECONDS, userId);
+  return raw;
+}
+
+export async function verifyAndRotateRefreshToken(
+  raw: string,
+): Promise<{ userId: string; newRefreshToken: string } | null> {
+  const hashed = hashToken(raw);
+  const key = redisKey(hashed);
+  const userId = await redis.get(key);
+  if (!userId) return null;
+  // Rotate: delete old token and issue a new one atomically enough for this use case
+  await redis.del(key);
+  const newRefreshToken = await issueRefreshToken(userId);
+  return { userId, newRefreshToken };
+}
+
+export async function revokeRefreshToken(raw: string): Promise<void> {
+  await redis.del(redisKey(hashToken(raw)));
+}
 
 export const createUser = async (email: string, password: string, name: string | undefined, handle: string) => {
-  // 1. Hash the password securely
   const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
-  // 2. Create the user in the database using Prisma
   const user = await prisma.user.create({
-    data: {
-      email,
-      password: hashedPassword,
-      name: name ?? null,
-      handle
-    },
-    // 3. Select which fields to return (exclude password)
-    select: {
-        id: true,
-        email: true,
-        name: true,
-        handle: true,
-        createdAt: true,
-        updatedAt: true
-    }
+    data: { email, password: hashedPassword, name: name ?? null, handle },
+    select: { id: true, email: true, name: true, handle: true, createdAt: true, updatedAt: true },
   });
 
-  return user;
+  const accessToken = jwt.sign({ userId: user.id }, config.jwtSecret, { expiresIn: ACCESS_TOKEN_TTL });
+  const refreshToken = await issueRefreshToken(user.id);
+  return { user, accessToken, refreshToken };
 };
 
-/**
- * Verify credentials and return a signed JWT and user safe profile.
- * @param email - user's email
- * @param password - plaintext password
- */
 export const loginUser = async (email: string, password: string) => {
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) {
-    return null;
-  }
+  if (!user) return null;
+
   const passwordMatches = await bcrypt.compare(password, user.password);
-  if (!passwordMatches) {
-    return null;
-  }
-  const token = jwt.sign({ userId: user.id }, config.jwtSecret, { expiresIn: '7d' });
+  if (!passwordMatches) return null;
+
+  const accessToken = jwt.sign({ userId: user.id }, config.jwtSecret, { expiresIn: ACCESS_TOKEN_TTL });
+  const refreshToken = await issueRefreshToken(user.id);
+
   const safeUser = {
     id: user.id,
     email: user.email,
@@ -54,5 +72,19 @@ export const loginUser = async (email: string, password: string) => {
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
-  return { token, user: safeUser };
+  return { token: accessToken, refreshToken, user: safeUser };
+};
+
+export const refreshAccessToken = async (rawRefreshToken: string) => {
+  const result = await verifyAndRotateRefreshToken(rawRefreshToken);
+  if (!result) return null;
+
+  const user = await prisma.user.findUnique({
+    where: { id: result.userId },
+    select: { id: true, email: true },
+  });
+  if (!user) return null;
+
+  const accessToken = jwt.sign({ userId: user.id }, config.jwtSecret, { expiresIn: ACCESS_TOKEN_TTL });
+  return { token: accessToken, refreshToken: result.newRefreshToken };
 };

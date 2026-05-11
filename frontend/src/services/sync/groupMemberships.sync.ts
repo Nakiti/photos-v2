@@ -10,8 +10,7 @@ import { GroupMember } from '../api/groupMemberships.service';
 export const syncGroupMembers = async (
   database: Database,
   groupId: string,
-  remoteMembers: GroupMember[],
-  currentUserId: string
+  remoteMembers: GroupMember[]
 ) => {
   const membershipsCollection = database.collections.get<GroupMembership>('community_memberships');
   const usersCollection = database.collections.get<User>('users');
@@ -38,32 +37,30 @@ export const syncGroupMembers = async (
     const localUser = localUserMap.get(user.id);
     const localMembership = localMembershipMap.get(user.id);
 
-    // Upsert user (skip self if your app handles current user elsewhere)
-    if (user.id !== currentUserId) {
-      if (localUser) {
-        if (
-          localUser.name !== user.name ||
-          localUser.avatarUrl !== user.avatarUrl ||
-          localUser.handle !== user.handle
-        ) {
-          operations.push(
-            localUser.prepareUpdate(record => {
-              record.name = user.name;
-              record.avatarUrl = user.avatarUrl ?? undefined;
-              record.handle = user.handle ?? '';
-            })
-          );
-        }
-      } else {
+    // Upsert user
+    if (localUser) {
+      if (
+        localUser.name !== user.name ||
+        localUser.avatarUrl !== user.avatarUrl ||
+        localUser.handle !== user.handle
+      ) {
         operations.push(
-          usersCollection.prepareCreate(record => {
-            record._raw.id = user.id;
+          localUser.prepareUpdate(record => {
             record.name = user.name;
             record.avatarUrl = user.avatarUrl ?? undefined;
             record.handle = user.handle ?? '';
           })
         );
       }
+    } else {
+      operations.push(
+        usersCollection.prepareCreate(record => {
+          record._raw.id = user.id;
+          record.name = user.name;
+          record.avatarUrl = user.avatarUrl ?? undefined;
+          record.handle = user.handle ?? '';
+        })
+      );
     }
 
     // Upsert membership

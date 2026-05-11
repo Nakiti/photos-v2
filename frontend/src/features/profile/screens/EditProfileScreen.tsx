@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import FastImage from 'react-native-fast-image';
 import { useUser, useUpdateAvatar, useUpdateMyProfile } from '../../../hooks/useUser';
-import { launchImageLibrary, ImagePickerResponse } from 'react-native-image-picker';
+import { useImagePicker } from '../../../hooks/useImagePicker';
 import { useNavigation } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -41,18 +41,17 @@ const EditProfileScreen: React.FC = () => {
     (user && name.trim() !== (user.name || '')) ||
     localAvatarUri !== null;
 
+  const { pickImages } = useImagePicker();
+
   const handleChangeAvatar = () => {
-    launchImageLibrary({ mediaType: 'photo', quality: 0.8 }, (response: ImagePickerResponse) => {
-      if (response.didCancel) return;
-      if (response.errorMessage) { Alert.alert('Error', response.errorMessage); return; }
-      if (response.assets?.[0]?.uri) {
-        const uri = response.assets[0].uri;
-        setLocalAvatarUri(uri);
-        updateAvatar(uri, {
-          onSuccess: () => { setLocalAvatarUri(null); queryClient.invalidateQueries({ queryKey: ['me'] }); },
-          onError: () => { setLocalAvatarUri(null); Alert.alert('Upload Failed', 'Could not update profile picture.'); },
-        });
-      }
+    pickImages({ quality: 0.8 }, ([asset]) => {
+      if (!asset) return;
+      const uri = asset.uri;
+      setLocalAvatarUri(uri);
+      updateAvatar(uri, {
+        onSuccess: () => { setLocalAvatarUri(null); queryClient.invalidateQueries({ queryKey: ['me'] }); },
+        onError: () => { setLocalAvatarUri(null); Alert.alert('Upload Failed', 'Could not update profile picture.'); },
+      });
     });
   };
 

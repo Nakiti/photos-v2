@@ -5,7 +5,11 @@ import {
   SafeAreaProvider,
 } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
-import { PaperProvider } from 'react-native-paper'; // Assuming this is your provider
+import { navigationRef } from './src/navigation/navigationRef';
+import { useDeepLinks, navigateParsedLink } from './src/hooks/useDeepLinks';
+import { useDeepLinkStore } from './src/stores/deepLink.store';
+import { useAuthStore } from './src/stores/auth.store';
+import { PaperProvider } from 'react-native-paper';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import { DatabaseProvider } from '@nozbe/watermelondb/react';
@@ -14,6 +18,9 @@ import RootStack from './src/navigation/RootStack';
 import { useAuth } from './src/hooks/useAuth';
 import { usePhotoUploadQueue } from './src/hooks/usePhotoData';
 import { useSocketEvents } from './src/hooks/useSocketEvents';
+import messaging from '@react-native-firebase/messaging';
+import ErrorBoundary from './src/components/ErrorBoundary';
+import OfflineBanner from './src/components/OfflineBanner';
 
 const queryClient = new QueryClient();
 
@@ -21,19 +28,37 @@ function App() {
   const isDarkMode = useColorScheme() === 'dark';
 
   return (
-    <DatabaseProvider database={database}>
-      <QueryClientProvider client={queryClient}>
-        <PaperProvider>
-          <GestureHandlerRootView style={styles.container}>
-            <SafeAreaProvider>
-              <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-              <AppContent />
-            </SafeAreaProvider>
-          </GestureHandlerRootView>
-        </PaperProvider>
-      </QueryClientProvider>
-    </DatabaseProvider>
+    <ErrorBoundary>
+      <DatabaseProvider database={database}>
+        <QueryClientProvider client={queryClient}>
+          <PaperProvider>
+            <GestureHandlerRootView style={styles.container}>
+              <SafeAreaProvider>
+                <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
+                <OfflineBanner />
+                <AppContent />
+              </SafeAreaProvider>
+            </GestureHandlerRootView>
+          </PaperProvider>
+        </QueryClientProvider>
+      </DatabaseProvider>
+    </ErrorBoundary>
   );
+}
+
+function navigateToGallery(galleryId: string) {
+  if (navigationRef.isReady()) {
+    navigationRef.navigate('Gallery', { screen: 'Gallery', params: { galleryId } });
+  }
+}
+
+function handleNavReady() {
+  const { isAuthenticated } = useAuthStore.getState();
+  if (!isAuthenticated) return;
+  const { pendingLink, clearPendingLink } = useDeepLinkStore.getState();
+  if (!pendingLink) return;
+  clearPendingLink();
+  navigateParsedLink(pendingLink);
 }
 
 /**
@@ -46,9 +71,31 @@ function AppContent() {
 
   // Global socket event handlers - must be mounted for live updates
   useSocketEvents();
-  
+
   // Photo upload queue processor
-  usePhotoUploadQueue()
+  usePhotoUploadQueue();
+
+  // Deep link subscription
+  useDeepLinks();
+
+  // Handle notification tap when app was in background
+  useEffect(() => {
+    const unsubscribe = messaging().onNotificationOpenedApp(remoteMessage => {
+      const galleryId = remoteMessage.data?.galleryId as string | undefined;
+      if (galleryId) navigateToGallery(galleryId);
+    });
+    return unsubscribe;
+  }, []);
+
+  // Handle notification tap when app was fully quit — wait until nav is mounted
+  useEffect(() => {
+    if (isLoading) return;
+    messaging().getInitialNotification().then(remoteMessage => {
+      if (!remoteMessage) return;
+      const galleryId = remoteMessage.data?.galleryId as string | undefined;
+      if (galleryId) navigateToGallery(galleryId);
+    });
+  }, [isLoading]);
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -78,7 +125,7 @@ function AppContent() {
 
   // Auth check is done, render the app
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef} onReady={handleNavReady}>
       <RootStack />
     </NavigationContainer>
   );

@@ -81,7 +81,7 @@ export const useGroupMembers = (groupId: string | null) => {
     queryFn: async () => {
       if (!groupId || !user?.id) return { members: [], pending: [] };
       const remote = await getGroupMembers(groupId);
-      await syncGroupMembers(database, groupId, remote.members, user.id);
+      await syncGroupMembers(database, groupId, remote.members);
       return remote;
     },
     staleTime: 5 * 60 * 1000,

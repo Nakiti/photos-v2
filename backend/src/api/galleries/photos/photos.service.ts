@@ -149,8 +149,10 @@ export const createPresignedUploadUrls = async (galleryId: string, contentType: 
   if (!membership) throw new Error('Forbidden');
 
   const fileId = uuidv4();
-  const expiresIn = 1800; // 30 minutes
+  const expiresIn = 900; // 15 minutes
 
+  // Always store as JPEG regardless of what the client sends.
+  // The server enforces the content type so a client cannot influence what S3 accepts.
   const s3KeyFull = `photos/${galleryId}/${fileId}.jpg`;
   const s3KeyThumb = `thumbnails/${galleryId}/${fileId}.jpg`;
 
@@ -335,7 +337,9 @@ export async function confirmUploadedPhoto(
   const uploaderName = (uploader?.name || uploader?.handle || 'A user') as string;
   const galleryName = (gallery?.name || '') as string;
 
-  await smartThrottleNewPhoto(galleryId, uploaderName, galleryName, created!.id);
+  smartThrottleNewPhoto(galleryId, uploaderName, galleryName, created!.id).catch(err =>
+    console.error('[Photos] smartThrottleNewPhoto failed:', err)
+  );
 
   return withCloudFrontUrls(created!);
 }
@@ -424,26 +428,26 @@ export async function likePhoto(userId: string, galleryId: string, photoId: stri
 
   // Notify the photo uploader (not if they liked their own photo)
   if (photo.uploaderId !== userId) {
-    // Dedup: only send one like notification per user per photo per hour
+    const liker = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, handle: true },
+    });
+    const likerName = liker?.name || liker?.handle || 'Someone';
+
+    // Always create an in-app notification record
+    await createNotificationRecord(
+      photo.uploaderId,
+      userId,
+      'LIKE',
+      { likerName, thumbnailUrl: photo.thumbnailUrl, galleryId },
+      photoId,
+      'photo'
+    );
+
+    // Dedup: only send push notification once per user per photo per hour
     const dedupKey = `like:notif:${photoId}:${userId}`;
     const alreadyNotified = await redis.set(dedupKey, '1', 'EX', 3600, 'NX');
-
     if (alreadyNotified === 'OK') {
-      const liker = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { name: true, handle: true },
-      });
-      const likerName = liker?.name || liker?.handle || 'Someone';
-
-      await createNotificationRecord(
-        photo.uploaderId,
-        userId,
-        'LIKE',
-        { likerName, thumbnailUrl: photo.thumbnailUrl, galleryId },
-        photoId,
-        'photo'
-      );
-
       const devices = await prisma.device.findMany({
         where: { userId: photo.uploaderId },
         select: { token: true },
@@ -456,6 +460,7 @@ export async function likePhoto(userId: string, galleryId: string, photoId: stri
           { type: 'LIKE', photoId, galleryId }
         );
         if (invalidTokens.length > 0) {
+          console.warn(`[Push] Removing ${invalidTokens.length} invalid device token(s)`);
           await prisma.device.deleteMany({ where: { token: { in: invalidTokens } } });
         }
       }

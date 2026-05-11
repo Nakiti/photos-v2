@@ -799,53 +799,14 @@ export async function searchGalleries(
   };
 }
 
-async function createBranchLink(data: {
-  deepLinkPath: string;
-  title: string;
-  description: string;
-  fallbackUrl: string;
-}): Promise<string> {
-  const branchKey = config.branch?.key;
-  if (!branchKey) {
-    return data.fallbackUrl;
-  }
-  try {
-    const response = await fetch('https://api2.branch.io/v1/url', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        branch_key: branchKey,
-        channel: 'share',
-        feature: 'invite',
-        data: {
-          '$deeplink_path': data.deepLinkPath,
-          '$og_title': data.title,
-          '$og_description': data.description,
-          '$fallback_url': data.fallbackUrl,
-        },
-      }),
-    });
-    if (!response.ok) return data.fallbackUrl;
-    const json = await response.json() as { url?: string };
-    return json.url || data.fallbackUrl;
-  } catch {
-    return data.fallbackUrl;
-  }
-}
-
 export async function createGalleryShareLink(userId: string, galleryId: string): Promise<string> {
   const gallery = await prisma.gallery.findFirst({
     where: {
       id: galleryId,
       OR: [{ ownerId: userId }, { memberships: { some: { userId } } }],
     },
-    select: { id: true, name: true, shareableLink: true },
+    select: { id: true, name: true },
   });
   if (!gallery) throw new Error('Gallery not found or inaccessible');
-  return createBranchLink({
-    deepLinkPath: `gallery/join/${galleryId}`,
-    title: gallery.name,
-    description: `Join the gallery "${gallery.name}" on Focal`,
-    fallbackUrl: `https://focal.app/gallery/join/${galleryId}`,
-  });
+  return `https://focal.app/gallery/join/${galleryId}`;
 }

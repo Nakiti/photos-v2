@@ -120,7 +120,7 @@ const GallerySettingsScreen = () => {
     // General
     const general: SettingsSection = { category: 'General', items: [] };
     general.items.push({
-      label: 'Name',
+      label: 'Details',
       value: gallery.name,
       onPress: () => (navigation as any).navigate('EditGalleryDetails', { galleryId: gallery.id }),
     });

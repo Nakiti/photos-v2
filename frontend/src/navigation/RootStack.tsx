@@ -7,7 +7,8 @@ import { useAuth } from "../hooks/useAuth";
 import CameraStack from "./CameraStack";
 import GroupStack from "./GroupStack";
 import GalleriesStack from "./GalleriesStack";
-import ProfileStack from "./ProfileStack"
+import ProfileStack from "./ProfileStack";
+import JoinStack from "./JoinStack";
 
 const Stack = createNativeStackNavigator();
 
@@ -31,6 +32,7 @@ const RootStack = () => {
                     <Stack.Screen name="GroupFlow" component={GroupStack} />
                     <Stack.Screen name="GalleryFlow" component={GalleriesStack} />
                     <Stack.Screen name="ProfileFlow" component={ProfileStack} />
+                    <Stack.Screen name="JoinFlow" component={JoinStack} />
                 </>
             }
         </Stack.Navigator>

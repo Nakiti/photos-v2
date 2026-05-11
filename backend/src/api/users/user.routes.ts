@@ -1,7 +1,7 @@
 // src/api/users/user.routes.ts
 import { Router } from 'express';
 import { isAuthenticated } from '../../middleware/auth.middleware.js';
-import { addDeviceToken, getMyProfile, requestAvatarUpload, updateMyProfile, searchUsers } from './users.controller.js';
+import { addDeviceToken, removeDeviceToken, getMyProfile, requestAvatarUpload, updateMyProfile, searchUsers } from './users.controller.js';
 
 const router = Router();
 
@@ -35,6 +35,13 @@ router.put('/me', isAuthenticated, updateMyProfile);
  * @access Private
  */
 router.post('/me/devices', isAuthenticated, addDeviceToken);
+
+/**
+ * @route DELETE /api/v1/users/me/devices
+ * @summary Unregister a device token (logout or pause notifications)
+ * @access Private
+ */
+router.delete('/me/devices', isAuthenticated, removeDeviceToken);
 
 /**
  * @route POST /api/v1/users/me/avatar/presign

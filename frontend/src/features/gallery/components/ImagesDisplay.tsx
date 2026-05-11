@@ -10,17 +10,24 @@ type ImagesDisplayProps = {
   refreshing?: boolean;
   onRefresh?: () => void;
   contentContainerStyle?: StyleProp<ViewStyle>;
+  scrollIndicatorInsets?: { top?: number; bottom?: number; left?: number; right?: number };
 };
 
 const NUM_COLUMNS = 5;
 const GAP = 2;
 
-const ImagesDisplay = ({ images, galleryId, selectedTagId, refreshing, onRefresh, contentContainerStyle }: ImagesDisplayProps) => {
+const ImagesDisplay = ({ images, galleryId, selectedTagId, refreshing, onRefresh, contentContainerStyle, scrollIndicatorInsets }: ImagesDisplayProps) => {
   const { width } = useWindowDimensions();
   const imageSize = (width - GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
 
-  // Oldest first so the newest photo lands at the bottom-right of the grid.
-  const orderedImages = images.slice().reverse();
+  // Reverse within each row-chunk so the newest photo in each row lands at the rightmost column.
+  // With inverted=true the first chunk is the visual bottom row, so the very newest photo
+  // ends up at bottom-right and the grid snakes upward.
+  const orderedImages: GalleryImage[] = [];
+  for (let i = 0; i < images.length; i += NUM_COLUMNS) {
+    const chunk = images.slice(i, i + NUM_COLUMNS).reverse();
+    orderedImages.push(...chunk);
+  }
 
   return (
     <FlatList
@@ -44,12 +51,14 @@ const ImagesDisplay = ({ images, galleryId, selectedTagId, refreshing, onRefresh
           <RefreshControl refreshing={refreshing ?? false} onRefresh={onRefresh} tintColor="#999" colors={['#999']} />
         ) : undefined
       }
+      inverted
       removeClippedSubviews
       windowSize={5}
       maxToRenderPerBatch={15}
       initialNumToRender={25}
       style={styles.list}
       contentContainerStyle={contentContainerStyle}
+      scrollIndicatorInsets={scrollIndicatorInsets}
     />
   );
 };

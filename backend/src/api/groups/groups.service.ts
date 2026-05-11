@@ -311,34 +311,10 @@ export async function createGroupShareLink(userId: string, groupId: string): Pro
 	});
 	const group = await prisma.community.findUnique({
 		where: { id: groupId },
-		select: { id: true, name: true, ownerId: true },
+		select: { id: true, ownerId: true },
 	});
 	if (!group || (!membership && group.ownerId !== userId)) {
 		throw new Error('Group not found or inaccessible');
 	}
-	const branchKey = config.branch?.key;
-	const fallbackUrl = `https://focal.app/group/join/${groupId}`;
-	if (!branchKey) return fallbackUrl;
-	try {
-		const response = await fetch('https://api2.branch.io/v1/url', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				branch_key: branchKey,
-				channel: 'share',
-				feature: 'invite',
-				data: {
-					'$deeplink_path': `group/join/${groupId}`,
-					'$og_title': group.name,
-					'$og_description': `Join the group "${group.name}" on Focal`,
-					'$fallback_url': fallbackUrl,
-				},
-			}),
-		});
-		if (!response.ok) return fallbackUrl;
-		const json = await response.json() as { url?: string };
-		return json.url || fallbackUrl;
-	} catch {
-		return fallbackUrl;
-	}
+	return `https://focal.app/group/join/${groupId}`;
 }

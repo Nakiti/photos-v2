@@ -5,12 +5,14 @@ import apiClient from '../services/apiClient';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { syncCurrentUser } from '../services/sync/user.sync';
 import { useDatabase } from '@nozbe/watermelondb/react';
-import { getMyProfile, addDeviceToken } from '../services/api/userService';
+import { getMyProfile, addDeviceToken, removeDeviceToken } from '../services/api/userService';
 import User from '../db/models/User';
 import { AxiosError } from 'axios';
 import { socket } from '../services/socketClient';
 import { Platform } from 'react-native';
 import messaging from '@react-native-firebase/messaging';
+import { useDeepLinkStore } from '../stores/deepLink.store';
+import { navigateParsedLink } from './useDeepLinks';
 
 export async function registerPushToken() {
   try {
@@ -30,6 +32,13 @@ export async function registerPushToken() {
   }
 }
 
+function processPendingDeepLink() {
+  const { pendingLink, clearPendingLink } = useDeepLinkStore.getState();
+  if (!pendingLink) return;
+  clearPendingLink();
+  setTimeout(() => navigateParsedLink(pendingLink), 300);
+}
+
 // This hook provides an easy-to-use interface for authentication logic
 export const useAuth = () => {
     const { user, token, isAuthenticated, setUser, setToken, logout: storeLogout } = useAuthStore();
@@ -40,27 +49,21 @@ export const useAuth = () => {
     const { mutateAsync: register, isPending: isRegistering } = useMutation({
       mutationFn: authService.register,
       onSuccess: async (data) => {
-        const { user: newUser, token: newToken } = data;
-        // 1. Store the token securely
+        const { user: newUser, token: newToken, refreshToken } = data;
         await Keychain.setGenericPassword('userToken', newToken);
-        // 2. Update the API client header
+        await Keychain.setGenericPassword('refresh', refreshToken, { service: 'focal_refresh_token' });
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-        // 3. Fetch full user profile (includes handle, avatarUrl, etc.)
         const userProfile = await getMyProfile();
-        // 4. Update the global state with full profile
         setUser(userProfile);
         setToken(newToken);
-        // 5. Sync user to local database
         await syncCurrentUser(database, userProfile);
-        // 6. Persist user ID so checkAuthStatus can restore the right user on next launch
         await Keychain.setGenericPassword('user', userProfile.id, { service: 'focal_user_id' });
-        // 7. Connect socket for real-time updates
         if (!socket.connected) {
           socket.connect();
           console.log('[Auth] Socket connection initiated after registration');
         }
-        // 8. Register device for push notifications (fire-and-forget)
         registerPushToken();
+        processPendingDeepLink();
       },
       onError: (error) => {
         console.error('Registration failed:', error);
@@ -72,25 +75,21 @@ export const useAuth = () => {
     const { mutateAsync: login, isPending: isLoggingIn } = useMutation({
       mutationFn: authService.login,
       onSuccess: async (data) => {
-        const { user: loggedInUser, token: newToken } = data;
+        const { user: loggedInUser, token: newToken, refreshToken } = data;
         await Keychain.setGenericPassword('userToken', newToken);
+        await Keychain.setGenericPassword('refresh', refreshToken, { service: 'focal_refresh_token' });
         apiClient.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
-        // Fetch full user profile (includes handle, avatarUrl, etc.)
         const userProfile = await getMyProfile();
         setUser(userProfile);
         setToken(newToken);
-
         await syncCurrentUser(database, userProfile);
-        // Persist user ID so checkAuthStatus can restore the right user on next launch
         await Keychain.setGenericPassword('user', userProfile.id, { service: 'focal_user_id' });
-
-        // Connect socket for real-time updates
         if (!socket.connected) {
           socket.connect();
           console.log('[Auth] Socket connection initiated after login');
         }
-        // Register device for push notifications (fire-and-forget)
         registerPushToken();
+        processPendingDeepLink();
       },
       onError: (error) => {
         console.error('Login failed:', error);
@@ -99,7 +98,25 @@ export const useAuth = () => {
   
     const logout = async () => {
       try {
-        // Disconnect socket before clearing auth state
+        // Revoke refresh token on the server so it can't be used to obtain new access tokens
+        try {
+          const refreshCreds = await Keychain.getGenericPassword({ service: 'focal_refresh_token' });
+          if (refreshCreds) {
+            await authService.logout(refreshCreds.password);
+          }
+        } catch {
+          // Best-effort — don't block logout if server is unreachable
+        }
+
+        // Remove FCM device token so push notifications stop immediately
+        try {
+          const fcmToken = await messaging().getToken();
+          await removeDeviceToken(fcmToken);
+          await messaging().deleteToken();
+        } catch {
+          // Best-effort
+        }
+
         if (socket.connected) {
           socket.disconnect();
           console.log('[Auth] Socket disconnected on logout');
@@ -108,11 +125,11 @@ export const useAuth = () => {
         await Promise.all([
           Keychain.resetGenericPassword(),
           Keychain.resetGenericPassword({ service: 'focal_user_id' }),
+          Keychain.resetGenericPassword({ service: 'focal_refresh_token' }),
         ]);
         delete apiClient.defaults.headers.common['Authorization'];
         storeLogout();
         queryClient.clear();
-        // Wipe the local DB so the next user doesn't see stale data from this account
         await database.unsafeResetDatabase();
       } catch (error) {
         console.error('Logout failed:', error);
@@ -174,7 +191,6 @@ export const useAuth = () => {
           }
 
           // --- 2. REMOTE VERIFICATION FUNCTION ---
-          // We define this separately so we can choose whether to await it or not
           const verifyAndSyncWithServer = async () => {
             try {
               console.log('[Auth] Verifying session with server...');
@@ -183,23 +199,17 @@ export const useAuth = () => {
               await syncCurrentUser(database, userProfile);
               console.log('[Auth] Server verification success');
 
-              // Connect socket if user is authenticated
               if (!socket.connected) {
                 socket.connect();
                 console.log('[Auth] Socket connection initiated on app load');
               }
-              // Register device for push notifications (fire-and-forget)
               registerPushToken();
             } catch (error) {
+              // 401s are handled by the apiClient interceptor, which automatically
+              // attempts a token refresh and logs out if the refresh fails.
+              // Any error reaching here is a non-auth failure (network down, server error).
               const axiosError = error as AxiosError;
-              const isAuthError = axiosError.response?.status === 401;
-
-              if (isAuthError) {
-                // Token is invalid/expired - log the user out
-                console.error('[Auth] Token expired (401), logging out');
-                await logout();
-              } else {
-                // Network error or server down - Just warn, keep the user logged in
+              if (axiosError.response?.status !== 401) {
                 console.warn('[Auth] Background sync failed (likely offline). User stays logged in.', error);
               }
             }

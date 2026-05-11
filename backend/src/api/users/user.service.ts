@@ -71,10 +71,14 @@ export async function updateUserProfile(userId: string, data: Partial<{ name: st
 export async function registerDevice(userId: string, token: string, platform: 'ios' | 'android') {
   const device = await prisma.device.upsert({
     where: { token },
-    update: { userId },
+    update: { platform },
     create: { userId, token, platform },
   });
   return device;
+}
+
+export async function removeDevice(userId: string, token: string) {
+  await prisma.device.deleteMany({ where: { token, userId } });
 }
 
 

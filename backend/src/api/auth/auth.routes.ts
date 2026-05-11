@@ -1,21 +1,12 @@
 import { Router } from 'express';
-import { registerUser, loginUser } from './auth.controller.js'; // Import controller functions
+import { registerUser, loginUser, refreshToken, logoutUser } from './auth.controller.js';
+import { authRateLimit } from '../../middleware/authRateLimit.middleware.js';
 
 const router = Router();
 
-/**
- * @route POST /api/v1/auth/register
- * @summary Register a new user account
- * @access Public
- */
-router.post('/register', registerUser); 
-
-/**
- * @route POST /api/v1/auth/login
- * @summary Authenticate user and return an access token
- * @access Public
- */
-router.post('/login', loginUser);
-
+router.post('/register', authRateLimit, registerUser);
+router.post('/login', authRateLimit, loginUser);
+router.post('/refresh', refreshToken);
+router.post('/logout', logoutUser);
 
 export default router;

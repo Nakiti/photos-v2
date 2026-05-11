@@ -200,7 +200,7 @@ const GalleryBottomBar = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 36,
+    bottom: 20,
     left: 0,
     right: 0,
     alignItems: 'center',

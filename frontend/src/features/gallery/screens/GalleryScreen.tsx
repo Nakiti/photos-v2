@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, Alert, SafeAreaView } from 'react-native';
-import { launchImageLibrary, ImagePickerResponse } from 'react-native-image-picker';
+import { View, StyleSheet, TouchableOpacity, Text, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useImagePicker } from '../../../hooks/useImagePicker';
 import ImagesDisplay from '../components/ImagesDisplay';
 import GalleryBottomBar from '../components/GalleryBottomBar';
 import GalleryHeader from '../components/GalleryHeader';
@@ -25,10 +26,17 @@ type GalleryImage = {
   uploaderInitials: string;
 };
 
+// safe area top (e.g. 47px) + 8px gap + 38px buttons + 10px bottom padding = top + 56
+const NAV_CONTENT_HEIGHT = 56;
+// bottom bar: bottom:20 + height:46 + 12px gap above bar
+const BOTTOM_CLEARANCE = 78;
+
 const GalleryScreen = () => {
   const route = useRoute();
   const { galleryId } = route.params as { galleryId: string };
   const navigation = useNavigation<any>();
+  const { top: safeTop } = useSafeAreaInsets();
+  const headerHeight = safeTop + NAV_CONTENT_HEIGHT;
 
   // Data Hooks
   const database = useDatabase();
@@ -117,7 +125,7 @@ const GalleryScreen = () => {
   }, [usersWithNames]);
 
   const images: GalleryImage[] = useMemo(() => {
-    return (photos || [])
+    const real = (photos || [])
       .map((p: any) => ({
         id: p.id,
         fullsize: p.s3Url || p.localUri || '',
@@ -127,23 +135,35 @@ const GalleryScreen = () => {
         uploaderId: p.uploaderId,
         uploaderInitials: initialsMap.get(p.uploaderId) ?? '',
       }))
-      .filter(img => !!img.fullsize || !!img.thumbnail);
+      .filter((img: GalleryImage) => !!img.fullsize || !!img.thumbnail);
+
+    if (__DEV__) {
+      const dummies: GalleryImage[] = Array.from({ length: 80 }, (_, i) => ({
+        id: `__dummy__${i}`,
+        fullsize: 'dummy',
+        thumbnail: 'dummy',
+        localThumbnailUri: '',
+        is_uploaded: 1,
+        uploaderId: undefined,
+        uploaderInitials: '',
+      }));
+      return [...real, ...dummies];
+    }
+
+    return real;
   }, [photos, initialsMap]);
 
   // Handlers
   const handlePressHeader = () => navigation.navigate('GalleryDetails', { galleryId });
   const handleBackPress = () => navigation.goBack();
 
+  const { pickImages } = useImagePicker();
+
   const handlePressUpload = () => {
-    launchImageLibrary(
-      { mediaType: 'photo', quality: 1.0, selectionLimit: 0 }, 
-      async (response: ImagePickerResponse) => {
-        if (response.didCancel || response.errorCode) return;
-        const assets = response.assets || [];
-        const uris = assets.map(asset => asset.uri).filter((uri): uri is string => !!uri);
-        if (uris.length > 0) createOptimisticPhotos({ galleryId, localUris: uris, tagIds: [] });
-      }
-    );
+    pickImages({ quality: 1.0, selectionLimit: 0 }, assets => {
+      const uris = assets.map(a => a.uri);
+      createOptimisticPhotos({ galleryId, localUris: uris, tagIds: [] });
+    });
   };
 
   const handlePressCamera = () => {
@@ -152,45 +172,39 @@ const GalleryScreen = () => {
 
   return (
     <View style={styles.container}>
-      {/* 1. Header sits at the top (Safe Area)
-      */}
-      <SafeAreaView style={styles.safeAreaTop}>
-          <GalleryHeader 
-            galleryId={galleryId} 
-            onTitlePress={handlePressHeader} 
-            onBackPress={handleBackPress} 
-          />
-      </SafeAreaView>
+      {/* Content fills the entire screen; header/bottom-bar overlay on top */}
+      {images.length === 0 ? (
+        <View style={[styles.emptyStateContainer, { paddingTop: headerHeight }]}>
+          <View style={styles.emptyIconCircle}>
+            <Ionicons name="images" size={40} color="#666" />
+          </View>
+          <Text style={styles.emptyTitle}>Empty Gallery</Text>
+          <Text style={styles.emptySubtext}>
+            Use the controls below to add your first photo.
+          </Text>
+        </View>
+      ) : (
+        <ImagesDisplay
+          images={images}
+          galleryId={galleryId}
+          selectedTagId={selectedTagId ?? ''}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          contentContainerStyle={{ paddingBottom: headerHeight, paddingTop: BOTTOM_CLEARANCE }}
+          scrollIndicatorInsets={{ top: headerHeight, bottom: BOTTOM_CLEARANCE }}
+        />
+      )}
 
-      {/* 2. Main Content Area
-        We allow this to take full height. The BottomBar will float ON TOP of this.
-      */}
-      <View style={styles.contentContainer}>
-          {images.length === 0 ? (
-            <View style={styles.emptyStateContainer}>
-                <View style={styles.emptyIconCircle}>
-                   <Ionicons name="images" size={40} color="#666" />
-                </View>
-                <Text style={styles.emptyTitle}>Empty Gallery</Text>
-                <Text style={styles.emptySubtext}>
-                   Use the controls below to add your first photo.
-                </Text>
-            </View>
-          ) : (
-            <ImagesDisplay
-                images={images}
-                galleryId={galleryId}
-                selectedTagId={selectedTagId ?? ''}
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-            />
-          )}
-      </View>
+      {/* Header overlays the content (position:absolute in GalleryHeader) */}
+      <GalleryHeader
+        galleryId={galleryId}
+        onTitlePress={handlePressHeader}
+        onBackPress={handleBackPress}
+      />
 
-      {/* 3. Floating Overlay Controls 
-      */}
-      <GalleryBottomBar 
-        onPressUpload={handlePressUpload} 
+      {/* Bottom bar overlays the content */}
+      <GalleryBottomBar
+        onPressUpload={handlePressUpload}
         onPressCamera={handlePressCamera}
         tags={tags as any}
         selectedTagId={selectedTagId}
@@ -204,28 +218,18 @@ const GalleryScreen = () => {
 };
 
 const styles = StyleSheet.create({
-   container: {
-      flex: 1,
-      backgroundColor: '#FFFFFF',
-   },
-   safeAreaTop: {
-      backgroundColor: '#FFFFFF',
-      zIndex: 5, // Ensures header stays above content while scrolling
-   },
-   contentContainer: {
-      flex: 1,
-      // If you want content to scroll BEHIND the header, remove 'zIndex' from header 
-      // and adjust paddingTop here. For now, we stack them vertically.
-   },
-   
-   // --- Empty State ---
-   emptyStateContainer: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: 40,
-      marginTop: -60, // Visual offset to center perfectly above the bottom bar
-   },
+  container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+
+  // --- Empty State ---
+  emptyStateContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 40,
+  },
    emptyIconCircle: {
       width: 80,
       height: 80,

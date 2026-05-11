@@ -65,6 +65,7 @@ async function notifyGalleryMembers(
     if (tokens.length > 0) {
       const deadTokens = await sendPushNotifications(tokens, title, body, pushData);
       if (deadTokens.length > 0) {
+        console.warn(`[Push] Removing ${deadTokens.length} invalid device token(s)`);
         await prisma.device.deleteMany({ where: { token: { in: deadTokens } } });
       }
     }

@@ -17,9 +17,6 @@ const GroupMembersHeader = ({groupId}: {groupId: string}) => {
                 </TouchableOpacity>
                 <Text style={styles.title}>Members</Text>
             </View>
-            <TouchableOpacity style={styles.addButton} onPress={() => navigation.navigate("AddGroupMembers", {groupId})}>
-                <Ionicons name="add" size={20} color="black" />
-            </TouchableOpacity>    
         </View>
     );
     

@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { launchImageLibrary, ImagePickerResponse } from 'react-native-image-picker';
+import { useImagePicker } from '../../../hooks/useImagePicker';
 import FastImage from 'react-native-fast-image';
 import LinearGradient from 'react-native-linear-gradient';
 
@@ -26,15 +26,16 @@ const GroupScreen = () => {
   const headerTitle = useMemo(() => group?.name ?? 'Group', [group?.name]);
   const isOwner = group?.ownerId === user?.id;
 
+  const { pickImages } = useImagePicker();
+
   const onPickImage = () => {
     if (!isOwner) return;
-    launchImageLibrary({ mediaType: 'photo', quality: 0.8 }, async (response: ImagePickerResponse) => {
-      if (response.assets?.[0]?.uri) {
-        try {
-          await updateIcon(response.assets[0].uri);
-        } catch {
-          Alert.alert('Error', 'Failed to update group icon.');
-        }
+    pickImages({ quality: 0.8 }, async ([asset]) => {
+      if (!asset) return;
+      try {
+        await updateIcon(asset.uri);
+      } catch {
+        Alert.alert('Error', 'Failed to update group icon.');
       }
     });
   };
@@ -52,8 +53,8 @@ const GroupScreen = () => {
       {/* Banner */}
       <TouchableOpacity
         style={styles.banner}
-        activeOpacity={isOwner ? 0.85 : 1}
-        onPress={isOwner ? onPickImage : undefined}
+        activeOpacity={isOwner && !group?.iconUrl ? 0.85 : 1}
+        onPress={isOwner && !group?.iconUrl ? onPickImage : undefined}
       >
         {group?.iconUrl ? (
           <FastImage

@@ -3,6 +3,7 @@ import { useGallery } from "../../../hooks/useGalleryData";
 import { useNavigation } from "@react-navigation/native";
 import Ionicons from "react-native-vector-icons/Ionicons";
 import LinearGradient from "react-native-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface GalleryHeaderProps {
   galleryId: string;
@@ -13,6 +14,7 @@ interface GalleryHeaderProps {
 const GalleryHeader = ({ galleryId, onBackPress, onTitlePress }: GalleryHeaderProps) => {
   const navigation = useNavigation();
   const { gallery } = useGallery(galleryId);
+  const insets = useSafeAreaInsets();
 
   const handleNavigateDetails = () => {
     if (onTitlePress) { onTitlePress(); return; }
@@ -29,7 +31,7 @@ const GalleryHeader = ({ galleryId, onBackPress, onTitlePress }: GalleryHeaderPr
         end={{ x: 0, y: 1 }}
         style={styles.gradient}
       />
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
 
         <TouchableOpacity
           onPress={onBackPress}
@@ -83,7 +85,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
-    paddingTop: 56,
     paddingBottom: 10,
   },
   sideButton: {

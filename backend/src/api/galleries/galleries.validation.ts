@@ -3,13 +3,13 @@ import { z } from 'zod';
 
 export const createGallerySchema = z.object({
   body: z.object({
-    name: z.string().min(2, 'Name is required'),
+    name: z.string().min(2, 'Name is required').max(100, 'Name must be at most 100 characters'),
     type: z.enum(['GROUP', 'EVENT']),
     iconUrl: z.string().url().optional(),
     wantsIconUpload: z.boolean().optional(),
     startDate: z.string().datetime().optional(),
     endDate: z.string().datetime().optional(),
-    location: z.string().optional(),
+    location: z.string().max(200).optional(),
     communityId: z.string().uuid('Invalid community id').optional(),
   }),
 });
@@ -18,15 +18,15 @@ export type CreateGalleryDto = z.infer<typeof createGallerySchema>['body'];
 
 export const updateGallerySchema = z.object({
   body: z.object({
-    name: z.string().min(2).optional(),
+    name: z.string().min(2).max(100).optional(),
     iconUrl: z.string().url().optional(),
     startDate: z.string().datetime().nullable().optional(),
     endDate: z.string().datetime().nullable().optional(),
-    location: z.string().nullable().optional(),
+    location: z.string().max(200).nullable().optional(),
     addPermission: z.string().optional(),
     joinRequiresApproval: z.boolean().optional(),
     deletePermission: z.string().optional(),
-    defaultTagId: z.string().optional()
+    defaultTagId: z.string().optional(),
   }),
 });
 
@@ -49,10 +49,10 @@ export const joinByLinkSchema = z.object({
 // Schema for searching galleries
 export const searchGalleriesSchema = z.object({
   query: z.object({
-    search: z.string().optional(), // General search term (searches name, location)
-    name: z.string().optional(),
+    search: z.string().max(100).optional(),
+    name: z.string().max(100).optional(),
     type: z.enum(['GROUP', 'EVENT']).optional(),
-    location: z.string().optional(),
+    location: z.string().max(200).optional(),
     limit: z.coerce.number().int().positive().max(100).optional().default(20),
     offset: z.coerce.number().int().nonnegative().optional().default(0),
   }),

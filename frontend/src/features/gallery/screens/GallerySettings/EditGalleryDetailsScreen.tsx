@@ -6,7 +6,7 @@ import {
   SafeAreaView, KeyboardAvoidingView, Platform,
 } from "react-native";
 import FastImage from "react-native-fast-image";
-import { launchImageLibrary, ImagePickerResponse } from "react-native-image-picker";
+import { useImagePicker } from "../../../../hooks/useImagePicker";
 import { useGallery, useUpdateGallery, useUpdateGalleryIcon } from "../../../../hooks/useGalleryData";
 import { useQueryClient } from "@tanstack/react-query";
 import Ionicons from "react-native-vector-icons/Ionicons";
@@ -52,26 +52,25 @@ const EditGalleryDetailsScreen = () => {
 
   const isLoading = isUpdating || isUploadingIcon;
 
+  const { pickImages } = useImagePicker();
+
   const handleChangeImage = () => {
-    launchImageLibrary({ mediaType: 'photo', quality: 0.7 }, (response: ImagePickerResponse) => {
-      if (response.didCancel) return;
-      if (response.errorMessage) { Alert.alert('Error', response.errorMessage); return; }
-      if (response.assets?.[0]?.uri) {
-        const uri = response.assets[0].uri;
-        setPendingIconUri(uri);
-        setDisplayLocalUri(uri);
-        updateGalleryIcon(uri, {
-          onSuccess: () => {
-            setPendingIconUri(null); // clear dirty; keep displayLocalUri so avatar stays visible
-            queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });
-          },
-          onError: (err) => {
-            setPendingIconUri(null);
-            setDisplayLocalUri(null);
-            Alert.alert('Upload Failed', (err as Error)?.message || 'Unable to update image');
-          },
-        });
-      }
+    pickImages({ quality: 0.7 }, ([asset]) => {
+      if (!asset) return;
+      const uri = asset.uri;
+      setPendingIconUri(uri);
+      setDisplayLocalUri(uri);
+      updateGalleryIcon(uri, {
+        onSuccess: () => {
+          setPendingIconUri(null);
+          queryClient.invalidateQueries({ queryKey: ['gallery', galleryId] });
+        },
+        onError: (err) => {
+          setPendingIconUri(null);
+          setDisplayLocalUri(null);
+          Alert.alert('Upload Failed', (err as Error)?.message || 'Unable to update image');
+        },
+      });
     });
   };
 

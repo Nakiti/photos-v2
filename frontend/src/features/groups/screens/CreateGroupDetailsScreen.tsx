@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
-import { launchImageLibrary, ImagePickerResponse } from 'react-native-image-picker';
+import { useImagePicker } from '../../../hooks/useImagePicker';
 import FastImage from 'react-native-fast-image';
 import { useCreateGroup } from '../../../hooks/useGroupData';
 
@@ -38,16 +38,11 @@ const CreateGroupDetailsScreen = () => {
 
   const { mutateAsync: createGroup, isPending: isCreating } = useCreateGroup();
 
+  const { pickImages } = useImagePicker();
+
   const onPickImage = () => {
-    launchImageLibrary({ mediaType: 'photo', quality: 0.8 }, (response: ImagePickerResponse) => {
-      if (response.didCancel) return;
-      if (response.errorMessage) {
-        Alert.alert('Error', response.errorMessage);
-        return;
-      }
-      if (response.assets && response.assets[0]?.uri) {
-        setImageUri(response.assets[0].uri);
-      }
+    pickImages({ quality: 0.8 }, ([asset]) => {
+      if (asset) setImageUri(asset.uri);
     });
   };
 

@@ -158,7 +158,7 @@ const GalleryDetailsScreen = () => {
                 <View style={styles.card}>
                   <ListRow
                     icon="create-outline"
-                    label="Name"
+                    label="Details"
                     value={gallery.name}
                     onPress={() => (navigation as any).navigate('EditGalleryDetails', { galleryId })}
                   />
