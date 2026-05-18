@@ -124,8 +124,6 @@ ACTORS
     │  { s3Key,                    │ create Photo row
     │    thumbnailKey,             │ s3Url       = https://cdn.focal.app/photos/…
     │    tagIds }                  │ thumbnailUrl = https://cdn.focal.app/thumbnails/…
-    │                              │──────────────────────────────────────────────────►enqueue
-    │                              │                                                   thumb job
     │                              │──socket: new_photo──►│ (broadcast to gallery room)
     │◄─{ photo with CF urls }──────│
     │                              │
@@ -136,22 +134,7 @@ ACTORS
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- PHASE 3 — THUMBNAIL GENERATION (async, backend only)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-                                                              ◄──dequeue job──────────┤
-                              Worker                          │                        │
-                                │──GET photos/…/file.jpg─────►│                        │
-                                │◄─ full image bytes──────────│                        │
-                                │ resize with Sharp (400px)    │                        │
-                                │──PUT thumbnails/…/file.jpg──►│                        │
-                                │                              │                        │
-                                │──update DB: thumbnailUrl = https://cdn.focal.app/thumbnails/…
-                                │  (next sync picks this up on the frontend)
-
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- PHASE 4 — DISPLAY (any device, any time)
+ PHASE 3 — DISPLAY (any device, any time)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
  FastImage requests https://cdn.focal.app/thumbnails/…
@@ -189,13 +172,13 @@ The backend generates a short-lived signed URL; the client PUTs image bytes dire
 
 ---
 
-### 2. Dual thumbnail generation
+### 2. Client-only thumbnail generation
 
-The client generates and uploads a thumbnail before confirming. The BullMQ worker then generates a second thumbnail server-side and replaces the first.
+The client resizes to 400px and uploads the thumbnail directly to S3 before calling `/confirm`. The backend stores the thumbnail URL as-is — no server-side reprocessing.
 
-**Why**: The client thumbnail appears immediately for all gallery members (fast UX). The server thumbnail normalises dimensions and quality consistently regardless of device or upload path.
+**Why**: Server-side regeneration would download the full image, run Sharp, and re-upload on every photo — meaningful compute and S3 cost for minimal quality gain. The client-side resize with `react-native-image-manipulator` already produces a consistent 400px JPEG. The only benefit of server-side regeneration would be the ability to retroactively resize all thumbnails if dimensions ever change — a hypothetical future concern that doesn't justify the ongoing cost.
 
-**Tradeoff**: Two thumbnail uploads per photo. At scale this adds meaningful S3 cost. The alternative — showing only the local preview until the worker finishes — means other gallery members see nothing during that window.
+**Tradeoff**: Thumbnail dimensions are fixed at upload time. Changing them later would require re-uploading from a client (impossible) or re-processing from the full-size S3 objects via a one-off migration script.
 
 ---
 
