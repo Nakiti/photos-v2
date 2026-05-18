@@ -137,18 +137,18 @@ const GalleryScreen = () => {
       }))
       .filter((img: GalleryImage) => !!img.fullsize || !!img.thumbnail);
 
-    if (__DEV__) {
-      const dummies: GalleryImage[] = Array.from({ length: 80 }, (_, i) => ({
-        id: `__dummy__${i}`,
-        fullsize: 'dummy',
-        thumbnail: 'dummy',
-        localThumbnailUri: '',
-        is_uploaded: 1,
-        uploaderId: undefined,
-        uploaderInitials: '',
-      }));
-      return [...real, ...dummies];
-    }
+    // if (__DEV__) {
+    //   const dummies: GalleryImage[] = Array.from({ length: 80 }, (_, i) => ({
+    //     id: `__dummy__${i}`,
+    //     fullsize: 'dummy',
+    //     thumbnail: 'dummy',
+    //     localThumbnailUri: '',
+    //     is_uploaded: 1,
+    //     uploaderId: undefined,
+    //     uploaderInitials: '',
+    //   }));
+    //   return [...real, ...dummies];
+    // }
 
     return real;
   }, [photos, initialsMap]);
