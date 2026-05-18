@@ -1,189 +1,175 @@
 # Production Readiness Assessment — Focal
 
-Last updated: 2026-05-11
+Last updated: 2026-05-15 (post-hardening re-evaluation)
 
-## Verdict: NOT Production Ready
+## Verdict: Closed Beta Ready — NOT Public Launch Ready
 
-The core data model, upload pipeline, real-time infrastructure, and mobile UI are solid. The gaps are in error handling, security hardening, testing, monitoring, and several incomplete user-facing flows. These are fixable but non-trivial.
+Security foundations are now solid. The app is stable enough for a closed TestFlight/internal beta with known users. What remains before a public launch is operational infrastructure (monitoring, CI/CD, health checks) and two newly-identified security gaps (avatar upload validation, user email exposure in search). Zero backend tests remain the biggest ongoing risk regardless of launch stage.
 
 ---
 
 ## What Is Working
 
 - Photo upload pipeline (presigned S3, dual upload, thumbnail worker)
-- JWT authentication (bcrypt, Passport.js)
+- JWT authentication with opaque refresh tokens (15-min access, 30-day refresh, rotation on use, revocation on logout and password reset)
+- Auth rate limiting (10 attempts / 15 min on login, register, forgot/reset password)
+- CORS locked to `ALLOWED_ORIGINS` env var
+- Password policy: 8+ chars, uppercase + lowercase + digit required
+- Full password reset flow (6-digit OTP, email delivery, Redis TTL, one-time use)
+- Session revocation on password reset (all refresh tokens purged via per-user Redis set)
 - Real-time events (Socket.IO, Redis pub/sub)
-- Gallery/group CRUD + permission system
-- Push notifications (FCM, device token management)
+- Gallery/group CRUD + permission system (owner / admin / member)
+- Push notifications (FCM, device token management, dedup, invalid token pruning)
+- LIKE notifications (in-app record + FCM push with Redis dedup)
 - WatermelonDB offline-first local cache with sync services
 - Optimistic UI with conflict resolution via `clientId`
 - Rate limiting on photo uploads (atomic Redis Lua, sliding window)
+- File type allowlist + 50 MB cap on presign; presigned URL TTL 15 min
+- Avatar presign: content-type + extension allowlist (jpeg/png/webp only)
+- User search: email excluded from results; minimum 2-char search term required (no enumeration)
+- Zod max-length constraints on all input schemas
+- Global Express error handler (4-arg middleware)
+- React error boundary wrapping the entire app tree
+- Offline banner (NetInfo)
+- Photo library + camera permission error handling
+- Member mutations atomic (`prisma.$transaction` on all add/remove/join/leave)
+- Denormalized counts transactional; daily reconciliation job as safety net
+- Soft-delete orphan cleanup (PhotoLike + PhotoTag deleted with photo)
+- `.well-known/apple-app-site-association` and `.well-known/assetlinks.json` served
+- Firebase Admin: supports `FIREBASE_SERVICE_ACCOUNT_JSON` (base64) — no committed credential files needed
 - React Navigation stack with auth gate
 - All core screens (gallery, camera, profile, settings)
 
 ---
 
+## Remaining Gaps
+
+### 🔴 Security — Fix before any public traffic
+
+No open items. All critical security gaps resolved.
+
+### 🟡 Operational — Fix before sustained production traffic
+
+| Gap | Detail |
+|-----|--------|
+| **No structured logging** | All logging via `console.*`. In production you cannot query logs, correlate requests, or set alert thresholds. Minimum: `pino` with JSON output + request ID middleware. |
+| **No APM / error tracking** | No Sentry or equivalent on backend or frontend. Silent crashes and regressions are invisible. |
+| **`/health` is shallow** | Returns `{ status: "ok" }` always. Load balancers and uptime monitors will report healthy even if MySQL, Redis, or S3 are unreachable. Add actual dependency pings. |
+| **No CI/CD pipeline** | Manual deploys. Any deploy can break production without a gate. Minimum: lint + typecheck + migrate on PR; deploy-on-merge to staging. |
+| **No staging environment** | Schema migrations and new features go untested before production. |
+| **Zero backend tests** | The highest ongoing risk. Auth flows, permission matrices, upload lifecycle, and rate limiting are entirely unverified by automation. A refactor or dependency upgrade can silently break core flows. |
+| **No `.env.example`** | No reference for required env vars. Onboarding a new developer or setting up CI requires reading source code. Risk: `.env` with real credentials gets committed. |
+
+### 🟢 Minor / Deferred
+
+| Gap | Detail |
+|-----|--------|
+| **JWT auth hits DB on every request** | `auth.middleware.ts` calls `prisma.user.findUnique` for every authenticated request to verify the user still exists. Adds 1–5 ms latency per request, multiplies DB load. Acceptable now; revisit under load. |
+| **No secrets manager** | AWS credentials in `.env`; Firebase via env var (no file dependency). Secrets rotation and audit require AWS Secrets Manager / Vault — infrastructure task. |
+| **`PhotoAttempt` orphan cleanup** | `deletePhoto` cleans up PhotoLike and PhotoTag but not PhotoAttempt records. Low data risk; deferred. |
+| **No audit trail** | No `updatedBy` or audit log table. Needed for GDPR compliance at scale. |
+
+---
+
 ## Incomplete Features
 
-### Broken / No-op
+### Broken / No-op (visible to users)
 
 | Feature | File | Notes |
 |--------|------|-------|
-| Photo download to device | `SingleImageScreen.tsx:242` | Button exists, no-op |
-| Photo re-upload | `SingleImageScreen.tsx:246` | Button exists, no-op |
+| Photo download to device | `SingleImageScreen.tsx:242` | Button renders, no-op |
+| Photo re-upload | `SingleImageScreen.tsx:246` | Button renders, no-op |
 | Edit gallery permission | `EditPermissionScreen.tsx:29` | Screen exists, backend PATCH endpoint not exposed |
-| Forgot password | `LoginScreen.tsx:32` | Button exists, no-op, no reset flow |
 
 ### Partially Implemented
 
 | Feature | Status |
 |--------|-------|
-| Deep link invite flow | URL scheme + navigation wired, but `.well-known/apple-app-site-association` and `.well-known/assetlinks.json` not served; join screens show placeholder instead of entity details |
-| LIKE notifications | `PhotoLike` model exists, like endpoint works, but no notification is created for the photo uploader |
-| Community join approval | `MembershipStatus.PENDING` exists in schema but no API endpoint to approve/reject pending community joins |
-| `MembershipStatus.BLOCKED` | Never set anywhere in the codebase |
-| `GalleryType.EVENT` | Schema field exists, no special handling (treated same as GROUP) |
-| Photo soft-delete recovery | Soft-delete + deleted-since endpoint exist, no recovery UI |
-
----
-
-## Security Gaps
-
-### P0 — Blockers
-
-- **No auth rate limiting** — `/login` and `/register` can be brute-forced with no lockout
-- **CORS set to `'*'`** — must be locked to specific frontend origins before production
-- **No CSRF protection** — state-changing requests have no CSRF token
-- **No token refresh** — 7-day JWTs never refresh; no revocation on password change or logout
-
-### P1 — Critical
-
-- **Weak password policy** — 8-char minimum only; no complexity requirements
-- **No server-side file type/size validation** — presigned URL generation doesn't enforce content type or max file size
-- **Presigned URL TTL** — upload TTL should be verified (15min recommended)
-- **No input length limits** — gallery names, descriptions, tags unbounded in Zod schemas
-- **Firebase service account in `backend/config/`** — should use environment variable or secrets manager, not a committed file path
-
-### P2 — Important
-
-- **Session not revoked on user events** — deleting account or changing password doesn't invalidate existing JWTs
-- **Notification payload typed as `any`** — `data: data ? (data as any) : null` in `notifications.service.ts`
-- **No secrets manager** — AWS credentials in `.env`, Firebase credentials in file path
-
----
-
-## Error Handling Gaps
-
-- **No global Express error middleware** — unhandled errors return inconsistent responses; uncaught promise rejections can crash the server
-- **All catch blocks return generic 500** — no error codes, no distinction between validation / auth / business / database errors
-- **FCM failures silent** — notification send errors are logged but not retried or alerted on
-- **Frontend sync errors not surfaced** — failed syncs leave the app in an inconsistent state with no user feedback
-- **No React error boundary** — a render crash in any screen crashes the whole app
+| Deep link invite flow | `.well-known` files ✅ served; `JoinGalleryScreen` + `JoinGroupScreen` ✅ functional; gallery/group name shown is from URL params (not a fresh API fetch — stale if name changed) |
+| Community join approval | `MembershipStatus.PENDING` exists in schema; no API endpoint to approve/reject |
+| `GalleryType.EVENT` | Schema field exists; treated identically to GROUP |
+| Photo soft-delete recovery | Soft-delete + deleted-since endpoint exist; no recovery UI |
 
 ---
 
 ## Logging & Monitoring
 
-- Only `console.log` / `console.error` throughout — no structured logging, no log levels, no correlation IDs
-- No APM (Sentry, Datadog, New Relic)
-- No metrics (upload success rate, notification delivery, sync latency)
-- No crash reporting on mobile
-- `/health` endpoint exists but doesn't check DB, Redis, or S3 connectivity
+All `console.*` — no structured logging, no correlation IDs, no log levels.
 
-**Minimum before production:**
-1. Replace `console.*` with `winston` or `pino` (structured JSON, log levels)
-2. Add request ID middleware for tracing
-3. Add Sentry to both backend and React Native frontend
-4. Add readiness checks to `/health` (DB ping, Redis ping, S3 head)
+**Minimum before public launch:**
+1. Add `pino` (or `winston`) with JSON output — structured logs that can be queried in CloudWatch / Datadog / Logtail
+2. Add request ID middleware — correlate all log lines for a single request
+3. Add Sentry to backend (`@sentry/node`) and React Native (`@sentry/react-native`) — catches unhandled exceptions and slow transactions
+4. Fix `/health` to ping MySQL (`prisma.$queryRaw\`SELECT 1\``), Redis (`redis.ping()`), and S3 (HEAD on a known key)
 
 ---
 
 ## Testing
 
-- **Frontend:** 1 smoke test (`App.test.tsx`), tests nothing meaningful
 - **Backend:** Zero tests
-- **No integration tests, no API contract tests, no E2E tests**
+- **Frontend:** 1 smoke test (`App.test.tsx`), tests nothing meaningful
 
-**Minimum viable test coverage:**
-- Auth flow (register, login, token validation, rate limit)
-- Permission matrix (admin vs member vs non-member for each operation)
-- Photo upload flow (presign → confirm, rate limit enforcement)
-- Sync conflict resolution logic in `photos.sync.ts`
-- WatermelonDB migration integrity
-
----
-
-## Database Gaps
-
-- **No atomic transactions** on multi-step operations (gallery create + default tag, ownership transfer)
-- **`memberCount` / `photoCount` can go stale** — not updated transactionally with the records they reflect
-- **Soft-delete orphans** — deleting a photo leaves `PhotoLike`, `PhotoTag`, `PhotoAttempt` records without cleanup
-- **No audit trail** — no `updatedBy` or audit log table; required for GDPR compliance
-- **MySQL lacks partial indexes** — all queries must manually filter `deletedAt IS NULL`; risk of accidental data exposure if missed
+**Minimum viable coverage:**
+- Auth: register, login, refresh, logout, rate limit enforcement, password reset
+- Permission matrix: owner / admin / member / non-member for each gallery operation
+- Photo upload: presign → S3 PUT → confirm, idempotency, rate limit
+- WatermelonDB migration integrity (no regression from v25 → v36)
+- Sync conflict resolution in `photos.sync.ts`
 
 ---
 
-## Infrastructure Gaps
+## Infrastructure
 
-- No Docker / docker-compose for backend
-- No CI/CD pipeline
+- No Docker / docker-compose for local dev parity
+- No CI/CD pipeline (GitHub Actions, etc.)
 - No staging environment
-- No deployment runbook (migrations, rollback procedure)
-- CloudFront documented in `docs/README.md` but not wired in `config.ts` (`CLOUDFRONT_BASE_URL` exists but needs verification)
-- No database backup strategy documented
+- No deployment runbook (migration order, rollback procedure)
+- No database backup schedule documented
+- CloudFront: `CLOUDFRONT_BASE_URL` wired in `config.ts` but should be verified against actual distribution
 
 ---
 
-## Mobile-Specific Gaps
+## Priority Order (revised)
 
-- ✅ Offline mode indicator — `OfflineBanner` component uses NetInfo, shown above all screens
-- ✅ React error boundary — `ErrorBoundary` wraps the entire app tree; renders a "Try again" screen on uncaught render errors; logs to console (`componentDidCatch`)
-- ✅ Photo library permission errors — `useImagePicker` hook centralises all 7 `launchImageLibrary` callsites; `errorCode === 'permission'` shows Alert with "Open Settings" link
-- Camera permission already handled — `CameraScreen` has `hasPermission`/`permissionDenied` states with "Grant Permission" / "Open Settings" UI
+### Must fix before public traffic
 
-- **Deferred (requires native install):** Background photo upload — needs `react-native-background-fetch` or `react-native-background-actions`
-- **Deferred (requires native install):** Crash reporting — needs `@sentry/react-native` with Xcode/Gradle configuration
+1. ✅ Global Express error handler
+2. ✅ Auth rate limiting
+3. ✅ CORS locked to allowlist
+4. ✅ Refresh token system (rotation, revocation, 401 interceptor)
+5. ✅ `.well-known` deep link files served
+6. ✅ Password reset flow
+7. ✅ Password complexity policy
+8. ✅ Session revocation on password reset
+9. ✅ Firebase credential via env var (no committed files)
+10. ✅ Avatar presign content-type validation (allowlist: jpeg/png/webp)
+11. ✅ Remove email from user search results; require minimum 2-char search term
+12. Add structured logging (pino) + request ID middleware
+13. Integrate Sentry (backend + React Native)
+14. Fix `/health` to check DB + Redis + S3
+15. Add backend integration tests (auth, permissions, upload lifecycle)
 
----
+### Fix within first sprint post-launch
 
-## Priority Order
+16. ✅ `prisma.$transaction` on all member mutations
+17. ✅ Soft-delete orphan cleanup (PhotoLike + PhotoTag)
+18. ✅ Daily count reconciliation job
+19. ✅ React error boundary
+20. ✅ Offline banner + permission error handling
+21. Implement community join approval API
+22. Surface sync errors to user (toast / banner)
+23. Dockerize backend + add CI/CD pipeline
+24. Add `.env.example` with all required keys
 
-### P0 — Must fix before any production traffic
+### Backlog
 
-1. ✅ Add global Express error handler middleware
-2. ✅ Add rate limiting on `/login` and `/register`
-3. ✅ Lock CORS to specific origins (via `ALLOWED_ORIGINS` env var)
-4. ✅ Implement JWT refresh token flow (opaque tokens in Redis, 30-day TTL, rotation on use)
-5. ✅ Serve `.well-known/apple-app-site-association` and `.well-known/assetlinks.json` (configure via `IOS_TEAM_ID`, `IOS_BUNDLE_ID`, `ANDROID_PACKAGE`, `ANDROID_SHA256_CERT` env vars)
-
-### P1 — Fix before public launch
-
-6. Add structured logging (winston/pino) + request ID middleware
-7. Integrate Sentry (backend + React Native)
-8. Implement password reset flow (email token → hash new password)
-9. Add backend integration tests for auth + permissions + uploads
-10. ✅ Add React error boundary to `RootStack`
-11. ✅ Validate file type and size server-side before presigning (contentType allowlist; optional fileSize max 50 MB; TTL reduced 30 min → 15 min)
-12. ✅ Add Zod max-length constraints to all text input schemas (auth, galleries, groups, users, photos, search queries)
-13. ✅ Wire LIKE notification on photo like (already implemented in `likePhoto()` — in-app record + FCM push with Redis dedup)
-
-### P2 — Fix within first sprint post-launch
-
-14. Add Prisma transactions to gallery create and ownership transfer
-15. Add cleanup job for soft-delete orphans (likes, tags, attempts)
-16. Implement community join approval API
-17. Surface sync errors to the user (toast / banner)
-18. Add readiness checks to `/health`
-19. Dockerize backend + add CI/CD pipeline
-20. ✅ Add camera/library permission error handling screens
-
-### P3 — Backlog
-
-21. Implement photo download to device
-22. Expose edit-gallery-permission PATCH endpoint
-23. Implement `GalleryType.EVENT` special behavior
-24. Add photo trash / recovery UI
-25. Background upload support
-26. 2FA (TOTP)
-27. Audit log table for GDPR compliance
-28. Load testing + capacity planning
+25. Implement photo download to device
+26. Expose edit-gallery-permission PATCH endpoint
+27. Implement `GalleryType.EVENT` special handling
+28. Add photo trash / recovery UI
+29. Background upload (`react-native-background-fetch`)
+30. 2FA (TOTP)
+31. Audit log table (GDPR)
+32. Secrets manager (AWS Secrets Manager / Vault)
+33. Load testing + capacity planning
+34. Remove DB lookup from JWT middleware (or add Redis cache) — revisit under load

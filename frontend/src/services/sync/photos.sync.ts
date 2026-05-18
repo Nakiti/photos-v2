@@ -96,7 +96,7 @@ import { TagApi } from "../api/tags.service";
             local.prepareUpdate(record => {
               record.s3Url = remotePhoto.s3Url;
               record.s3Key = remotePhoto.s3Key;
-              // Map API field 'thumbnailUrl' to local column 'thumbnail_uri'
+              // Map API field 'thumbnailUrl' to local WatermelonDB field 'thumbnailUri'
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               record.thumbnailUri = (remotePhoto as any).thumbnailUrl;
               // Ensure status is synced after update

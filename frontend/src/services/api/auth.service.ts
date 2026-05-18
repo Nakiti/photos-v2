@@ -25,3 +25,11 @@ export const refreshTokens = async (refreshToken: string): Promise<{ token: stri
 export const logout = async (refreshToken: string): Promise<void> => {
   await apiClient.post('/api/v1/auth/logout', { refreshToken });
 };
+
+export const forgotPassword = async (email: string): Promise<void> => {
+  await apiClient.post('/api/v1/auth/forgot-password', { email });
+};
+
+export const resetPassword = async (code: string, newPassword: string): Promise<void> => {
+  await apiClient.post('/api/v1/auth/reset-password', { code, newPassword });
+};

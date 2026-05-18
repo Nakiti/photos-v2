@@ -13,7 +13,7 @@ export default class Gallery extends Model {
   // Define fields
   @text('name') name!: string;
   @field('owner_id') ownerId!: string;
-  @field('default_tag_id') defaultTagId!: string;
+  @field('default_tag_id') defaultTagId?: string | null;
   @field('community_id') communityId?: string | null;
   @text('community_name') communityName?: string | null;
   @text('icon_url') iconUrl?: string;

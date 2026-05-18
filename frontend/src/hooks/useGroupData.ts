@@ -18,6 +18,8 @@ import {
   type CreateGroupRequest,
   type UpdateGroupRequest,
 } from '../services/api/groups.service';
+import { syncGroupMembers } from '../services/sync/groupMemberships.sync';
+import { getMembers as getGroupMembers } from '../services/api/groupMemberships.service';
 import { syncGroups, syncGroupDetails } from '../services/sync/groups.sync';
 import { getGalleriesByCommunityId, type GalleryApiResponse } from '../services/api/gallery.service';
 import { syncGalleries, syncCommunityGalleries } from '../services/sync/gallery.sync';
@@ -149,37 +151,47 @@ export const useCreateGroup = () => {
 
   return useMutation({
     mutationFn: async ({ data, imageUri }: { data: CreateGroupRequest; imageUri: string | null }) => {
-      if (!imageUri) {
-        const { community } = await createGroup(data);
+      // Always create the group first (no wantsIconUpload — avoids content-type mismatch)
+      const { community } = await createGroup(data);
+
+      if (!imageUri) return community;
+
+      // Upload icon via the dedicated presign endpoint so the correct content-type is used
+      // and the iconUrl is persisted back to the backend DB via updateGroup.
+      try {
+        const imageFetchResponse = await fetch(imageUri);
+        const blob = await imageFetchResponse.blob();
+        const imageType = blob.type || 'image/jpeg';
+        const fileExtension = imageType === 'image/png' ? '.png' : '.jpg';
+
+        const { presignedUrl, finalUrl } = await requestGroupIconPresign(community.id, imageType, fileExtension);
+
+        const s3UploadResponse = await fetch(presignedUrl, {
+          method: 'PUT',
+          body: blob,
+          headers: { 'Content-Type': imageType },
+        });
+        if (!s3UploadResponse.ok) throw new Error('S3 upload failed');
+
+        // Persist iconUrl to the backend DB so it survives future server fetches
+        const updated = await updateGroup(community.id, { iconUrl: finalUrl });
+        return updated ?? { ...community, iconUrl: finalUrl };
+      } catch (e) {
+        console.error('Group icon upload failed (non-fatal):', e);
         return community;
       }
-      // Request wantsIconUpload flow
-      const { community, uploadInfo } = await createGroup({ ...data, wantsIconUpload: true });
-      if (!uploadInfo) throw new Error('Server did not return upload info.');
-
-      const imageFetchResponse = await fetch(imageUri);
-      const blob = await imageFetchResponse.blob();
-      const imageType = blob.type || 'image/jpeg';
-
-      const s3UploadResponse = await fetch(uploadInfo.presignedUrl, {
-        method: 'PUT',
-        body: blob,
-        headers: {
-          'Content-Type': imageType,
-        },
-      });
-      if (!s3UploadResponse.ok) {
-        throw new Error('Failed to upload image to S3.');
-      }
-      // Return group with final icon url
-      return {
-        ...community,
-        iconUrl: uploadInfo.finalUrl,
-      };
     },
     onSuccess: async (newGroup) => {
       await syncGroupDetails(database, newGroup);
+      // Pre-sync members so the creator appears in the members list immediately
+      try {
+        const { members } = await getGroupMembers(newGroup.id);
+        await syncGroupMembers(database, newGroup.id, members);
+      } catch {
+        // Non-critical — members will sync when GroupMemberScreen mounts
+      }
       queryClient.invalidateQueries({ queryKey: ['groups'] });
+      queryClient.invalidateQueries({ queryKey: ['group-members', newGroup.id] });
       queryClient.setQueryData(['group', newGroup.id], newGroup);
     },
     onError: (e) => {

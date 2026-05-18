@@ -15,3 +15,13 @@ photoQueue.add(
     jobId: 'cleanup-old-notifications', // stable ID prevents duplicate scheduled jobs on restart
   },
 ).catch(() => {}); // Non-fatal if scheduling fails (e.g., during tests)
+
+// Schedule daily count reconciliation to correct any stale denormalized counts.
+photoQueue.add(
+  'reconcile-counts',
+  {},
+  {
+    repeat: { pattern: '0 4 * * *' }, // 4am daily
+    jobId: 'reconcile-counts',
+  },
+).catch(() => {});

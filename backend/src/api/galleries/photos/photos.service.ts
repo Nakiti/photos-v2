@@ -367,6 +367,7 @@ export async function deletePhoto(requesterId: string, galleryId: string, photoI
     });
     if (count === 0) return false;
     await tx.photoLike.deleteMany({ where: { photoId } });
+    await tx.photoTag.deleteMany({ where: { photoId } });
     await tx.gallery.update({
       where: { id: galleryId },
       data: { photoCount: { decrement: 1 } },

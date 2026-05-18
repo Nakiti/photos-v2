@@ -1,6 +1,5 @@
 import { Model } from '@nozbe/watermelondb';
-import { field, relation, date } from '@nozbe/watermelondb/decorators';
-import { readonly } from '@nozbe/watermelondb/decorators';
+import { field, relation } from '@nozbe/watermelondb/decorators';
 
 export default class PhotoAttempt extends Model {
   static table = 'photo_attempts';
@@ -22,7 +21,5 @@ export default class PhotoAttempt extends Model {
   @relation('galleries', 'gallery_id') gallery!: any;
   @relation('users', 'user_id') user!: any;
   @relation('photos', 'photo_id') photo?: any;
-
-  @readonly @date('attempted_at') attemptedAtDate!: Date;
 }
 

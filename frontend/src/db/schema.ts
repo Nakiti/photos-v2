@@ -1,8 +1,8 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const mySchema = appSchema({
-  // Version 35: Added is_liked to photos
-  version: 35,
+  // Version 36: communities/community_memberships tables (IF NOT EXISTS to handle devices that had them from earlier builds)
+  version: 36,
   tables: [
     tableSchema({
       name: 'users',
@@ -19,7 +19,7 @@ export const mySchema = appSchema({
       name: 'galleries',
       columns: [
         { name: 'name', type: 'string' },
-        { name: 'default_tag_id', type: 'string'},
+        { name: 'default_tag_id', type: 'string', isOptional: true },
         { name: 'owner_id', type: 'string', isIndexed: true },
         { name: 'community_id', type: 'string', isOptional: true, isIndexed: true },
         { name: 'community_name', type: 'string', isOptional: true },

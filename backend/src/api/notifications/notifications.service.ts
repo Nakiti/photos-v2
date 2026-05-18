@@ -1,5 +1,5 @@
 import admin from 'firebase-admin';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { photoQueue } from '../../../libs/queue.js';
 import { redis } from '../../../libs/redis.js';
 
@@ -7,10 +7,17 @@ type NotificationType = 'LIKE' | 'COMMENT' | 'INVITE' | 'SYSTEM';
 
 const prisma = new PrismaClient();
 
-// Initialise Firebase Admin once (no-op if already initialised)
+// Initialise Firebase Admin once (no-op if already initialised).
+// Priority: FIREBASE_SERVICE_ACCOUNT_JSON (base64) > FIREBASE_SERVICE_ACCOUNT_PATH > ADC
 if (!admin.apps.length) {
+  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
-  if (serviceAccountPath) {
+
+  if (serviceAccountJson) {
+    const decoded = Buffer.from(serviceAccountJson, 'base64').toString('utf8');
+    const serviceAccount = JSON.parse(decoded) as admin.ServiceAccount;
+    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+  } else if (serviceAccountPath) {
     const serviceAccount = (await import(serviceAccountPath, { assert: { type: 'json' } })).default;
     admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
   } else {
@@ -35,7 +42,7 @@ export async function createNotificationRecord(
       recipientId,
       actorId,
       type,
-      data: data ? (data as any) : null,
+      data: data !== undefined ? (data as Prisma.InputJsonValue) : Prisma.DbNull,
       referenceId: referenceId || null,
       referenceType: referenceType || null,
     },

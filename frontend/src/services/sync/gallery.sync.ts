@@ -54,7 +54,7 @@ export const syncGalleries = async (database: Database, remoteGalleries: Gallery
             record.addPermission = remoteGallery.addPermission as 'ANYONE' | 'ADMIN';
             record.deletePermission = remoteGallery.deletePermission as 'ADMINS_AUTHORS' | 'ADMIN';
             record.editPermission = remoteGallery.editPermission as 'ANYONE' | 'ADMIN';
-            record.defaultTagId = remoteGallery.defaultTagId ?? '';
+            record.defaultTagId = remoteGallery.defaultTagId ?? null;
             record.communityId = remoteGallery.communityId ?? undefined;
             record.communityName = remoteGallery.communityName ?? undefined;
             record.lastPhotoAt = remoteLastPhotoAt ?? undefined;
@@ -81,7 +81,7 @@ export const syncGalleries = async (database: Database, remoteGalleries: Gallery
           record.addPermission = remoteGallery.addPermission as 'ANYONE' | 'ADMIN';
           record.deletePermission = remoteGallery.deletePermission as 'ADMINS_AUTHORS' | 'ADMIN';
           record.editPermission = remoteGallery.editPermission as 'ANYONE' | 'ADMIN';
-          record.defaultTagId = remoteGallery.defaultTagId ?? '';
+          record.defaultTagId = remoteGallery.defaultTagId ?? null;
           record.communityId = remoteGallery.communityId ?? undefined;
           record.communityName = remoteGallery.communityName ?? undefined;
           record.lastPhotoAt = remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : undefined;
@@ -154,7 +154,7 @@ export const syncGalleryDetails = async (
       : undefined;
     record.location = remoteGallery.location ?? undefined;
     record.shareableLink = remoteGallery.shareableLink ?? undefined;
-    record.defaultTagId = remoteGallery.defaultTagId ?? '';
+    record.defaultTagId = remoteGallery.defaultTagId ?? null;
     record.communityId = remoteGallery.communityId ?? undefined;
     record.communityName = remoteGallery.communityName ?? undefined;
     record.lastPhotoAt = remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : undefined
@@ -255,7 +255,7 @@ export const syncCommunityGalleries = async (
             record.endDate = remoteGallery.endDate
               ? new Date(remoteGallery.endDate).getTime()
               : undefined;
-            record.defaultTagId = remoteGallery.defaultTagId ?? '';
+            record.defaultTagId = remoteGallery.defaultTagId ?? null;
             record.communityId = remoteGallery.communityId ?? undefined;
             record.communityName = remoteGallery.communityName ?? undefined;
             record.lastPhotoAt = remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : undefined;
@@ -292,7 +292,7 @@ export const syncCommunityGalleries = async (
           record.endDate = remoteGallery.endDate
             ? new Date(remoteGallery.endDate).getTime()
             : undefined;
-          record.defaultTagId = remoteGallery.defaultTagId ?? '';
+          record.defaultTagId = remoteGallery.defaultTagId ?? null;
           record.communityId = remoteGallery.communityId ?? undefined;
           record.communityName = remoteGallery.communityName ?? undefined;
           record.lastPhotoAt = remoteGallery.lastPhotoAt ? new Date(remoteGallery.lastPhotoAt).getTime() : undefined;

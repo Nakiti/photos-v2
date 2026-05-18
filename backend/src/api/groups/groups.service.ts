@@ -219,19 +219,24 @@ export async function deleteGroup(ownerId: string, groupId: string) {
 	return true;
 }
 
-export async function generateIconPresignedUrl(userId: string, groupId: string) {
+export async function generateIconPresignedUrl(
+	userId: string,
+	groupId: string,
+	contentType = 'image/jpeg',
+	fileExtension = '.jpg',
+) {
 	// Only owner can change icon
 	const group = await prisma.community.findUnique({ where: { id: groupId }, select: { ownerId: true } });
 	if (!group) throw new Error('Not found');
 	if (group.ownerId !== userId) throw new Error('Forbidden');
 
-	const key = `community-icons/${groupId}/${uuidv4()}.png`;
+	const key = `community-icons/${groupId}/${uuidv4()}${fileExtension}`;
 	const presignedUrl = await getSignedUrl(
 		s3,
 		new PutObjectCommand({
 			Bucket: config.aws.s3Bucket!,
 			Key: key,
-			ContentType: 'image/png',
+			ContentType: contentType,
 		}),
 		{ expiresIn: 60 * 5 }
 	);

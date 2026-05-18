@@ -118,6 +118,25 @@ export const worker = new Worker('photo-notifications', async (job) => {
     return;
   }
 
+  if (job.name === 'reconcile-counts') {
+    const [galleryResult, communityResult] = await Promise.all([
+      prisma.$executeRaw`
+        UPDATE Gallery g
+        SET
+          g.memberCount = (SELECT COUNT(*) FROM Membership m WHERE m.galleryId = g.id),
+          g.photoCount  = (SELECT COUNT(*) FROM Photo p WHERE p.galleryId = g.id AND p.deletedAt IS NULL)
+      `,
+      prisma.$executeRaw`
+        UPDATE Community c
+        SET
+          c.memberCount  = (SELECT COUNT(*) FROM CommunityMembership cm WHERE cm.communityId = c.id),
+          c.galleryCount = (SELECT COUNT(*) FROM Gallery ga WHERE ga.communityId = c.id)
+      `,
+    ]);
+    console.log(`[Reconcile] Updated ${galleryResult} gallery rows, ${communityResult} community rows`);
+    return;
+  }
+
   // 'process-new-photo' — immediate notification for the first upload in a window
   const { galleryId, photo } = job.data;
   const { uploaderName, galleryName, id: photoId } = photo;

@@ -504,7 +504,7 @@ export async function joinGalleryByLink(userId: string, shareableLink: string) {
  */
 export async function getPhotoIdsForGallery(galleryId: string) {
   const photos = await prisma.photo.findMany({
-    where: { galleryId },
+    where: { galleryId, deletedAt: null },
     select: { id: true },
   });
   return photos.map((p) => p.id);

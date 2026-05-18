@@ -7,46 +7,50 @@ const prisma = new PrismaClient();
  * Uses an upsert to avoid duplicates.
  */
 export async function addMember(galleryId: string, userIdToAdd: string) {
-  const existing = await prisma.membership.findUnique({
-    where: { userId_galleryId: { userId: userIdToAdd, galleryId } },
-  });
-
-  const membership = await prisma.membership.upsert({
-    where: { userId_galleryId: { userId: userIdToAdd, galleryId } },
-    update: {},
-    create: ({ userId: userIdToAdd, galleryId, role: 'MEMBER' } as unknown) as any,
-  });
-
-  if (!existing) {
-    await prisma.gallery.update({
-      where: { id: galleryId },
-      data: { memberCount: { increment: 1 } },
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.membership.findUnique({
+      where: { userId_galleryId: { userId: userIdToAdd, galleryId } },
     });
-  }
 
-  return membership;
+    const membership = await tx.membership.upsert({
+      where: { userId_galleryId: { userId: userIdToAdd, galleryId } },
+      update: {},
+      create: ({ userId: userIdToAdd, galleryId, role: 'MEMBER' } as unknown) as any,
+    });
+
+    if (!existing) {
+      await tx.gallery.update({
+        where: { id: galleryId },
+        data: { memberCount: { increment: 1 } },
+      });
+    }
+
+    return membership;
+  });
 }
 
 /**
  * Remove a user membership from a gallery.
  */
 export async function removeMember(galleryId: string, userIdToRemove: string) {
-  const existing = await prisma.membership.findUnique({
-    where: { userId_galleryId: { userId: userIdToRemove, galleryId } },
-  });
-
-  const membership = await prisma.membership.delete({
-    where: { userId_galleryId: { userId: userIdToRemove, galleryId } },
-  });
-
-  if (existing) {
-    await prisma.gallery.update({
-      where: { id: galleryId },
-      data: { memberCount: { decrement: 1 } },
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.membership.findUnique({
+      where: { userId_galleryId: { userId: userIdToRemove, galleryId } },
     });
-  }
 
-  return membership;
+    const membership = await tx.membership.delete({
+      where: { userId_galleryId: { userId: userIdToRemove, galleryId } },
+    });
+
+    if (existing) {
+      await tx.gallery.update({
+        where: { id: galleryId },
+        data: { memberCount: { decrement: 1 } },
+      });
+    }
+
+    return membership;
+  });
 }
 
 /**
@@ -115,24 +119,26 @@ export async function isAdminOrOwner(userId: string, galleryId: string) {
  * Create a membership for a user joining a gallery.
  */
 export async function joinGallery(galleryId: string, userId: string) {
-  const existing = await prisma.membership.findUnique({
-    where: { userId_galleryId: { userId, galleryId } },
-  });
-
-  const membership = await prisma.membership.upsert({
-    where: { userId_galleryId: { userId, galleryId } },
-    update: {},
-    create: ({ userId, galleryId, role: 'MEMBER' } as unknown) as any,
-  });
-
-  if (!existing) {
-    await prisma.gallery.update({
-      where: { id: galleryId },
-      data: { memberCount: { increment: 1 } },
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.membership.findUnique({
+      where: { userId_galleryId: { userId, galleryId } },
     });
-  }
 
-  return membership;
+    const membership = await tx.membership.upsert({
+      where: { userId_galleryId: { userId, galleryId } },
+      update: {},
+      create: ({ userId, galleryId, role: 'MEMBER' } as unknown) as any,
+    });
+
+    if (!existing) {
+      await tx.gallery.update({
+        where: { id: galleryId },
+        data: { memberCount: { increment: 1 } },
+      });
+    }
+
+    return membership;
+  });
 }
 
 /**
@@ -140,20 +146,22 @@ export async function joinGallery(galleryId: string, userId: string) {
  */
 export async function leaveGallery(galleryId: string, userId: string) {
   try {
-    const existing = await prisma.membership.findUnique({
-      where: { userId_galleryId: { userId, galleryId } },
-    });
-
-    await prisma.membership.delete({ where: { userId_galleryId: { userId, galleryId } } });
-
-    if (existing) {
-      await prisma.gallery.update({
-        where: { id: galleryId },
-        data: { memberCount: { decrement: 1 } },
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.membership.findUnique({
+        where: { userId_galleryId: { userId, galleryId } },
       });
-    }
 
-    return true;
+      await tx.membership.delete({ where: { userId_galleryId: { userId, galleryId } } });
+
+      if (existing) {
+        await tx.gallery.update({
+          where: { id: galleryId },
+          data: { memberCount: { decrement: 1 } },
+        });
+      }
+
+      return true;
+    });
   } catch {
     return false;
   }
@@ -207,20 +215,20 @@ export async function addCommunityMembersToGallery(
 
   const userIds = communityMemberships.map((m) => m.userId);
 
-  const existingMemberships = await prisma.membership.findMany({
-    where: { galleryId, userId: { in: userIds } },
-    select: { userId: true },
-  });
+  return prisma.$transaction(async (tx) => {
+    const existingMemberships = await tx.membership.findMany({
+      where: { galleryId, userId: { in: userIds } },
+      select: { userId: true },
+    });
 
-  const existingUserIds = new Set(existingMemberships.map((m) => m.userId));
-  const newUserIds = userIds.filter((id) => !existingUserIds.has(id));
+    const existingUserIds = new Set(existingMemberships.map((m) => m.userId));
+    const newUserIds = userIds.filter((id) => !existingUserIds.has(id));
 
-  if (newUserIds.length === 0) {
-    return { addedCount: 0, errors: [] };
-  }
+    if (newUserIds.length === 0) {
+      return { addedCount: 0, errors: [] };
+    }
 
-  try {
-    await prisma.membership.createMany({
+    await tx.membership.createMany({
       data: newUserIds.map((userId) => ({
         userId,
         galleryId,
@@ -229,37 +237,11 @@ export async function addCommunityMembersToGallery(
       skipDuplicates: true,
     });
 
-    if (newUserIds.length > 0) {
-      await prisma.gallery.update({
-        where: { id: galleryId },
-        data: { memberCount: { increment: newUserIds.length } },
-      });
-    }
+    await tx.gallery.update({
+      where: { id: galleryId },
+      data: { memberCount: { increment: newUserIds.length } },
+    });
 
     return { addedCount: newUserIds.length, errors: [] };
-  } catch (error: any) {
-    const results = await Promise.allSettled(
-      newUserIds.map((userId) =>
-        prisma.membership.upsert({
-          where: { userId_galleryId: { userId, galleryId } },
-          update: {},
-          create: ({ userId, galleryId, role: 'MEMBER' } as unknown) as any,
-        })
-      )
-    );
-
-    const addedCount = results.filter((r) => r.status === 'fulfilled').length;
-    const errors = results
-      .filter((r) => r.status === 'rejected')
-      .map((r) => (r as PromiseRejectedResult).reason);
-
-    if (addedCount > 0) {
-      await prisma.gallery.update({
-        where: { id: galleryId },
-        data: { memberCount: { increment: addedCount } },
-      });
-    }
-
-    return { addedCount, errors };
-  }
+  });
 }

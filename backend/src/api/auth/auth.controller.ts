@@ -1,6 +1,11 @@
 import type { Request, Response, NextFunction } from 'express';
 import * as authService from './auth.service.js';
-import { registerUserSchema, type RegisterUserDto, loginSchema, type LoginDto } from './auth.validation.js';
+import {
+  registerUserSchema, type RegisterUserDto,
+  loginSchema, type LoginDto,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+} from './auth.validation.js';
 import { z } from 'zod';
 
 export const registerUser = async (req: Request, res: Response, next: NextFunction) => {
@@ -62,6 +67,37 @@ export const logoutUser = async (req: Request, res: Response, next: NextFunction
     }
     return res.status(204).send();
   } catch (error) {
+    next(error);
+  }
+};
+
+export const forgotPassword = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const parsed = forgotPasswordSchema.parse({ body: req.body });
+    await authService.requestPasswordReset(parsed.body.email);
+    // Always 200 — never reveal whether the email is registered
+    return res.status(200).json({ message: 'If that email is registered, a reset code has been sent.' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
+    }
+    next(error);
+  }
+};
+
+export const resetPassword = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const parsed = resetPasswordSchema.parse({ body: req.body });
+    const { code, newPassword } = parsed.body;
+    const ok = await authService.resetPassword(code, newPassword);
+    if (!ok) {
+      return res.status(400).json({ message: 'Invalid or expired reset code.' });
+    }
+    return res.status(200).json({ message: 'Password updated successfully.' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
+    }
     next(error);
   }
 };

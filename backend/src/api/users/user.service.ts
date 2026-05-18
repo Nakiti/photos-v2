@@ -114,30 +114,24 @@ export const generateAvatarPresignedUrl = async (userId: string, contentType: st
  * @returns Array of users matching the search criteria
  */
 export async function searchUsers(filters: {
-  search?: string;
+  search: string;
   limit?: number;
   offset?: number;
 }) {
   const { search, limit = 20, offset = 0 } = filters;
 
-  // Build where clause - search across name and handle only
-  let where: any = {};
-  
-  if (search && search.trim()) {
-    where = {
-      OR: [
-        { name: { contains: search.trim() } },
-        { handle: { contains: search.trim() } }
-      ]
-    };
-  }
+  const term = search.trim();
+  const where = {
+    OR: [
+      { name: { contains: term } },
+      { handle: { contains: term } },
+    ],
+  };
 
-  // Execute the search query
   const users = await prisma.user.findMany({
     where,
     select: {
       id: true,
-      email: true,
       name: true,
       handle: true,
       avatarUrl: true,

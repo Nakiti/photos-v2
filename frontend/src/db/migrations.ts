@@ -1,4 +1,4 @@
-import { schemaMigrations, addColumns, createTable } from '@nozbe/watermelondb/Schema/migrations';
+import { schemaMigrations, addColumns, createTable, unsafeExecuteSql } from '@nozbe/watermelondb/Schema/migrations';
 
 export default schemaMigrations({
   migrations: [
@@ -113,6 +113,47 @@ export default schemaMigrations({
             { name: 'is_liked', type: 'boolean', isOptional: true },
           ],
         }),
+      ],
+    },
+    {
+      // v29/v30 were released with empty steps so some devices already have
+      // these tables while others don't. Use IF NOT EXISTS via unsafeExecuteSql
+      // so both device populations migrate safely.
+      toVersion: 36,
+      steps: [
+        unsafeExecuteSql(
+          `CREATE TABLE IF NOT EXISTS "communities" (
+            "id" TEXT PRIMARY KEY NOT NULL,
+            "name" TEXT NOT NULL DEFAULT '',
+            "description" TEXT,
+            "icon_url" TEXT,
+            "owner_id" TEXT NOT NULL DEFAULT '' REFERENCES "users" ("id"),
+            "join_requires_approval" INTEGER,
+            "add_permission" TEXT,
+            "delete_permission" TEXT,
+            "member_count" REAL NOT NULL DEFAULT 0,
+            "gallery_count" REAL NOT NULL DEFAULT 0,
+            "created_at" REAL NOT NULL DEFAULT 0,
+            "updated_at" REAL NOT NULL DEFAULT 0,
+            "_changed" TEXT NOT NULL DEFAULT '',
+            "_status" TEXT NOT NULL DEFAULT ''
+          );`
+        ),
+        unsafeExecuteSql(
+          `CREATE TABLE IF NOT EXISTS "community_memberships" (
+            "id" TEXT PRIMARY KEY NOT NULL,
+            "user_id" TEXT NOT NULL DEFAULT '',
+            "community_id" TEXT NOT NULL DEFAULT '',
+            "role" TEXT NOT NULL DEFAULT '',
+            "status" TEXT NOT NULL DEFAULT '',
+            "joined_at" REAL NOT NULL DEFAULT 0,
+            "_changed" TEXT NOT NULL DEFAULT '',
+            "_status" TEXT NOT NULL DEFAULT ''
+          );`
+        ),
+        unsafeExecuteSql(`CREATE INDEX IF NOT EXISTS "community_memberships_user_id" ON "community_memberships" ("user_id");`),
+        unsafeExecuteSql(`CREATE INDEX IF NOT EXISTS "community_memberships_community_id" ON "community_memberships" ("community_id");`),
+        unsafeExecuteSql(`CREATE INDEX IF NOT EXISTS "communities_owner_id" ON "communities" ("owner_id");`),
       ],
     },
   ],

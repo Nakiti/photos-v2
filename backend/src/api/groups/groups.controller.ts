@@ -74,7 +74,8 @@ export const requestIconUpload = async (req: Request, res: Response, next: NextF
 		const { groupId } = req.params as { groupId: string };
 		const userId = (req as any).user?.id as string | undefined;
 		if (!userId) return res.status(401).json({ message: 'Unauthorized' });
-		const { presignedUrl, finalUrl } = await groupsService.generateIconPresignedUrl(userId, groupId);
+		const { contentType, fileExtension } = req.body as { contentType?: string; fileExtension?: string };
+		const { presignedUrl, finalUrl } = await groupsService.generateIconPresignedUrl(userId, groupId, contentType, fileExtension);
 		res.status(200).json({ presignedUrl, finalUrl });
 	} catch (error) {
 		if ((error as any).message === 'Forbidden') {

@@ -2,7 +2,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as usersService from './user.service.js';
-import { addDeviceTokenSchema, removeDeviceTokenSchema, updateMyProfileSchema, searchUsersSchema, type AddDeviceTokenDto, type RemoveDeviceTokenDto, type UpdateMyProfileDto, type SearchUsersDto } from './user.validation.js';
+import { addDeviceTokenSchema, removeDeviceTokenSchema, updateMyProfileSchema, searchUsersSchema, avatarPresignSchema, type AddDeviceTokenDto, type RemoveDeviceTokenDto, type UpdateMyProfileDto, type SearchUsersDto } from './user.validation.js';
 
 /**
  * GET /api/v1/users/me 
@@ -102,13 +102,16 @@ export async function removeDeviceToken(req: Request, res: Response) {
 export const requestAvatarUpload = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).user.id;
-    const contentType = req.body.contentType
-    const fileExtension = req.body.fileExtension
-    
+    const parsed = avatarPresignSchema.parse({ body: req.body });
+    const { contentType, fileExtension } = parsed.body;
+
     const { presignedUrl, finalUrl } = await usersService.generateAvatarPresignedUrl(userId, contentType, fileExtension);
 
     res.status(200).json({ presignedUrl, finalUrl });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
+    }
     next(error);
   }
 };
@@ -126,18 +129,9 @@ export async function searchUsers(req: Request, res: Response) {
 
   try {
     const parsed = searchUsersSchema.parse({ query: req.query });
-    const filters = parsed.query;
-    
-    // Build filters object conditionally to satisfy exactOptionalPropertyTypes
-    const searchFilters: Parameters<typeof usersService.searchUsers>[0] = {
-      limit: filters.limit,
-      offset: filters.offset,
-    };
-    
-    if (filters.search !== undefined) searchFilters.search = filters.search;
+    const { search, limit, offset } = parsed.query;
 
-    
-    const result = await usersService.searchUsers(searchFilters);
+    const result = await usersService.searchUsers({ search, limit, offset });
     return res.status(200).json(result);
   } catch (error) {
     if (error instanceof z.ZodError) {

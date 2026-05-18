@@ -30,7 +30,7 @@ const LoginScreen = () => {
   };
 
   const onForgotPassword = () => {
-    // no-op: presentational only
+    navigation.navigate('ForgotPassword');
   };
 
   const onCreateAccount = () => {
