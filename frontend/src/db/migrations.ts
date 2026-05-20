@@ -156,5 +156,17 @@ export default schemaMigrations({
         unsafeExecuteSql(`CREATE INDEX IF NOT EXISTS "communities_owner_id" ON "communities" ("owner_id");`),
       ],
     },
+    {
+      toVersion: 37,
+      steps: [
+        addColumns({
+          table: 'galleries',
+          columns: [
+            { name: 'last_viewed_at', type: 'number', isOptional: true },
+            { name: 'last_viewed_photo_count', type: 'number', isOptional: true },
+          ],
+        }),
+      ],
+    },
   ],
 });

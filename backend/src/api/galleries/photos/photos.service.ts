@@ -9,6 +9,9 @@ import { buildMediaUrl } from '../../../../libs/media.js';
 import { smartThrottleNewPhoto, createNotificationRecord, sendPushNotifications } from '../../notifications/notifications.service.js';
 import { checkAndRecordUpload } from '../../../../libs/rateLimiter.js';
 import { redis } from '../../../../libs/redis.js';
+import { createLogger } from '../../../../libs/logger.js';
+
+const log = createLogger('photos');
 
 
 export class RateLimitError extends Error {
@@ -131,14 +134,14 @@ export async function getDeletedPhotoIdsSince(galleryId: string, since: string) 
 }
 
 export const createPresignedUploadUrls = async (galleryId: string, contentType: string, userId: string, clientId?: string) => {
-  console.log(`[Photos][presign] gallery=${galleryId} user=${userId} clientId=${clientId ?? 'none'}`);
+  log.info({ galleryId, userId, clientId: clientId ?? 'none' }, 'presign requested');
 
   // Return cached response for same clientId to deduplicate rapid duplicate requests
   if (clientId) {
     const cacheKey = `presign:${clientId}`;
     const cached = await redis.get(cacheKey);
     if (cached) {
-      console.log(`[Photos][presign] cache hit clientId=${clientId}`);
+      log.info({ clientId }, 'presign cache hit');
       return JSON.parse(cached) as ReturnType<typeof buildPresignResult>;
     }
   }
@@ -177,7 +180,7 @@ export const createPresignedUploadUrls = async (galleryId: string, contentType: 
   const finalUrlThumb = buildMediaUrl(s3KeyThumb);
 
   const result = buildPresignResult(presignedUrlFull, s3KeyFull, finalUrlFull, presignedUrlThumb, s3KeyThumb, finalUrlThumb);
-  console.log(`[Photos][presign] generated full=${s3KeyFull} thumb=${s3KeyThumb}`);
+  log.info({ s3KeyFull, s3KeyThumb }, 'presign generated');
 
   if (clientId) {
     await redis.set(`presign:${clientId}`, JSON.stringify(result), 'EX', expiresIn);
@@ -233,7 +236,7 @@ export async function confirmUploadedPhoto(
   tagIds?: string[],
   clientId?: string,
 ) {
-  console.log(`[Photos][confirm] start gallery=${galleryId} uploader=${uploaderId} s3Key=${s3Key} clientId=${clientId ?? 'none'}`);
+  log.info({ galleryId, uploaderId, s3Key, clientId: clientId ?? 'none' }, 'confirm upload start');
 
   const resolvedS3Url = s3Url ?? buildMediaUrl(s3Key);
 
@@ -243,17 +246,17 @@ export async function confirmUploadedPhoto(
     select: PHOTO_SELECT,
   });
   if (existing) {
-    console.log(`[Photos][confirm] idempotent hit s3Key=${s3Key} photoId=${existing.id}`);
+    log.info({ s3Key, photoId: existing.id }, 'confirm idempotent hit');
     return withCloudFrontUrls(existing);
   }
 
   // 2. Atomic rate limit: check and record in one Redis operation.
   const rateCheck = await checkAndRecordUpload(uploaderId, galleryId);
   if (!rateCheck.allowed) {
-    console.log(`[Photos][confirm] rate limit DENIED user=${uploaderId} gallery=${galleryId} count=${rateCheck.currentCount}/${rateCheck.limit}`);
+    log.warn({ uploaderId, galleryId, count: rateCheck.currentCount, limit: rateCheck.limit }, 'rate limit denied');
     throw new RateLimitError(rateCheck.limit, rateCheck.currentCount);
   }
-  console.log(`[Photos][confirm] rate check OK user=${uploaderId} gallery=${galleryId} count=${rateCheck.currentCount}/${rateCheck.limit}`);
+  log.info({ uploaderId, galleryId, count: rateCheck.currentCount, limit: rateCheck.limit }, 'rate check OK');
 
   // 3. Persist the photo record.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -312,7 +315,7 @@ export async function confirmUploadedPhoto(
     throw err;
   }
 
-  console.log(`[Photos][confirm] created photoId=${created!.id} gallery=${galleryId}`);
+  log.info({ photoId: created!.id, galleryId }, 'photo confirmed');
 
   // 4. Post-transaction: broadcast and notifications.
   broadcastNewPhoto(galleryId, {
@@ -321,7 +324,7 @@ export async function confirmUploadedPhoto(
     uploaderId: created!.uploaderId,
     ...(clientId !== undefined ? { clientId } : {}),
   });
-  console.log(`[Photos][confirm] broadcast sent gallery=${galleryId} photoId=${created!.id} clientId=${clientId ?? 'none'}`);
+  log.info({ galleryId, photoId: created!.id, clientId: clientId ?? 'none' }, 'broadcast sent');
 
   const [uploader, gallery] = await Promise.all([
     prisma.user.findUnique({
@@ -338,7 +341,7 @@ export async function confirmUploadedPhoto(
   const galleryName = (gallery?.name || '') as string;
 
   smartThrottleNewPhoto(galleryId, uploaderName, galleryName, created!.id).catch(err =>
-    console.error('[Photos] smartThrottleNewPhoto failed:', err)
+    log.error({ err, galleryId }, 'smartThrottleNewPhoto failed')
   );
 
   return withCloudFrontUrls(created!);
@@ -461,7 +464,7 @@ export async function likePhoto(userId: string, galleryId: string, photoId: stri
           { type: 'LIKE', photoId, galleryId }
         );
         if (invalidTokens.length > 0) {
-          console.warn(`[Push] Removing ${invalidTokens.length} invalid device token(s)`);
+          log.warn({ count: invalidTokens.length }, 'removing invalid device tokens');
           await prisma.device.deleteMany({ where: { token: { in: invalidTokens } } });
         }
       }

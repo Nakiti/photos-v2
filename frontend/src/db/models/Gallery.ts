@@ -35,6 +35,8 @@ export default class Gallery extends Model {
   @field('rate_limit_state_token') rateLimitStateToken?: string;
   @field('rate_limit_last_synced') rateLimitLastSynced?: number;
   @text('last_uploaded_by_name') lastUploadedByName?: string;
+  @date('last_viewed_at') lastViewedAt?: number;
+  @field('last_viewed_photo_count') lastViewedPhotoCount?: number;
   @readonly @date('created_at') createdAt!: number;
   @readonly @date('updated_at') updatedAt!: number;
 

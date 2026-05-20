@@ -1,8 +1,8 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const mySchema = appSchema({
-  // Version 36: communities/community_memberships tables (IF NOT EXISTS to handle devices that had them from earlier builds)
-  version: 36,
+  // Version 37: last_viewed_at + last_viewed_photo_count on galleries (local-only, tracks unseen count)
+  version: 37,
   tables: [
     tableSchema({
       name: 'users',
@@ -42,6 +42,8 @@ export const mySchema = appSchema({
         { name: 'rate_limit_state_token', type: 'string', isOptional: true },
         { name: 'rate_limit_last_synced', type: 'number', isOptional: true },
         { name: 'last_uploaded_by_name', type: 'string', isOptional: true },
+        { name: 'last_viewed_at', type: 'number', isOptional: true },
+        { name: 'last_viewed_photo_count', type: 'number', isOptional: true },
         { name: 'created_at', type: 'number' },
         { name: 'updated_at', type: 'number' },
       ],

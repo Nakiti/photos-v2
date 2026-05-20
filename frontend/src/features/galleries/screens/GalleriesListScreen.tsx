@@ -43,22 +43,27 @@ const GalleriesListScreen = () => {
     });
   };
 
-  const renderItem = useCallback(({ item }: { item: Gallery }) => (
-    <GalleryListItem
-      id={item.id}
-      title={item.name}
-      icon={item.iconUrl || ''}
-      communityName={item.communityName ?? undefined}
-      lastUploadedBy={item.lastUploadedByName ?? ''}
-      unseenCount={0}
-      lastUpdated={item.lastPhotoAt
-        ? new Date(item.lastPhotoAt).toISOString()
-        : new Date(item.createdAt).toISOString()}
-      photoCount={item.photoCount}
-      memberCount={item.memberCount}
-      onPress={() => handleGroupPress(item.id)}
-    />
-  ), []);
+  const renderItem = useCallback(({ item }: { item: Gallery }) => {
+    const unseenCount = item.lastViewedAt
+      ? Math.max(0, item.photoCount - (item.lastViewedPhotoCount ?? 0))
+      : 0;
+    return (
+      <GalleryListItem
+        id={item.id}
+        title={item.name}
+        icon={item.iconUrl || ''}
+        communityName={item.communityName ?? undefined}
+        lastUploadedBy={item.lastUploadedByName ?? ''}
+        unseenCount={unseenCount}
+        lastUpdated={item.lastPhotoAt
+          ? new Date(item.lastPhotoAt).toISOString()
+          : new Date(item.createdAt).toISOString()}
+        photoCount={item.photoCount}
+        memberCount={item.memberCount}
+        onPress={() => handleGroupPress(item.id)}
+      />
+    );
+  }, []);
 
   const keyExtractor = useCallback((item: Gallery) => item.id, []);
 

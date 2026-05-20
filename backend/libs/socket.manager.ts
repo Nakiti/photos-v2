@@ -5,6 +5,9 @@ import jwt from 'jsonwebtoken';
 import config from '../config/config.js';
 import { redis, redisConnection } from './redis.js';
 import { Redis } from 'ioredis';
+import { createLogger } from './logger.js';
+
+const log = createLogger('socket');
 
 // Module-level state (singleton pattern)
 let io: Server | null = null;
@@ -26,25 +29,25 @@ export function initializeSocket(httpServer: http.Server) {
   const subClient = pubClient.duplicate();
   io.adapter(createAdapter(pubClient, subClient));
 
-  console.log('🔌 WebSocket server initialized');
+  log.info('WebSocket server initialized');
 
   // Socket authentication middleware
   io.use(async (socket: Socket, next) => {
     try {
       const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.replace('Bearer ', '');
-      
+
       if (!token) {
-        console.log(`⚠️ Socket connection rejected: No token provided (${socket.id})`);
+        log.warn({ socketId: socket.id }, 'socket connection rejected: no token');
         return next(new Error('Authentication error: No token provided'));
       }
 
       // Verify JWT token
       const decoded = jwt.verify(token, config.jwtSecret) as { userId: string };
       (socket as any).userId = decoded.userId;
-      console.log(`✅ Socket authenticated: ${socket.id} -> User ${decoded.userId}`);
+      log.info({ socketId: socket.id, userId: decoded.userId }, 'socket authenticated');
       next();
     } catch (error) {
-      console.log(`⚠️ Socket authentication failed: ${socket.id}`, error);
+      log.warn({ socketId: socket.id, err: error }, 'socket authentication failed');
       next(new Error('Authentication error: Invalid token'));
     }
   });
@@ -61,10 +64,10 @@ export function initializeSocket(httpServer: http.Server) {
   // Add your authentication and connection logic here
   io.on('connection', async (socket: Socket) => {
     const userId = (socket as any).userId;
-    console.log(`✅ User connected: ${socket.id} (User: ${userId})`);
+    log.info({ socketId: socket.id, userId }, 'user connected');
 
     socket.on('join_gallery', async (galleryId: string) => {
-      console.log(`User ${userId} (${socket.id}) joining gallery room: ${galleryId}`);
+      log.info({ socketId: socket.id, userId, galleryId }, 'user joining gallery room');
       socket.join(galleryId);
 
       // Track user with a socket-count so multiple devices don't evict each other.
@@ -75,19 +78,19 @@ export function initializeSocket(httpServer: http.Server) {
     });
 
     socket.on('leave_gallery', async (galleryId: string) => {
-      console.log(`User ${userId} (${socket.id}) leaving gallery room: ${galleryId}`);
+      log.info({ socketId: socket.id, userId, galleryId }, 'user leaving gallery room');
       socket.leave(galleryId);
       await leaveGalleryRoom(galleryId, userId);
     });
 
     socket.on('disconnect', async () => {
-      console.log(`❌ User disconnected: ${socket.id} (User: ${userId})`);
+      log.info({ socketId: socket.id, userId }, 'user disconnected');
 
       // Decrement socket count for every gallery this socket was in.
       const rooms = Array.from(socket.rooms).filter(room => room !== socket.id);
       for (const galleryId of rooms) {
         await leaveGalleryRoom(galleryId, userId);
-        console.log(`🧹 Cleaned up user ${userId} from gallery room: ${galleryId}`);
+        log.info({ userId, galleryId }, 'cleaned up user from gallery room');
       }
     });
   });
@@ -122,7 +125,7 @@ export function broadcastNewPhoto(
 export function broadcastPhotoDeleted(galleryId: string, photoId: string) {
   if (io) {
     io.to(galleryId).emit('photo_deleted', { photoId, galleryId });
-    console.log(`📢 Broadcasted photo deletion to gallery room: ${galleryId}, photoId: ${photoId}`);
+    log.info({ galleryId, photoId }, 'broadcast photo deleted');
   }
 }
 
@@ -134,7 +137,7 @@ export function broadcastPhotoDeleted(galleryId: string, photoId: string) {
 export function broadcastPhotoUpdated(galleryId: string, photo: any) {
   if (io) {
     io.to(galleryId).emit('photo_updated', photo);
-    console.log(`📢 Broadcasted photo update to gallery room: ${galleryId}, photoId: ${photo.id}`);
+    log.info({ galleryId, photoId: photo.id }, 'broadcast photo updated');
   }
 }
 
@@ -148,7 +151,7 @@ export function broadcastPhotoUpdated(galleryId: string, photo: any) {
 export function broadcastPhotoTagged(galleryId: string, photoId: string, tagId: string, action: 'added' | 'removed') {
   if (io) {
     io.to(galleryId).emit('photo_tagged', { photoId, tagId, action, galleryId });
-    console.log(`📢 Broadcasted photo tag ${action} to gallery room: ${galleryId}, photoId: ${photoId}, tagId: ${tagId}`);
+    log.info({ galleryId, photoId, tagId, action }, 'broadcast photo tagged');
   }
 }
 
@@ -171,6 +174,6 @@ export function broadcastPhotosApproved(galleryId: string) {
 export function broadcastGalleryUpdated(galleryId: string, gallery: any) {
   if (io) {
     io.to(galleryId).emit('gallery_updated', gallery);
-    console.log(`📢 Broadcasted gallery update to gallery room: ${galleryId}`);
+    log.info({ galleryId }, 'broadcast gallery updated');
   }
 }

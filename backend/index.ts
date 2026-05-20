@@ -2,6 +2,7 @@ import http from "http";
 import { PrismaClient } from "@prisma/client";
 import httpServer from "./server.js";
 import "./src/workers/photo.worker.js";
+import { logger } from "./libs/logger.js";
 
 const prisma = new PrismaClient();
 
@@ -11,13 +12,13 @@ async function startServer() {
     try {
       // Optional: Test database connection on startup
       await prisma.$connect();
-      console.log('Database connected successfully 🐘');
-  
+      logger.info('database connected');
+
       server.listen(4000, '0.0.0.0', () => {
-        console.log(`🚀 Server listening on port ${4000}`);
+        logger.info({ port: 4000 }, 'server listening');
       });
     } catch (error) {
-      console.error('❌ Failed to connect to the database:', error);
+      logger.error({ err: error }, 'database connection failed');
       await prisma.$disconnect();
       process.exit(1); // Exit if DB connection fails
     }
@@ -27,9 +28,9 @@ async function startServer() {
   
   // Graceful shutdown
   process.on('SIGTERM', async () => {
-    console.log('SIGTERM signal received: closing HTTP server');
+    logger.info('SIGTERM received, shutting down');
     await prisma.$disconnect();
     server.close(() => {
-      console.log('HTTP server closed');
+      logger.info('HTTP server closed');
     });
   });

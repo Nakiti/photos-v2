@@ -1,5 +1,8 @@
 import type { Request, Response, NextFunction } from 'express';
 import { checkUploadLimit } from '../../libs/rateLimiter.js';
+import { createLogger } from '../../libs/logger.js';
+
+const log = createLogger('rateLimiter');
 
 /**
  * Middleware to check upload rate limits per user per gallery.
@@ -47,9 +50,7 @@ export const checkUploadRateLimit = async (
 
     next();
   } catch (error) {
-    console.error('Rate limiter error:', error);
-    // On error, allow the request to proceed (fail open)
-    // In production, you might want to fail closed instead
+    log.error({ err: error }, 'rate limiter error, failing open');
     next();
   }
 };

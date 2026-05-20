@@ -2,6 +2,9 @@ import { Worker } from 'bullmq';
 import { PrismaClient } from '@prisma/client';
 import { redisConnection, redis } from '../../libs/redis.js';
 import { sendPushNotifications, createNotificationRecord } from '../api/notifications/notifications.service.js';
+import { createLogger } from '../../libs/logger.js';
+
+const log = createLogger('worker');
 
 const prisma = new PrismaClient();
 const MEMBER_BATCH_SIZE = 100;
@@ -65,7 +68,7 @@ async function notifyGalleryMembers(
     if (tokens.length > 0) {
       const deadTokens = await sendPushNotifications(tokens, title, body, pushData);
       if (deadTokens.length > 0) {
-        console.warn(`[Push] Removing ${deadTokens.length} invalid device token(s)`);
+        log.warn({ count: deadTokens.length }, 'removing invalid device tokens');
         await prisma.device.deleteMany({ where: { token: { in: deadTokens } } });
       }
     }
@@ -76,7 +79,7 @@ async function notifyGalleryMembers(
 }
 
 export const worker = new Worker('photo-notifications', async (job) => {
-  console.log(`Job ${job.id}: ${job.name}`);
+  log.info({ jobId: job.id, jobName: job.name }, 'processing job');
 
   if (job.name === 'check-buffer') {
     const { galleryId, galleryName } = job.data;
@@ -114,7 +117,7 @@ export const worker = new Worker('photo-notifications', async (job) => {
     const { count } = await prisma.notification.deleteMany({
       where: { isRead: true, createdAt: { lt: cutoff } },
     });
-    console.log(`[Cleanup] Deleted ${count} old read notifications`);
+    log.info({ count }, 'cleanup: deleted old read notifications');
     return;
   }
 
@@ -133,7 +136,7 @@ export const worker = new Worker('photo-notifications', async (job) => {
           c.galleryCount = (SELECT COUNT(*) FROM Gallery ga WHERE ga.communityId = c.id)
       `,
     ]);
-    console.log(`[Reconcile] Updated ${galleryResult} gallery rows, ${communityResult} community rows`);
+    log.info({ galleryRows: galleryResult, communityRows: communityResult }, 'reconcile: updated counts');
     return;
   }
 

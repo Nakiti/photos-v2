@@ -5,7 +5,7 @@ import { useImagePicker } from '../../../hooks/useImagePicker';
 import ImagesDisplay from '../components/ImagesDisplay';
 import GalleryBottomBar from '../components/GalleryBottomBar';
 import GalleryHeader from '../components/GalleryHeader';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useGallery } from '../../../hooks/useGalleryData';
 import { useQueryClient } from '@tanstack/react-query';
 import { useGalleryTags } from '../../../hooks/useGalleryTagData';
@@ -64,6 +64,19 @@ const GalleryScreen = () => {
     queryClient.invalidateQueries({ queryKey: ['gallery', galleryId, 'photos'] });
   }, [queryClient, galleryId]);
   
+  // Record last-viewed timestamp + photo count snapshot for unseen-count tracking
+  useFocusEffect(
+    useCallback(() => {
+      if (!gallery) return;
+      database.write(async () => {
+        await gallery.update(g => {
+          g.lastViewedAt = Date.now();
+          g.lastViewedPhotoCount = gallery.photoCount;
+        });
+      });
+    }, [database, gallery])
+  );
+
   // Real-time
   useGallerySocket(galleryId);
 

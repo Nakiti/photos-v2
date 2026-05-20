@@ -14,6 +14,9 @@ import {
 } from './galleries.validation.js';
 import { generateIconPresignedUrl } from './galleries.service.js';
 import { checkUploadLimit } from '../../../libs/rateLimiter.js';
+import { createLogger } from '../../../libs/logger.js';
+
+const log = createLogger('galleries');
 
 /**
  * POST /api/v1/galleries
@@ -46,14 +49,13 @@ export async function createGallery(req: Request, res: Response) {
     return res.status(201).json(result);
 
   } catch (error) {
-    console.log(error); // Always good for debugging
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ 
-        message: 'Validation failed', 
-        errors: error.flatten().fieldErrors 
+      return res.status(400).json({
+        message: 'Validation failed',
+        errors: error.flatten().fieldErrors
       });
     }
-    // Handle any other specific errors (like 'Gallery not found' if needed)
+    log.error({ err: error }, 'create gallery failed');
     return res.status(500).json({ message: 'Failed to create gallery' });
   }
 }
@@ -90,11 +92,9 @@ export async function updateGallery(req: Request, res: Response) {
   const ownerId = (req as any).user?.id as string | undefined;
   if (!ownerId) return res.status(401).json({ message: 'Unauthorized' });
   const { galleryId } = req.params as { galleryId: string };
-  console.log("dat body ", req.body)
 
   try {
     const parsed = updateGallerySchema.parse({ body: req.body });
-    console.log("parsed data ", parsed)
     const data = parsed.body as UpdateGalleryDto;
     // Ownership check before update
     const existing = await galleriesService.getGalleryDetails(ownerId, galleryId);
@@ -102,14 +102,13 @@ export async function updateGallery(req: Request, res: Response) {
       return res.status(403).json({ message: 'Forbidden' });
     }
 
-    console.log("backed update data ", data)
     const updated = await galleriesService.updateGallery(ownerId, galleryId, data as any);
     return res.status(200).json(updated);
   } catch (error) {
-    console.log(error)
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
     }
+    log.error({ err: error, galleryId }, 'update gallery failed');
     return res.status(500).json({ message: 'Failed to update gallery' });
   }
 }
@@ -313,7 +312,7 @@ export async function getRateLimitState(req: Request, res: Response) {
       stateToken,
     });
   } catch (error) {
-    console.error('Rate limit state error:', error);
+    log.error({ err: error }, 'rate limit state error');
     return res.status(500).json({ message: 'Failed to get rate limit state' });
   }
 }

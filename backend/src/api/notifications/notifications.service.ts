@@ -2,6 +2,9 @@ import admin from 'firebase-admin';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { photoQueue } from '../../../libs/queue.js';
 import { redis } from '../../../libs/redis.js';
+import { createLogger } from '../../../libs/logger.js';
+
+const log = createLogger('notifications');
 
 type NotificationType = 'LIKE' | 'COMMENT' | 'INVITE' | 'SYSTEM';
 
@@ -87,12 +90,12 @@ export async function sendPushNotifications(
           ) {
             invalidTokens.push(chunk[index]!);
           } else {
-            console.error(`FCM error for token ${chunk[index]}:`, res.error);
+            log.error({ token: chunk[index], err: res.error }, 'FCM error for token');
           }
         }
       });
     } catch (error) {
-      console.error('FCM sendEachForMulticast error:', error);
+      log.error({ err: error }, 'FCM sendEachForMulticast error');
     }
   }
 

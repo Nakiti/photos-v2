@@ -86,6 +86,14 @@ const GalleryListItem = ({
           {preview}
         </Text>
 
+        {/* Row 3: new photo count */}
+        {hasUnread && (
+          <View style={styles.newPhotosRow}>
+            <Ionicons name="images-outline" size={11} color="#888888" />
+            <Text style={styles.newPhotosText}>{unseenCount} new</Text>
+          </View>
+        )}
+
       </View>
 
         <Ionicons name="chevron-forward" size={14} color="#CECECE" style={styles.chevron} />
@@ -184,6 +192,16 @@ const styles = StyleSheet.create({
   },
   previewUnread: {
     color: '#666666',
+    fontWeight: '400',
+  },
+  newPhotosRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  newPhotosText: {
+    fontSize: 12,
+    color: '#888888',
     fontWeight: '400',
   },
 });

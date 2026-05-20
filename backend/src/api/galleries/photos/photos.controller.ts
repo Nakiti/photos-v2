@@ -65,7 +65,7 @@ export async function requestPresignedUrl(req: Request, res: Response) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: 'Validation failed', errors: error.flatten().fieldErrors });
     }
-    console.error(`[Photos][presign] error gallery=${req.params.galleryId}:`, error);
+    (req as any).log.error({ err: error, galleryId: req.params.galleryId }, 'presign error');
     return res.status(500).json({ message: 'Failed to create presigned URL' });
   }
 }
@@ -98,7 +98,7 @@ export async function confirmPhotoUpload(req: Request, res: Response) {
         retryAfter: 3600,
       });
     }
-    console.error(`[Photos][confirm] error gallery=${req.params.galleryId}:`, error);
+    (req as any).log.error({ err: error, galleryId: req.params.galleryId }, 'confirm upload error');
     return res.status(500).json({ message: 'Failed to confirm photo upload' });
   }
 }
