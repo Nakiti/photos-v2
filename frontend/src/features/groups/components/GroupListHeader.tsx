@@ -13,7 +13,7 @@ const GroupListHeader = () => {
           <View style={styles.actionsRow}>
             <TouchableOpacity
               style={styles.iconButton}
-              onPress={() => (navigation as any).navigate("JoinGroup")}
+              onPress={() => (navigation as any).navigate("JoinFlow", { screen: "ScanJoin" })}
               activeOpacity={0.5}
               accessibilityRole="button"
               accessibilityLabel="Scan QR Code"

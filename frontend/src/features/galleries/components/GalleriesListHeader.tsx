@@ -11,15 +11,15 @@ const GalleriesHeader = () => {
         <View style={styles.container}>
           <Text style={styles.title}>Galleries</Text>
           <View style={styles.actionsRow}>
-            {/* <TouchableOpacity
+            <TouchableOpacity
               style={styles.iconButton}
-              onPress={() => (navigation as any).navigate("GalleryFlow", { screen: "NotificationsHub" })}
+              onPress={() => (navigation as any).navigate("JoinFlow", { screen: "ScanJoin" })}
               activeOpacity={0.5}
               accessibilityRole="button"
-              accessibilityLabel="Notifications"
+              accessibilityLabel="Join with QR Code"
             >
-              <Ionicons name="notifications-outline" size={18} color="#3A3A3A" />
-            </TouchableOpacity> */}
+              <Ionicons name="scan-outline" size={18} color="#3A3A3A" />
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={[styles.iconButton, styles.iconButtonPrimary]}

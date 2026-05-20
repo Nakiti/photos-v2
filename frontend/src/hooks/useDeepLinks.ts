@@ -4,9 +4,9 @@ import { useAuthStore } from '../stores/auth.store';
 import { navigationRef } from '../navigation/navigationRef';
 import { useDeepLinkStore } from '../stores/deepLink.store';
 
-type ParsedLink = { type: 'gallery' | 'group'; id: string; name?: string };
+export type ParsedLink = { type: 'gallery' | 'group'; id: string; name?: string };
 
-function parseUrl(url: string): ParsedLink | null {
+export function parseUrl(url: string): ParsedLink | null {
   const galleryMatch = url.match(/gallery\/join\/([^/?#]+)/);
   if (galleryMatch) return { type: 'gallery', id: galleryMatch[1] };
   const groupMatch = url.match(/group\/join\/([^/?#]+)/);
