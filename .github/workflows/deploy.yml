@@ -1,0 +1,118 @@
+name: Deploy backend
+
+# Builds the backend image, applies DB migrations as a one-off ECS task, then
+# rolls the ECS service to the new image. Runs after CI passes on main.
+#
+# Required GitHub config (Settings → Secrets and variables → Actions):
+#   Secret  AWS_DEPLOY_ROLE_ARN  — IAM role for GitHub OIDC to assume
+#                                  (see infra/terraform/github_oidc.tf)
+#   Variables:
+#     AWS_REGION       e.g. us-east-1
+#     ECR_REPOSITORY   e.g. focal-backend
+#     ECS_CLUSTER      e.g. focal-beta-cluster
+#     ECS_SERVICE      e.g. focal-beta-backend
+#     ECS_TASK_FAMILY  e.g. focal-beta-backend
+#     CONTAINER_NAME   e.g. focal-backend
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+permissions:
+  id-token: write # OIDC
+  contents: read
+
+jobs:
+  deploy:
+    name: Build, migrate, deploy
+    runs-on: ubuntu-latest
+    # Only deploy when the triggering CI run succeeded (dispatch has no upstream run).
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push image
+        id: build
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          TAG: ${{ github.sha }}
+        run: |
+          IMAGE="$REGISTRY/$REPOSITORY:$TAG"
+          docker build -t "$IMAGE" -t "$REGISTRY/$REPOSITORY:latest" ./backend
+          docker push "$IMAGE"
+          docker push "$REGISTRY/$REPOSITORY:latest"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Register new task definition
+        id: taskdef
+        env:
+          FAMILY: ${{ vars.ECS_TASK_FAMILY }}
+          CONTAINER: ${{ vars.CONTAINER_NAME }}
+          IMAGE: ${{ steps.build.outputs.image }}
+        run: |
+          aws ecs describe-task-definition --task-definition "$FAMILY" --query taskDefinition \
+            | jq --arg IMG "$IMAGE" --arg NAME "$CONTAINER" '
+                (.containerDefinitions[] | select(.name==$NAME) | .image) |= $IMG
+                | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                      .compatibilities, .registeredAt, .registeredBy)
+              ' > new-task-def.json
+          ARN=$(aws ecs register-task-definition --cli-input-json file://new-task-def.json \
+                --query 'taskDefinition.taskDefinitionArn' --output text)
+          echo "arn=$ARN" >> "$GITHUB_OUTPUT"
+
+      - name: Run database migrations (one-off task)
+        env:
+          CLUSTER: ${{ vars.ECS_CLUSTER }}
+          SERVICE: ${{ vars.ECS_SERVICE }}
+          CONTAINER: ${{ vars.CONTAINER_NAME }}
+          TASKDEF: ${{ steps.taskdef.outputs.arn }}
+        run: |
+          # Reuse the service's own network configuration for the one-off task.
+          NETWORK=$(aws ecs describe-services --cluster "$CLUSTER" --services "$SERVICE" \
+                    --query 'services[0].networkConfiguration' --output json)
+          TASK_ARN=$(aws ecs run-task \
+            --cluster "$CLUSTER" \
+            --task-definition "$TASKDEF" \
+            --launch-type FARGATE \
+            --network-configuration "$NETWORK" \
+            --overrides "{\"containerOverrides\":[{\"name\":\"$CONTAINER\",\"command\":[\"npm\",\"run\",\"migrate:deploy\"]}]}" \
+            --query 'tasks[0].taskArn' --output text)
+          echo "Migration task: $TASK_ARN"
+          aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$TASK_ARN"
+          EXIT=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" \
+                 --query "tasks[0].containers[?name=='$CONTAINER'].exitCode | [0]" --output text)
+          echo "Migration exit code: $EXIT"
+          if [ "$EXIT" != "0" ]; then
+            echo "::error::Database migration failed (exit=$EXIT). Aborting deploy."
+            exit 1
+          fi
+
+      - name: Deploy new task definition to the service
+        env:
+          CLUSTER: ${{ vars.ECS_CLUSTER }}
+          SERVICE: ${{ vars.ECS_SERVICE }}
+          TASKDEF: ${{ steps.taskdef.outputs.arn }}
+        run: |
+          aws ecs update-service --cluster "$CLUSTER" --service "$SERVICE" \
+            --task-definition "$TASKDEF" >/dev/null
+          echo "Waiting for the service to stabilize..."
+          aws ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE"
+          echo "Deploy complete."

@@ -1,0 +1,63 @@
+# Local development parity for the Focal backend.
+#
+#   docker compose up --build
+#
+# Brings up MySQL + Redis and the backend wired to them. The backend applies
+# pending migrations on start (single-instance dev convenience) and then serves
+# on http://localhost:4000.
+#
+# Secrets (AWS, Firebase, JWT_SECRET) are read from backend/.env via `env_file`.
+# The `environment` block below overrides DATABASE_URL / REDIS_HOST so the
+# backend talks to the compose services instead of localhost. In production these
+# come from your secrets manager / orchestrator, NOT from a committed file.
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: focal
+      MYSQL_DATABASE: focal
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pfocal"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    env_file:
+      - ./backend/.env
+    environment:
+      NODE_ENV: development
+      # Override host-oriented values from .env with compose service names.
+      DATABASE_URL: mysql://root:focal@mysql:3306/focal
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      ALLOWED_ORIGINS: "*"
+    ports:
+      - "4000:4000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Apply migrations, then start. (Run migrate as a separate step in prod.)
+    command: sh -c "npm run migrate:deploy && npm run start"
+
+volumes:
+  mysql-data:

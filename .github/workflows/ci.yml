@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --- Gating: must pass to merge -----------------------------------------
+  backend:
+    name: Backend — typecheck + tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - name: Generate Prisma client
+        run: npx prisma generate
+      - name: Type-check (app code)
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+
+  # --- Advisory: reported, does not block (known pre-existing issues) ------
+  backend-audit:
+    name: Backend — dependency audit (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true # tighten to blocking once HARD-7 is resolved
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - name: npm audit (production deps)
+        run: npm audit --omit=dev
+
+  frontend:
+    name: Frontend — typecheck + lint + tests (advisory)
+    runs-on: ubuntu-latest
+    # Advisory until the untracked member-invite screen (2 tsc errors) and the
+    # backlog of ~104 lint errors are cleaned up. Lint runs correctly under
+    # Node 22 (see frontend/.nvmrc); these are real findings, not tooling crashes.
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Type-check
+        run: npx tsc --noEmit
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests
+        run: npm test

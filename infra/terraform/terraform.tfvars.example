@@ -1,0 +1,25 @@
+# Copy to terraform.tfvars and fill in. Do NOT commit terraform.tfvars.
+
+aws_region  = "us-east-1"
+project     = "focal"
+environment = "beta"
+
+# The EXISTING S3 bucket the app already uses for media.
+s3_bucket_name      = "your-focal-media-bucket"
+cloudfront_base_url = "https://dxxxxxxxx.cloudfront.net"
+
+# CORS allow-list. For a mobile-only beta with no browser origin you can leave
+# this permissive, but set it to real origins before production.
+allowed_origins = "*"
+
+# Optional — enables push notifications. base64 of the service-account JSON:
+#   base64 -i service-account.json      (mac: base64 -i; linux: base64 -w0)
+# firebase_service_account_json_base64 = "eyJ0eXBl...=="
+
+# Optional — backend error tracking.
+# sentry_dsn = "https://xxxx@oyyyy.ingest.sentry.io/zzzz"
+
+# Optional — ACM cert ARN (this region) to enable HTTPS on the ALB.
+# certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/..."
+
+# image_tag = "latest"   # CD overrides this per deploy

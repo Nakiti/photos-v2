@@ -1,0 +1,16 @@
+node_modules
+npm-debug.log
+dist
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.nvmrc
+Dockerfile
+.dockerignore
+# Local credential files must never enter the image (inject via env at runtime)
+config/*firebase-adminsdk*.json
+**/*.test.ts
+src/__tests__
+coverage

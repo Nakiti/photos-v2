@@ -1,0 +1,16 @@
+# Terraform state — may contain secrets (DB passwords, tokens). NEVER commit.
+*.tfstate
+*.tfstate.*
+
+# Local provider plugins / cache (large, machine-specific).
+.terraform/
+
+# Your filled-in variable values (bucket names, secrets). Commit the .example only.
+terraform.tfvars
+*.auto.tfvars
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Keep committed: *.tf, terraform.tfvars.example, and .terraform.lock.hcl
