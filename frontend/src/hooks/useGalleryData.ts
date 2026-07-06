@@ -487,7 +487,6 @@ export const dumpLocalGalleries = async (database: Database) => {
         endDate: gallery.endDate,
         location: gallery.location,
         shareableLink: gallery.shareableLink,
-        joinRequiresApproval: gallery.joinRequiresApproval,
         addPermission: gallery.addPermission,
         deletePermission: gallery.deletePermission,
         createdAt: gallery.createdAt,

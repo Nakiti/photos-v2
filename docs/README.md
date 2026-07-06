@@ -1,5 +1,8 @@
 # Focal — Architecture & Design Notes
 
+> **Build, run & deploy the backend:** see [`deployment.md`](./deployment.md)
+> (npm scripts, Docker, docker-compose, CI).
+
 ## Infrastructure
 
 ### AWS

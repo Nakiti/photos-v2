@@ -16,7 +16,6 @@ export const updateGroupSchema = z.object({
 		name: z.string().min(2).max(100).optional(),
 		description: z.string().max(500).optional(),
 		iconUrl: z.string().url().optional(),
-		joinRequiresApproval: z.boolean().optional(),
 		addPermission: z.enum(['ANYONE', 'ADMIN']).optional(),
 		deletePermission: z.enum(['ADMINS_AUTHORS', 'ADMIN']).optional(),
 	}),

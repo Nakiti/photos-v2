@@ -23,7 +23,6 @@ export default class Gallery extends Model {
   @text('location') location?: string;
   @text('shareable_link') shareableLink?: string;
   // Settings
-  @field('join_requires_approval') joinRequiresApproval?: boolean;
   @text('add_permission') addPermission?: 'ANYONE' | 'ADMIN';
   @text('delete_permission') deletePermission?: 'ADMINS_AUTHORS' | 'ADMIN';
   @text('edit_permission') editPermission?: 'ANYONE' | 'ADMIN';

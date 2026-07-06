@@ -13,7 +13,6 @@ export interface GroupMember {
     id: string;
     joinedAt: string;
     role: GroupRole;
-    status?: 'PENDING' | 'ACCEPTED' | 'INVITED' | 'BLOCKED';
   };
 }
 
@@ -25,10 +24,9 @@ export interface MyGroupMembership {
   role: GroupRole;
 }
 
-export const getMembers = async (groupId: string, status?: 'PENDING' | 'ACCEPTED' | 'INVITED' | 'BLOCKED'): Promise<{ members: GroupMember[]; pending?: GroupMember[] }> => {
-  const query = status ? `?status=${encodeURIComponent(status)}` : '';
-  const response = await apiClient.get(`/api/v1/communities/${groupId}/members${query}`);
-  return response.data as { members: GroupMember[]; pending?: GroupMember[] };
+export const getMembers = async (groupId: string): Promise<{ members: GroupMember[] }> => {
+  const response = await apiClient.get(`/api/v1/communities/${groupId}/members`);
+  return response.data as { members: GroupMember[] };
 };
 
 export const addMember = async (groupId: string, userId: string) => {
@@ -49,9 +47,4 @@ export const promoteMember = async (groupId: string, userId: string) => {
 export const getMyMembership = async (groupId: string): Promise<MyGroupMembership> => {
   const response = await apiClient.get(`/api/v1/communities/${groupId}/members/me`);
   return response.data as MyGroupMembership;
-};
-
-export const approveMember = async (groupId: string, userId: string) => {
-  const response = await apiClient.put(`/api/v1/communities/${groupId}/members/${userId}/approve`);
-  return response.data;
 };

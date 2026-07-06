@@ -1,23 +1,16 @@
 // src/api/galleries/galleries.service.ts
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { buildMediaUrl, toMediaUrl } from '../../../libs/media.js';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import config from '../../../config/config.js';
 import {v4 as uuidv4} from "uuid"
 import { checkGalleryPermission } from './permission.service.js';
 import { broadcastGalleryUpdated } from '../../../libs/socket.manager.js';
+import { s3Client as s3 } from '../../../libs/s3.js';
 
 const prisma = new PrismaClient();
-
-const s3 = new S3Client({
-  credentials: {
-    accessKeyId: config.aws.accessKeyId!,
-    secretAccessKey: config.aws.secretAccessKey!,
-  },
-  region: config.aws.region!,
-});
 
 /**
  * Create a new gallery owned by the given user.
@@ -35,7 +28,6 @@ export async function createGallery(
     location?: string | null | undefined;
     addPermission?: string;
     deletePermission?: string;
-    joinRequiresApproval?: boolean; // ⚠️ Typo: 'Aproval'
     wantsIconUpload?: boolean | undefined;
     defaultTagId?: string | undefined;
     communityId?: string | undefined;
@@ -52,7 +44,6 @@ export async function createGallery(
     wantsIconUpload,
     addPermission,
     deletePermission,
-    joinRequiresApproval, // ⚠️ Typo: 'Aproval'
     communityId,
   } = data;
   
@@ -75,7 +66,6 @@ export async function createGallery(
 
         addPermission: (addPermission as any) ?? undefined,
         deletePermission: (deletePermission as any) ?? undefined,
-        joinRequiresApproval: joinRequiresApproval ?? (type === 'GROUP'),
         memberCount: 1, // Start at 1 because owner is added as member
         photoCount: 0,
       },
@@ -92,8 +82,7 @@ export async function createGallery(
         communityId: true,
         addPermission: true,
         deletePermission: true,
-        joinRequiresApproval: true,
-        defaultTagId: true,
+          defaultTagId: true,
         lastPhotoAt: true,
         photoCount: true,
         memberCount: true,
@@ -176,7 +165,6 @@ export async function getMyGalleries(userId: string) {
       communityId: true,
       addPermission: true,
       deletePermission: true,
-      joinRequiresApproval: true,
 
       defaultTagId: true,
       lastPhotoAt: true,
@@ -242,7 +230,6 @@ export async function getGalleryDetails(userId: string, galleryId: string) {
       communityId: true,
       addPermission: true,
       deletePermission: true,
-      joinRequiresApproval: true,
       defaultTagId: true,
       lastPhotoAt: true,
       photoCount: true,
@@ -306,7 +293,6 @@ export async function getGalleryById(galleryId: string) {
       id: true,
       ownerId: true,
       type: true,
-      joinRequiresApproval: true,
     },
   });
 }
@@ -323,7 +309,6 @@ export async function updateGallery(
   data: Partial<{ name: string; iconUrl: string | null; startDate: string | null; endDate: string | null; location: string | null; defaultTagId?: string | null; description?: string }> & {
     addPermission?: any;
     deletePermission?: any;
-    joinRequiresApproval?: boolean;
   }
 ) {
   const updated = await prisma.gallery.update({
@@ -336,7 +321,6 @@ export async function updateGallery(
       ...(data.location !== undefined ? { location: data.location } : {}),
       addPermission: (data as any).addPermission,
       deletePermission: (data as any).deletePermission,
-      joinRequiresApproval: data.joinRequiresApproval,
       defaultTagId: data.defaultTagId,
     } as unknown) as any,
     select: {
@@ -352,7 +336,6 @@ export async function updateGallery(
       communityId: true,
       addPermission: true,
       deletePermission: true,
-      joinRequiresApproval: true,
 
       defaultTagId: true,
       lastPhotoAt: true,
@@ -472,7 +455,6 @@ export async function joinGalleryByLink(userId: string, shareableLink: string) {
       shareableLink: true,
       addPermission: true,
       deletePermission: true,
-      joinRequiresApproval: true,
       defaultTagId: true,
       ownerId: true,
       communityId: true,
@@ -534,7 +516,6 @@ export async function getGalleriesByCommunityId(communityId: string) {
       communityId: true,
       addPermission: true,
       deletePermission: true,
-      joinRequiresApproval: true,
       defaultTagId: true,
       lastPhotoAt: true,
       photoCount: true,
@@ -635,7 +616,7 @@ export async function transferOwnership(
         id: true, name: true, type: true, iconUrl: true,
         startDate: true, endDate: true, location: true,
         shareableLink: true, ownerId: true, communityId: true,
-        addPermission: true, deletePermission: true, joinRequiresApproval: true,
+        addPermission: true, deletePermission: true,
         defaultTagId: true, lastPhotoAt: true, photoCount: true, memberCount: true,
         createdAt: true, updatedAt: true,
         community: { select: { name: true } },
@@ -737,7 +718,6 @@ export async function searchGalleries(
       communityId: true,
       addPermission: true,
       deletePermission: true,
-      joinRequiresApproval: true,
       defaultTagId: true,
       lastPhotoAt: true,
       photoCount: true,
@@ -780,7 +760,6 @@ export async function searchGalleries(
     communityName: g.community?.name ?? null,
       addPermission: g.addPermission,
       deletePermission: g.deletePermission,
-      joinRequiresApproval: g.joinRequiresApproval,
       defaultTagId: g.defaultTagId,
       lastPhotoAt: g.lastPhotoAt,
       createdAt: g.createdAt,

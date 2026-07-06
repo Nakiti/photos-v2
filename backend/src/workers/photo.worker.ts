@@ -1,4 +1,5 @@
 import { Worker } from 'bullmq';
+import * as Sentry from '@sentry/node';
 import { PrismaClient } from '@prisma/client';
 import { redisConnection, redis } from '../../libs/redis.js';
 import { sendPushNotifications, createNotificationRecord } from '../api/notifications/notifications.service.js';
@@ -163,4 +164,11 @@ export const worker = new Worker('photo-notifications', async (job) => {
   );
 }, {
   connection: redisConnection,
-}); 
+});
+
+// Surface job failures: log via pino and report to Sentry (no-op when disabled).
+worker.on('failed', (job, err) => {
+  log.error({ err, jobId: job?.id, jobName: job?.name }, 'worker job failed');
+  Sentry.captureException(err, { extra: { jobId: job?.id, jobName: job?.name } });
+});
+

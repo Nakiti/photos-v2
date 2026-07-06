@@ -38,5 +38,24 @@ target 'frontend' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # fmt's base.h uses an #if chain (no #ifndef guard) that unconditionally sets
+    # FMT_USE_CONSTEVAL=1 for Apple Clang >= 14. Apple Clang 21 (Xcode 26 beta)
+    # regressed: consteval is broken again. Patch the header to disable consteval
+    # for all Apple Clang builds — runtime behaviour is identical, we just lose
+    # compile-time format-string checking (a luxury, not a requirement).
+    require 'fileutils'
+    fmt_base_h = "#{installer.sandbox.root}/fmt/include/fmt/base.h"
+    if File.exist?(fmt_base_h)
+      content = File.read(fmt_base_h)
+      patched = content.gsub(
+        '#elif defined(__apple_build_version__) && __apple_build_version__ < 14000029L',
+        '#elif defined(__apple_build_version__)'
+      )
+      if content != patched
+        FileUtils.chmod('u+w', fmt_base_h)
+        File.write(fmt_base_h, patched)
+      end
+    end
   end
 end

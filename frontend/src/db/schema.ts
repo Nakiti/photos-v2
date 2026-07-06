@@ -2,7 +2,7 @@ import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const mySchema = appSchema({
   // Version 37: last_viewed_at + last_viewed_photo_count on galleries (local-only, tracks unseen count)
-  version: 37,
+  version: 38,
   tables: [
     tableSchema({
       name: 'users',
@@ -30,7 +30,6 @@ export const mySchema = appSchema({
         { name: 'location', type: 'string', isOptional: true },
         { name: 'shareable_link', type: 'string', isOptional: true },
         // Settings
-        { name: 'join_requires_approval', type: 'boolean', isOptional: true },
         { name: 'add_permission', type: 'string', isOptional: true },   // 'ANYONE' | 'ADMIN'
         { name: 'delete_permission', type: 'string', isOptional: true }, // 'ADMINS_AUTHORS' | 'ADMIN'
         { name: 'edit_permission', type: 'string', isOptional: true },   // 'ANYONE' | 'ADMIN'
@@ -96,7 +95,6 @@ export const mySchema = appSchema({
         { name: 'description', type: 'string', isOptional: true },
         { name: 'icon_url', type: 'string', isOptional: true },
         { name: 'owner_id', type: 'string', isIndexed: true },
-        { name: 'join_requires_approval', type: 'boolean', isOptional: true },
         { name: 'add_permission', type: 'string', isOptional: true },
         { name: 'delete_permission', type: 'string', isOptional: true },
         { name: 'member_count', type: 'number' },
@@ -111,7 +109,6 @@ export const mySchema = appSchema({
         { name: 'user_id', type: 'string', isIndexed: true },
         { name: 'community_id', type: 'string', isIndexed: true },
         { name: 'role', type: 'string' },
-        { name: 'status', type: 'string', isIndexed: true },
         { name: 'joined_at', type: 'number' },
       ],
     }),

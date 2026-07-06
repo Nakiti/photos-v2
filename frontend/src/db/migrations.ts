@@ -168,5 +168,14 @@ export default schemaMigrations({
         }),
       ],
     },
+    {
+      // Join-approval functionality removed. WatermelonDB cannot drop columns, so
+      // `join_requires_approval` (galleries/communities) and `status`
+      // (community_memberships) are simply removed from the schema and ignored
+      // going forward. Existing rows keep the column values in SQLite but they
+      // are never read or written.
+      toVersion: 38,
+      steps: [],
+    },
   ],
 });

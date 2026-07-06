@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
 import FastImage from 'react-native-fast-image';
 
-export type FriendStatus = 'member' | 'pending' | 'can_add';
+export type FriendStatus = 'member' | 'can_add';
 
 type Props = {
   user: {
@@ -19,7 +19,6 @@ type Props = {
 const AddMemberListItem = ({ user, status, onInvite, isInviting }: Props) => {
   
   const isMember = status === 'member';
-  const isPending = status === 'pending';
 
   return (
     <View style={styles.container}>
@@ -46,10 +45,6 @@ const AddMemberListItem = ({ user, status, onInvite, isInviting }: Props) => {
         ) : isMember ? (
             <View style={styles.badge}>
                 <Text style={[styles.badgeText, styles.memberText]}>Member</Text>
-            </View>
-        ) : isPending ? (
-            <View style={styles.badge}>
-                <Text style={[styles.badgeText, styles.pendingText]}>Invited</Text>
             </View>
         ) : (
             <TouchableOpacity 
@@ -126,8 +121,5 @@ const styles = StyleSheet.create({
     },
     memberText: {
         color: '#34C759', // Green
-    },
-    pendingText: {
-        color: '#8E8E93', // Gray
     },
  });

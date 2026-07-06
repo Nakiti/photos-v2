@@ -15,6 +15,7 @@ import SingleImageHeader from "../../gallery/components/SingleImageHeader";
 import SingleImageBottomBar from "../../gallery/components/SingleImageBottomBar";
 import SingleImageTagDropdown from "../../gallery/components/SingleImageTagDropdown";
 import SingleImageCarousel from "../../gallery/components/SingleImageCarousel";
+import SingleImageFilmstrip from "../../gallery/components/SingleImageFilmstrip";
 
 const SingleImageScreen = () => {
   const navigation = useNavigation<any>();
@@ -214,6 +215,14 @@ const SingleImageScreen = () => {
         onPressDelete={handleDelete}
       />
 
+      <SingleImageFilmstrip
+        items={items}
+        currentIndex={currentIndex}
+        onIndexChange={setCurrentIndex}
+        visible={overlaysVisible}
+        bottomOffset={bottomBarHeight}
+      />
+
       <SingleImageTagDropdown
         visible={dropdownOpen && overlaysVisible}
         tags={tags as any}
@@ -238,14 +247,6 @@ const SingleImageScreen = () => {
         }
         onToggleDropdown={() => setDropdownOpen((v) => !v)}
         onLayout={(e) => setBottomBarHeight(e.nativeEvent.layout.height)}
-        onPressDownload={() => {
-          // TODO: implement actual download to device Photos/Files
-          console.log("Download pressed for", current?.id);
-        }}
-        onPressUpload={() => {
-          // TODO: implement upload flow
-          console.log("Upload pressed for", current?.id);
-        }}
         onPressLike={() => { if (currentPhotoId) likeMutation.mutate(); }}
         liked={liked}
       />

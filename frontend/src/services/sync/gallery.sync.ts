@@ -30,7 +30,6 @@ export const syncGalleries = async (database: Database, remoteGalleries: Gallery
       const needsUpdate =
         local.name !== remoteGallery.name ||
         local.iconUrl !== remoteGallery.iconUrl ||
-        local.joinRequiresApproval !== remoteGallery.joinRequiresApproval ||
         local.addPermission !== remoteGallery.addPermission ||
         local.deletePermission !== remoteGallery.deletePermission ||
         local.editPermission !== (remoteGallery as any).editPermission ||
@@ -50,7 +49,6 @@ export const syncGalleries = async (database: Database, remoteGalleries: Gallery
           local.prepareUpdate(record => {
             record.name = remoteGallery.name;
             record.iconUrl = remoteGallery.iconUrl;
-            record.joinRequiresApproval = remoteGallery.joinRequiresApproval ?? false;
             record.addPermission = remoteGallery.addPermission as 'ANYONE' | 'ADMIN';
             record.deletePermission = remoteGallery.deletePermission as 'ADMINS_AUTHORS' | 'ADMIN';
             record.editPermission = remoteGallery.editPermission as 'ANYONE' | 'ADMIN';
@@ -77,7 +75,6 @@ export const syncGalleries = async (database: Database, remoteGalleries: Gallery
           record.type = remoteGallery.type;
           record.iconUrl = remoteGallery.iconUrl;
           record.ownerId = remoteGallery.ownerId;
-          record.joinRequiresApproval = remoteGallery.joinRequiresApproval ?? false;
           record.addPermission = remoteGallery.addPermission as 'ANYONE' | 'ADMIN';
           record.deletePermission = remoteGallery.deletePermission as 'ADMINS_AUTHORS' | 'ADMIN';
           record.editPermission = remoteGallery.editPermission as 'ANYONE' | 'ADMIN';
@@ -142,7 +139,6 @@ export const syncGalleryDetails = async (
     record.ownerId = remoteGallery.ownerId;
     record.iconUrl = remoteGallery.iconUrl;
     record.type = remoteGallery.type;
-    record.joinRequiresApproval = remoteGallery.joinRequiresApproval ?? false;
     record.addPermission = remoteGallery.addPermission as 'ANYONE' | 'ADMIN';
     record.deletePermission = remoteGallery.deletePermission as 'ADMINS_AUTHORS' | 'ADMIN';
     record.editPermission = remoteGallery.editPermission as 'ANYONE' | 'ADMIN';
@@ -218,9 +214,8 @@ export const syncCommunityGalleries = async (
       // Compare more fields to catch all changes
       const needsUpdate = 
         local.name !== remoteGallery.name || 
-        local.iconUrl !== remoteGallery.iconUrl || 
-        local.joinRequiresApproval !== remoteGallery.joinRequiresApproval || 
-        local.addPermission !== remoteGallery.addPermission || 
+        local.iconUrl !== remoteGallery.iconUrl ||
+        local.addPermission !== remoteGallery.addPermission ||
         local.deletePermission !== remoteGallery.deletePermission ||
         local.type !== remoteGallery.type ||
         local.ownerId !== remoteGallery.ownerId ||
@@ -242,7 +237,6 @@ export const syncCommunityGalleries = async (
           local.prepareUpdate(record => {
             record.name = remoteGallery.name;
             record.iconUrl = remoteGallery.iconUrl;
-            record.joinRequiresApproval = remoteGallery.joinRequiresApproval;
             record.addPermission = remoteGallery.addPermission as 'ANYONE' | 'ADMIN';
             record.deletePermission = remoteGallery.deletePermission as 'ADMINS_AUTHORS' | 'ADMIN';
             record.type = remoteGallery.type;
@@ -281,7 +275,6 @@ export const syncCommunityGalleries = async (
           record.type = remoteGallery.type;
           record.iconUrl = remoteGallery.iconUrl;
           record.ownerId = remoteGallery.ownerId;
-          record.joinRequiresApproval = remoteGallery.joinRequiresApproval;
           record.addPermission = remoteGallery.addPermission as 'ANYONE' | 'ADMIN';
           record.deletePermission = remoteGallery.deletePermission as 'ADMINS_AUTHORS' | 'ADMIN';
           record.location = remoteGallery.location ?? undefined;

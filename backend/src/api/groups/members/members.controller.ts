@@ -37,23 +37,11 @@ export async function getMembers(req: Request, res: Response) {
 	const userId = (req as any).user?.id as string | undefined;
 	if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 	const { groupId } = req.params as { groupId: string };
-	const { status } = req.query as { status?: 'PENDING' | 'ACCEPTED' | 'INVITED' | 'BLOCKED' };
 	const access = await groupsService.getGroupDetails(userId, groupId);
 	if (!access) return res.status(403).json({ message: 'Forbidden' });
 
-	const allowedStatuses = ['PENDING', 'ACCEPTED', 'INVITED', 'BLOCKED'] as const;
-	if (status && (allowedStatuses as readonly string[]).includes(status)) {
-		const filtered = await membersService.getMembers(groupId, status as any);
-		return res.status(200).json(filtered);
-	}
-
-	const [accepted, pending, invited] = await Promise.all([
-		membersService.getMembers(groupId, 'ACCEPTED'),
-		membersService.getMembers(groupId, 'PENDING'),
-		membersService.getMembers(groupId, 'INVITED'),
-	]);
-
-	return res.status(200).json({ members: accepted, pending: [...pending, ...invited] });
+	const members = await membersService.getMembers(groupId);
+	return res.status(200).json({ members });
 }
 
 export async function promoteMember(req: Request, res: Response) {
@@ -99,19 +87,4 @@ export async function getMyMembership(req: Request, res: Response) {
 	const membership = await membersService.getMembership(userId, groupId);
 	if (!membership) return res.status(404).json({ message: 'Membership not found' });
 	return res.status(200).json(membership);
-}
-
-/**
- * PUT /api/v1/communities/:groupId/members/:userId/approve (Admin Only)
- * Approve a pending membership.
- */
-export async function approveMember(req: Request, res: Response) {
-	const requesterId = (req as any).user?.id as string | undefined;
-	if (!requesterId) return res.status(401).json({ message: 'Unauthorized' });
-	const { groupId, userId } = req.params as { groupId: string; userId: string };
-	const isAdmin = await membersService.isAdminOrOwner(requesterId, groupId);
-	if (!isAdmin) return res.status(403).json({ message: 'Forbidden' });
-	const updated = await membersService.approveMember(groupId, userId);
-	if (!updated) return res.status(400).json({ message: 'Membership is not pending' });
-	return res.status(200).json(updated);
 }

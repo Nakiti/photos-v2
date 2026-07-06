@@ -6,7 +6,7 @@ const router = Router();
 
 router.post('/register', authRateLimit, registerUser);
 router.post('/login', authRateLimit, loginUser);
-router.post('/refresh', refreshToken);
+router.post('/refresh', authRateLimit, refreshToken);
 router.post('/logout', logoutUser);
 router.post('/forgot-password', authRateLimit, forgotPassword);
 router.post('/reset-password', authRateLimit, resetPassword);

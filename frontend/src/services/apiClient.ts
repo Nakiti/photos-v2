@@ -1,4 +1,5 @@
 import axios, { type InternalAxiosRequestConfig } from "axios";
+import * as Sentry from '@sentry/react-native';
 import * as Keychain from 'react-native-keychain';
 import { useAuthStore } from '../stores/auth.store';
 import { socket } from './socketClient';
@@ -38,6 +39,12 @@ apiClient.interceptors.response.use(
     const original: InternalAxiosRequestConfig & { _retry?: boolean } = error.config;
 
     if (error.response?.status !== 401 || original._retry) {
+      // Report server-side failures and network errors; skip expected 4xx
+      // client errors (validation, auth) to keep Sentry signal clean.
+      const status = error.response?.status;
+      if (!status || status >= 500) {
+        Sentry.captureException(error);
+      }
       return Promise.reject(error);
     }
 

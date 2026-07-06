@@ -34,7 +34,6 @@ export const syncGroups = async (
       record.description = rc.description ?? undefined;
       record.iconUrl = rc.iconUrl ?? undefined;
       record.ownerId = rc.ownerId;
-      record.joinRequiresApproval = rc.joinRequiresApproval ?? undefined;
       record.addPermission = rc.addPermission ?? undefined;
       record.deletePermission = rc.deletePermission ?? undefined;
       record.memberCount = rc.memberCount ?? 0;
@@ -53,7 +52,6 @@ export const syncGroups = async (
         local.description !== (rc.description ?? undefined) ||
         local.iconUrl !== (rc.iconUrl ?? undefined) ||
         local.ownerId !== rc.ownerId ||
-        local.joinRequiresApproval !== rc.joinRequiresApproval ||
         local.addPermission !== rc.addPermission ||
         local.deletePermission !== rc.deletePermission ||
         local.memberCount !== (rc.memberCount ?? 0) ||
@@ -109,7 +107,6 @@ export const syncGroupDetails = async (
     record.description = remoteGroup.description ?? undefined;
     record.iconUrl = remoteGroup.iconUrl ?? undefined;
     record.ownerId = remoteGroup.ownerId;
-    record.joinRequiresApproval = remoteGroup.joinRequiresApproval ?? undefined;
     record.addPermission = remoteGroup.addPermission ?? undefined;
     record.deletePermission = remoteGroup.deletePermission ?? undefined;
     record.memberCount = remoteGroup.memberCount ?? 0;

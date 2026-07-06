@@ -1,22 +1,15 @@
 // src/api/users/user.service.ts
 import { PrismaClient } from '@prisma/client';
 import config from '../../../config/config.js';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { buildMediaUrl, toMediaUrl } from '../../../libs/media.js';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import { v4 as uuidv4 } from 'uuid';
+import { s3Client as s3 } from '../../../libs/s3.js';
 
 
 const prisma = new PrismaClient();
-
-const s3 = new S3Client({
-  credentials: {
-    accessKeyId: config.aws.accessKeyId!,
-    secretAccessKey: config.aws.secretAccessKey!,
-  },
-  region: config.aws.region!,
-});
 
 /**
  * Fetch the current user's profile by id using a safe select (no password).

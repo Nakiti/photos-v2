@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Switch,
   TouchableOpacity,
   ScrollView,
   SafeAreaView,
@@ -76,7 +75,6 @@ const CreateGroupSettingsScreen = () => {
   const { mutateAsync: updateGroup } = useUpdateGroup();
   
   // --- State ---
-  const [joinRequiresApproval, setJoinRequiresApproval] = useState<boolean>(false);
   const [addPermission, setAddPermission] = useState<'ANYONE' | 'ADMIN'>('ADMIN');
   const [deletePermission, setDeletePermission] = useState<'ADMINS_AUTHORS' | 'ADMIN'>('ADMIN');
 
@@ -98,7 +96,6 @@ const CreateGroupSettingsScreen = () => {
       await updateGroup({
         groupId: newGroup.id,
         data: {
-          joinRequiresApproval,
           addPermission,
           deletePermission,
         } as any,
@@ -123,29 +120,7 @@ const CreateGroupSettingsScreen = () => {
         showsVerticalScrollIndicator={false}
       >
 
-        {/* --- Section 1: Membership --- */}
-        <View style={styles.sectionHeaderContainer}>
-            <Text style={styles.sectionHeader}>MEMBERSHIP</Text>
-        </View>
-
-        <View style={styles.row}>
-            <View style={styles.textStack}>
-                <Text style={styles.rowLabel}>Require Approval</Text>
-                <Text style={styles.rowSubtext}>Admins must approve new members.</Text>
-            </View>
-            <Switch 
-              value={joinRequiresApproval} 
-              onValueChange={setJoinRequiresApproval}
-              trackColor={{ false: COLORS.toggleTrack, true: COLORS.tint }}
-              thumbColor="#FFF"
-              ios_backgroundColor={COLORS.toggleTrack}
-            />
-        </View>
-
-        {/* --- Spacer --- */}
-        <View style={styles.sectionSpacer} />
-
-        {/* --- Section 2: Permissions --- */}
+        {/* --- Section: Permissions --- */}
         <View style={styles.sectionHeaderContainer}>
             <Text style={styles.sectionHeader}>PERMISSIONS</Text>
         </View>

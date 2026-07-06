@@ -14,7 +14,6 @@ export default class Group extends Model {
   @text('description') description?: string;
   @text('icon_url') iconUrl?: string;
   @field('owner_id') ownerId!: string;
-  @field('join_requires_approval') joinRequiresApproval?: boolean;
   @text('add_permission') addPermission?: 'ANYONE' | 'ADMIN';
   @text('delete_permission') deletePermission?: 'ADMINS_AUTHORS' | 'ADMIN';
   @field('member_count') memberCount!: number;

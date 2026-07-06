@@ -6,27 +6,36 @@ import config from '../config/config.js';
 import { redis, redisConnection } from './redis.js';
 import { Redis } from 'ioredis';
 import { createLogger } from './logger.js';
+import { isGalleryMember } from '../src/api/galleries/permission.service.js';
 
 const log = createLogger('socket');
 
 // Module-level state (singleton pattern)
 let io: Server | null = null;
+// Redis pub/sub clients backing the adapter — held at module scope so they can be
+// quit during graceful shutdown.
+let pubClient: Redis | null = null;
+let subClient: Redis | null = null;
 
 /**
  * Initializes the WebSocket server with authentication and connection handlers.
  * @param httpServer The HTTP server instance to attach Socket.IO to
  */
 export function initializeSocket(httpServer: http.Server) {
+  // Mirror the HTTP CORS policy (server.ts): allow all only when the operator
+  // explicitly configures '*' (dev default), otherwise restrict to the
+  // configured origin allow-list.
+  const allowedOrigins = config.allowedOrigins;
   io = new Server(httpServer, {
     cors: {
-      origin: '*', // Restrict in production
+      origin: allowedOrigins.includes('*') ? '*' : allowedOrigins,
       methods: ['GET', 'POST'],
     },
   });
 
   // Redis pub/sub clients for multi-instance broadcast
-  const pubClient = new Redis(redisConnection);
-  const subClient = pubClient.duplicate();
+  pubClient = new Redis(redisConnection);
+  subClient = pubClient.duplicate();
   io.adapter(createAdapter(pubClient, subClient));
 
   log.info('WebSocket server initialized');
@@ -67,6 +76,16 @@ export function initializeSocket(httpServer: http.Server) {
     log.info({ socketId: socket.id, userId }, 'user connected');
 
     socket.on('join_gallery', async (galleryId: string) => {
+      // Authorization: only members (or the owner) may subscribe to a gallery's
+      // real-time stream. Without this, any authenticated user could join any
+      // room and receive its photo/gallery payloads (information disclosure).
+      const authorized = await isGalleryMember(userId, galleryId);
+      if (!authorized) {
+        log.warn({ socketId: socket.id, userId, galleryId }, 'join_gallery rejected: not a member');
+        socket.emit('join_gallery_error', { galleryId, error: 'Forbidden: not a member of this gallery' });
+        return;
+      }
+
       log.info({ socketId: socket.id, userId, galleryId }, 'user joining gallery room');
       socket.join(galleryId);
 
@@ -176,4 +195,24 @@ export function broadcastGalleryUpdated(galleryId: string, gallery: any) {
     io.to(galleryId).emit('gallery_updated', gallery);
     log.info({ galleryId }, 'broadcast gallery updated');
   }
+}
+
+/**
+ * Gracefully closes the Socket.IO server and its adapter Redis clients.
+ * Disconnects all connected sockets, stops accepting new connections, and quits
+ * the pub/sub clients. Safe to call when the socket server was never initialized.
+ */
+export async function closeSocket(): Promise<void> {
+  if (io) {
+    await new Promise<void>((resolve) => io!.close(() => resolve()));
+    log.info('WebSocket server closed');
+    io = null;
+  }
+
+  await Promise.allSettled([
+    pubClient?.quit(),
+    subClient?.quit(),
+  ]);
+  pubClient = null;
+  subClient = null;
 }

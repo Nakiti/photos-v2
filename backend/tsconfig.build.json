@@ -1,0 +1,16 @@
+{
+  // Production type-check config: the application code only, excluding tests.
+  // Used by `npm run typecheck` / `npm run build` and CI. The app is executed
+  // directly from TypeScript via `tsx` (see the `start` script), so this config
+  // is `--noEmit` — it gates types, it does not produce a dist bundle.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/__tests__",
+    "**/*.test.ts"
+  ]
+}

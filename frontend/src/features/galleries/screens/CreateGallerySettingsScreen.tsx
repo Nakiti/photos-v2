@@ -53,7 +53,6 @@ const CreateGallerySettingsScreen = () => {
   const { mutateAsync: addCommunityMembers, isPending: isAddingMembers } = useAddCommunityMembersToGallery();
   const { group: community } = useGroup(groupId || null);
 
-  const [joinRequiresApproval, setJoinRequiresApproval] = useState(true);
   const [addPermission, setAddPermission] = useState<'ANYONE' | 'ADMIN'>('ADMIN');
   const [deletePermission, setDeletePermission] = useState<'ADMINS_AUTHORS' | 'ADMIN'>('ADMINS_AUTHORS');
   const [addAllCommunityMembers, setAddAllCommunityMembers] = useState(false);
@@ -62,7 +61,6 @@ const CreateGallerySettingsScreen = () => {
   useEffect(() => {
     if (inheritCommunitySettings && community) {
       const c: any = community;
-      setJoinRequiresApproval(c.joinRequiresApproval ?? true);
       setAddPermission((c.addPermission as 'ANYONE' | 'ADMIN') ?? 'ADMIN');
       setDeletePermission((c.deletePermission as 'ADMINS_AUTHORS' | 'ADMIN') ?? 'ADMINS_AUTHORS');
     }
@@ -72,13 +70,12 @@ const CreateGallerySettingsScreen = () => {
     if (inheritCommunitySettings && community) {
       const c: any = community;
       return {
-        joinRequiresApproval: c.joinRequiresApproval ?? true,
         addPermission: (c.addPermission as 'ANYONE' | 'ADMIN') ?? 'ADMIN',
         deletePermission: (c.deletePermission as 'ADMINS_AUTHORS' | 'ADMIN') ?? 'ADMINS_AUTHORS',
       };
     }
-    return { joinRequiresApproval, addPermission, deletePermission };
-  }, [inheritCommunitySettings, community, joinRequiresApproval, addPermission, deletePermission]);
+    return { addPermission, deletePermission };
+  }, [inheritCommunitySettings, community, addPermission, deletePermission]);
 
   const onSave = async () => {
     if (!name) return Alert.alert('Error', 'Missing gallery name.');
@@ -112,24 +109,10 @@ const CreateGallerySettingsScreen = () => {
       >
 
         {/* Membership */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Membership</Text>
-          <View style={styles.card}>
-            <View style={styles.switchRow}>
-              <View style={styles.switchText}>
-                <Text style={styles.switchLabel}>Require Approval</Text>
-                <Text style={styles.switchSub}>Admins must approve new members.</Text>
-              </View>
-              <Switch
-                value={joinRequiresApproval}
-                onValueChange={setJoinRequiresApproval}
-                trackColor={{ false: '#E5E5E5', true: '#111111' }}
-                thumbColor="#FFF"
-                ios_backgroundColor="#E5E5E5"
-                disabled={inherited}
-              />
-            </View>
-            {groupId && (
+        {groupId && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Membership</Text>
+            <View style={styles.card}>
               <View style={[styles.switchRow, styles.rowLast]}>
                 <View style={styles.switchText}>
                   <Text style={styles.switchLabel}>Sync Members</Text>
@@ -143,9 +126,9 @@ const CreateGallerySettingsScreen = () => {
                   ios_backgroundColor="#E5E5E5"
                 />
               </View>
-            )}
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Permissions */}
         <View style={styles.section}>

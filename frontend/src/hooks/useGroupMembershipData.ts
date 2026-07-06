@@ -11,7 +11,6 @@ import {
   getMembers as getGroupMembers,
   promoteMember as promoteGroupMember,
   getMyMembership as getMyGroupMembership,
-  approveMember as approveGroupMember,
 } from '../services/api/groupMemberships.service';
 import { removeGroupMembershipLocally, syncGroupMembers } from '../services/sync/groupMemberships.sync';
 
@@ -23,25 +22,21 @@ export interface EnrichedGroupMembership {
 export const useGroupMembers = (groupId: string | null) => {
   const database = useDatabase();
   const [members, setMembers] = useState<EnrichedGroupMembership[]>([]);
-  const [pendingMembers, setPendingMembers] = useState<EnrichedGroupMembership[]>([]);
-  const queryClient = useQueryClient();
   const { user } = useAuth();
 
   // Observe local memberships and users
   useEffect(() => {
     if (!groupId) {
       setMembers([]);
-      setPendingMembers([]);
       return;
     }
     const membershipsCollection = database.collections.get<GroupMembership>('community_memberships');
     const usersCollection = database.collections.get<User>('users');
 
     const query = membershipsCollection.query(Q.where('community_id', groupId));
-    const subscription = query.observeWithColumns(['user_id', 'role', 'status']).subscribe(async (memberships) => {
+    const subscription = query.observeWithColumns(['user_id', 'role']).subscribe(async (memberships) => {
       if (memberships.length === 0) {
         setMembers([]);
-        setPendingMembers([]);
         return;
       }
       try {
@@ -50,25 +45,16 @@ export const useGroupMembers = (groupId: string | null) => {
         const userMap = new Map(users.map((u) => [u.id, u]));
 
         const enriched: EnrichedGroupMembership[] = [];
-        const pending: EnrichedGroupMembership[] = [];
         for (const membership of memberships) {
           const found = userMap.get(membership.userId);
           if (found) {
-            const enrichedItem = { membership, user: found };
-            enriched.push(enrichedItem);
-            // Check if status is PENDING or INVITED (if status field exists)
-            const status = (membership as any).status;
-            if (status === 'PENDING' || status === 'INVITED') {
-              pending.push(enrichedItem);
-            }
+            enriched.push({ membership, user: found });
           }
         }
         setMembers(enriched);
-        setPendingMembers(pending);
       } catch (e) {
         console.error('Error enriching group memberships:', e);
         setMembers([]);
-        setPendingMembers([]);
       }
     });
     return () => subscription.unsubscribe();
@@ -79,7 +65,7 @@ export const useGroupMembers = (groupId: string | null) => {
     queryKey: ['group-members', groupId],
     enabled: !!groupId && !!user?.id,
     queryFn: async () => {
-      if (!groupId || !user?.id) return { members: [], pending: [] };
+      if (!groupId || !user?.id) return { members: [] };
       const remote = await getGroupMembers(groupId);
       await syncGroupMembers(database, groupId, remote.members);
       return remote;
@@ -89,8 +75,7 @@ export const useGroupMembers = (groupId: string | null) => {
 
   return {
     members,
-    pendingMembers,
-    isLoading: isLoading && members.length === 0 && pendingMembers.length === 0,
+    isLoading: isLoading && members.length === 0,
     isSyncing: isFetching,
     isError,
     error,
@@ -145,19 +130,5 @@ export const useMyGroupMembership = (groupId: string | null) => {
     enabled: !!groupId,
     queryFn: () => getMyGroupMembership(groupId as string),
     staleTime: 5 * 60 * 1000,
-  });
-};
-
-/**
- * Hook for an Admin to approve a pending join request.
- */
-export const useApproveGroupJoinRequest = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ groupId, userId }: { groupId: string; userId: string }) =>
-      approveGroupMember(groupId, userId),
-    onSuccess: (data, { groupId }) => {
-      queryClient.invalidateQueries({ queryKey: ['group-members', groupId] });
-    },
   });
 };

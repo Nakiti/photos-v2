@@ -24,7 +24,6 @@ export const updateGallerySchema = z.object({
     endDate: z.string().datetime().nullable().optional(),
     location: z.string().max(200).nullable().optional(),
     addPermission: z.string().optional(),
-    joinRequiresApproval: z.boolean().optional(),
     deletePermission: z.string().optional(),
     defaultTagId: z.string().optional(),
   }),

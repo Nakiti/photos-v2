@@ -17,9 +17,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Backend (`/backend`)
 ```bash
-npm run dev          # Start with nodemon (tsx, hot reload)
+npm run dev              # Start with nodemon (tsx, hot reload)
+npm start                # Production process (tsx index.ts)
+npm run build            # Build gate: prisma generate + type-check (no dist; app runs from TS via tsx)
+npm run typecheck        # Type-check app code only (tsconfig.build.json, tests excluded)
+npm run migrate:deploy   # Apply pending migrations (production / release step)
+npm run migrate:dev      # Create + apply migrations (dev)
 ```
 Backend runs on port 4000. Requires `.env` with `DATABASE_URL` and Redis/S3 credentials.
+Build/lint/CI require **Node 22** (`backend/.nvmrc`). Full deploy, Docker, and CI
+docs: **`docs/deployment.md`**.
 
 ### Frontend (`/frontend`)
 ```bash

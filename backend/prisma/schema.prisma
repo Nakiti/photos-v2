@@ -46,10 +46,11 @@ model Gallery {
   location      String?
   shareableLink String?   @unique
 
-  joinRequiresApproval Boolean @default(false)
   addPermission        GalleryAddPermission      @default(ADMIN)
   deletePermission     GalleryDeletePermission   @default(ADMINS_AUTHORS)
   editPermission       GalleryEditPermission     @default(ADMIN)
+
+  joinCode           String?  @unique
 
   defaultTagId       String? @unique
   photoCount         Int      @default(0)
@@ -79,11 +80,12 @@ model Community {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  joinRequiresApproval Boolean @default(false)
   addPermission        GalleryAddPermission      @default(ADMIN)
   deletePermission     GalleryDeletePermission   @default(ADMINS_AUTHORS)
   memberCount          Int      @default(0)
   galleryCount         Int      @default(0)
+
+  joinCode             String?  @unique
 
   owner       User                  @relation("OwnedCommunities", fields: [ownerId], references: [id], onDelete: Cascade)
   memberships CommunityMembership[]
@@ -98,7 +100,6 @@ model CommunityMembership {
   communityId String
   joinedAt    DateTime @default(now())
   role        MembershipRole @default(MEMBER)
-  status      MembershipStatus @default(ACCEPTED)
 
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
@@ -126,13 +127,6 @@ enum GalleryDeletePermission {
 enum GalleryEditPermission {
   ADMIN
   ANYONE
-}
-
-enum MembershipStatus {
-  PENDING  
-  ACCEPTED 
-  INVITED    
-  BLOCKED    
 }
 
 enum MembershipRole {

@@ -9,9 +9,7 @@ import AddGroupMembersScreen from "../features/groups/screens/AddGroupMembersScr
 import DefaultHeader from "../components/DefaultHeader";
 import EditGroupDetailsScreen from "../features/groups/screens/GroupSettings/EditGroupDetailsScreen";
 import EditDeletePermissionScreen from "../features/groups/screens/GroupSettings/EditDeleteMemberPermissionScreen";
-import EditJoinPermissionScreen from "../features/groups/screens/GroupSettings/EditJoinPermissionScreen";
 import EditAddPermissionScreen from "../features/groups/screens/GroupSettings/EditAddPermissionScreen";
-import PendingRequestsScreen from "../features/groups/screens/GroupSettings/PendingRequestsScreen";
 import ChangeOwnershipScreen from "../features/groups/screens/GroupSettings/ChangeOwnershipScreen";
 
 const Stack = createNativeStackNavigator();
@@ -76,13 +74,6 @@ const GroupStack = () => {
         }}
       />
       <Stack.Screen
-        name="EditJoinPermission"
-        component={EditJoinPermissionScreen}
-        options={{
-          header: () => <DefaultHeader title="Edit Add Permission"/>
-        }}
-      />
-      <Stack.Screen
         name="EditDeletePermission"
         component={EditDeletePermissionScreen}
         options={{
@@ -94,13 +85,6 @@ const GroupStack = () => {
         component={EditGroupDetailsScreen}
         options={{
           header: () => <DefaultHeader title="Edit Group Details"/>
-        }}
-      />
-      <Stack.Screen
-        name="PendingRequests"
-        component={PendingRequestsScreen}
-        options={{
-          header: () => <DefaultHeader title="Pending Requests"/>
         }}
       />
       <Stack.Screen

@@ -1,19 +1,12 @@
 import { PrismaClient } from '@prisma/client';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { buildMediaUrl, toMediaUrl } from '../../../libs/media.js';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { v4 as uuidv4 } from 'uuid';
 import config from '../../../config/config.js';
+import { s3Client as s3 } from '../../../libs/s3.js';
 
 const prisma = new PrismaClient();
-
-const s3 = new S3Client({
-	credentials: {
-		accessKeyId: config.aws.accessKeyId!,
-		secretAccessKey: config.aws.secretAccessKey!,
-	},
-	region: config.aws.region!,
-});
 
 
 
@@ -44,7 +37,6 @@ export async function createGroup(
 				description: true,
 				iconUrl: true,
 				ownerId: true,
-				joinRequiresApproval: true,
 				addPermission: true,
 				deletePermission: true,
 				memberCount: true,
@@ -94,7 +86,6 @@ export async function getMyGroups(userId: string) {
 			description: true,
 			iconUrl: true,
 			ownerId: true,
-			joinRequiresApproval: true,
 			addPermission: true,
 			deletePermission: true,
 			memberCount: true,
@@ -116,7 +107,6 @@ export async function getMyGroups(userId: string) {
 					description: true,
 					iconUrl: true,
 					ownerId: true,
-					joinRequiresApproval: true,
 					addPermission: true,
 					deletePermission: true,
 					memberCount: true,
@@ -146,7 +136,6 @@ export async function getGroupById(groupId: string) {
 			description: true,
 			iconUrl: true,
 			ownerId: true,
-			joinRequiresApproval: true,
 			addPermission: true,
 			deletePermission: true,
 			memberCount: true,
@@ -182,7 +171,6 @@ export async function updateGroup(
 		name?: string | undefined;
 		description?: string | undefined;
 		iconUrl?: string | undefined;
-		joinRequiresApproval?: boolean | undefined;
 		addPermission?: 'ANYONE' | 'ADMIN' | undefined;
 		deletePermission?: 'ADMINS_AUTHORS' | 'ADMIN' | undefined;
 	}
@@ -195,14 +183,12 @@ export async function updateGroup(
 		name?: string;
 		description?: string;
 		iconUrl?: string;
-		joinRequiresApproval?: boolean;
 		addPermission?: 'ANYONE' | 'ADMIN';
 		deletePermission?: 'ADMINS_AUTHORS' | 'ADMIN';
 	} = {};
 	if (data.name !== undefined) updateData.name = data.name;
 	if (data.description !== undefined) updateData.description = data.description;
 	if (data.iconUrl !== undefined) updateData.iconUrl = data.iconUrl;
-	if (data.joinRequiresApproval !== undefined) updateData.joinRequiresApproval = data.joinRequiresApproval;
 	if (data.addPermission !== undefined) updateData.addPermission = data.addPermission;
 	if (data.deletePermission !== undefined) updateData.deletePermission = data.deletePermission;
 
@@ -286,7 +272,6 @@ export async function transferOwnership(
 				description: true,
 				iconUrl: true,
 				ownerId: true,
-				joinRequiresApproval: true,
 				addPermission: true,
 				deletePermission: true,
 				memberCount: true,

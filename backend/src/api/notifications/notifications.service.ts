@@ -11,8 +11,12 @@ type NotificationType = 'LIKE' | 'COMMENT' | 'INVITE' | 'SYSTEM';
 const prisma = new PrismaClient();
 
 // Initialise Firebase Admin once (no-op if already initialised).
-// Priority: FIREBASE_SERVICE_ACCOUNT_JSON (base64) > FIREBASE_SERVICE_ACCOUNT_PATH > ADC
+// Credential source priority: FIREBASE_SERVICE_ACCOUNT_JSON (base64) > ADC.
+// In production we standardize on the base64 env var (no file to mount or leak)
+// or Application Default Credentials; the on-disk FIREBASE_SERVICE_ACCOUNT_PATH
+// is only honoured outside production for local-dev convenience.
 if (!admin.apps.length) {
+  const isProduction = process.env.NODE_ENV === 'production';
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
 
@@ -20,10 +24,17 @@ if (!admin.apps.length) {
     const decoded = Buffer.from(serviceAccountJson, 'base64').toString('utf8');
     const serviceAccount = JSON.parse(decoded) as admin.ServiceAccount;
     admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-  } else if (serviceAccountPath) {
+  } else if (serviceAccountPath && !isProduction) {
     const serviceAccount = (await import(serviceAccountPath, { assert: { type: 'json' } })).default;
     admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
   } else {
+    if (isProduction && serviceAccountPath) {
+      // The file path is intentionally ignored in production — warn so a
+      // misconfiguration surfaces instead of silently mounting a credential file.
+      log.warn(
+        'FIREBASE_SERVICE_ACCOUNT_PATH is ignored in production; set FIREBASE_SERVICE_ACCOUNT_JSON (base64) or use ADC. Falling back to Application Default Credentials.',
+      );
+    }
     // Falls back to GOOGLE_APPLICATION_CREDENTIALS env var or GCP metadata server
     admin.initializeApp();
   }

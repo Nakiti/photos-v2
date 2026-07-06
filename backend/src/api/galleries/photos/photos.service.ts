@@ -4,7 +4,8 @@ import { broadcastNewPhoto, broadcastPhotoDeleted, broadcastPhotoUpdated } from 
 import { photoQueue } from '../../../../libs/queue.js';
 import {v4 as uuidv4} from "uuid"
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { S3Client, PutObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3';
+import { s3Client as s3ClientV3 } from '../../../../libs/s3.js';
 import { buildMediaUrl } from '../../../../libs/media.js';
 import { smartThrottleNewPhoto, createNotificationRecord, sendPushNotifications } from '../../notifications/notifications.service.js';
 import { checkAndRecordUpload } from '../../../../libs/rateLimiter.js';
@@ -26,14 +27,6 @@ export class RateLimitError extends Error {
 }
 
 const prisma = new PrismaClient();
-
-const s3ClientV3 = new S3Client({
-  credentials: {
-    accessKeyId: config.aws.accessKeyId!,
-    secretAccessKey: config.aws.secretAccessKey!,
-  },
-  region: config.aws.region!,
-});
 
 function withCloudFrontUrls(photo: { s3Key: string; thumbnailKey: string | null; [key: string]: any }) {
   return {

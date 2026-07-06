@@ -136,21 +136,6 @@ const GroupSettingsScreen = () => {
 
     if (isOwner) {
       data.push({
-        category: 'Privacy',
-        items: [
-          {
-            label: 'Require Approval to Join',
-            value: c.joinRequiresApproval ? 'Required' : 'Anyone',
-            onPress: () => (navigation as any).navigate('EditJoinPermission', { groupId: group.id }),
-          },
-          {
-            label: 'Pending Requests',
-            onPress: () => (navigation as any).navigate('PendingRequests', { groupId: group.id }),
-          },
-        ],
-      });
-
-      data.push({
         category: 'Permissions',
         items: [
           {

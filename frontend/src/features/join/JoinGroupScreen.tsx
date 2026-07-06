@@ -20,21 +20,15 @@ const JoinGroupScreen = () => {
   const route = useRoute<RouteProp<RouteParams, 'JoinGroup'>>();
   const { groupId, groupName } = route.params;
   const [joining, setJoining] = useState(false);
-  const [requestSent, setRequestSent] = useState(false);
 
   const handleJoin = async () => {
     setJoining(true);
     try {
-      const membership = await joinGroup(groupId);
-      if (membership?.status === 'PENDING') {
-        setRequestSent(true);
-        setJoining(false);
-      } else {
-        navigation.navigate('GroupFlow', {
-          screen: 'Group',
-          params: { groupId },
-        });
-      }
+      await joinGroup(groupId);
+      navigation.navigate('GroupFlow', {
+        screen: 'Group',
+        params: { groupId },
+      });
     } catch (err: any) {
       setJoining(false);
       Alert.alert('Error', err?.response?.data?.message ?? 'Could not join group. Please try again.');
@@ -49,34 +43,18 @@ const JoinGroupScreen = () => {
         </View>
         <Text style={styles.heading}>{groupName ?? 'Group Invite'}</Text>
 
-        {requestSent ? (
-          <>
-            <Text style={styles.subheading}>
-              Your request to join has been sent. You'll be added once an admin approves it.
-            </Text>
-            <TouchableOpacity
-              style={styles.button}
-              onPress={() => navigation.goBack()}
-            >
-              <Text style={styles.buttonLabel}>Done</Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <>
-            <Text style={styles.subheading}>You've been invited to join this group.</Text>
-            <TouchableOpacity
-              style={[styles.button, joining && styles.buttonDisabled]}
-              onPress={handleJoin}
-              disabled={joining}
-            >
-              {joining ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.buttonLabel}>Join Group</Text>
-              )}
-            </TouchableOpacity>
-          </>
-        )}
+        <Text style={styles.subheading}>You've been invited to join this group.</Text>
+        <TouchableOpacity
+          style={[styles.button, joining && styles.buttonDisabled]}
+          onPress={handleJoin}
+          disabled={joining}
+        >
+          {joining ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.buttonLabel}>Join Group</Text>
+          )}
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );

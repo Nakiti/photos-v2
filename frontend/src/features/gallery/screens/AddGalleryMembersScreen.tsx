@@ -2,30 +2,19 @@ import React, { useMemo, useState, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useRoute } from '@react-navigation/native';
-import { useMemberships, useInviteMember, useDenyOrRemoveMember } from '../../../hooks/useMembershipData';
+import { useMemberships, useAddGalleryMember } from '../../../hooks/useMembershipData';
 import { useSearchUsers } from '../../../hooks/useUser';
 import AddMemberListItem from '../../galleries/components/AddMemberListItem';
-
-type DisplayUser = {
-  id: string;
-  name: string;
-  handle: string;
-  avatar?: string;
-};
 
 const AddGalleryMembersScreen = () => {
   const route = useRoute();
   const { galleryId } = route.params as { galleryId: string };
 
   const [value, setValue] = useState('');
-  const [showMembers, setShowMembers] = useState(true);
-  const [showPending, setShowPending] = useState(true);
   const [showSearchResults, setShowSearchResults] = useState(false);
 
-  const { acceptedMembers, pendingMembers } = useMemberships(galleryId);
-  const { mutate: inviteMember, isPending: isInviting } = useInviteMember();
-  const { mutate: denyOrRemove, isPending: isRemoving } = useDenyOrRemoveMember();
-    console.log("pending members ", pendingMembers)
+  const { acceptedMembers } = useMemberships(galleryId);
+  const { mutate: addMember, isPending: isInviting } = useAddGalleryMember();
 
   // Search users hook (manual trigger)
   const { users: searchResults, isLoading: isSearching, search, pagination } = useSearchUsers({}, false);
@@ -33,32 +22,6 @@ const AddGalleryMembersScreen = () => {
   const acceptedMemberIds = useMemo(
     () => new Set(acceptedMembers.map((m) => m.user.id)),
     [acceptedMembers]
-  );
-  const pendingMemberIds = useMemo(
-    () => new Set(pendingMembers.map((m) => m.user.id)),
-    [pendingMembers]
-  );
-
-  const members: DisplayUser[] = useMemo(
-    () =>
-      acceptedMembers.map(({ user }) => ({
-        id: user.id,
-        name: user.name || user.handle,
-        handle: user.handle,
-        avatar: user.avatarUrl || undefined,
-      })),
-    [acceptedMembers]
-  );
-
-  const pending: DisplayUser[] = useMemo(
-    () =>
-      pendingMembers.map(({ user }) => ({
-        id: user.id,
-        name: user.name || user.handle,
-        handle: user.handle,
-        avatar: user.avatarUrl || undefined,
-      })),
-    [pendingMembers]
   );
 
   const handleSearch = useCallback(async () => {
@@ -76,23 +39,17 @@ const AddGalleryMembersScreen = () => {
   const handleInvite = useCallback(
     (user: any) => {
       const userId = user.id;
-      inviteMember(
-        { galleryId, userId, user },
+      addMember(
+        { galleryId, userId },
         {
-          onSuccess: () => {
-            // No-op; queries invalidate in hook
-          },
           onError: () => {
-            Alert.alert('Error', 'Failed to send invite.');
+            Alert.alert('Error', 'Failed to add member.');
           },
         }
       );
     },
-    [inviteMember, galleryId]
+    [addMember, galleryId]
   );
-
-  const toggleMembers = useCallback(() => setShowMembers((s) => !s), []);
-  const togglePending = useCallback(() => setShowPending((s) => !s), []);
 
   return (
     <View style={styles.container}>
@@ -152,11 +109,7 @@ const AddGalleryMembersScreen = () => {
               <Text style={styles.emptyRow}>No users found</Text>
             ) : (
               searchResults.map((user) => {
-                const status = acceptedMemberIds.has(user.id)
-                  ? 'member'
-                  : pendingMemberIds.has(user.id)
-                  ? 'pending'
-                  : 'can_add';
+                const status = acceptedMemberIds.has(user.id) ? 'member' : 'can_add';
                 return (
                   <AddMemberListItem
                     key={user.id}
@@ -170,38 +123,6 @@ const AddGalleryMembersScreen = () => {
             )}
           </View>
         )}
-
-        {/* Pending */}
-        <View style={styles.section}>
-          <TouchableOpacity style={styles.sectionHeader} onPress={togglePending}>
-            <Text style={styles.sectionTitle}>Pending</Text>
-            <Ionicons
-              name={showPending ? 'chevron-down-outline' : 'chevron-forward-outline'}
-              size={16}
-            />
-          </TouchableOpacity>
-          {showPending &&
-            (pending.length === 0 ? (
-              <Text style={styles.emptyRow}>No pending requests</Text>
-            ) : (
-              pending.map((p) => (
-                <AddMemberListItem
-                  key={p.id}
-                  user={
-                    {
-                      id: p.id,
-                      name: p.name,
-                      handle: p.handle,
-                      avatarUrl: p.avatar,
-                    } as any
-                  }
-                  status="pending"
-                  onInvite={() => denyOrRemove({ galleryId, userId: p.id })}
-                  isInviting={isRemoving}
-                />
-              ))
-            ))}
-        </View>
       </ScrollView>
     </View>
   );

@@ -23,7 +23,8 @@ const OfflineBanner = () => {
 
   return (
     <View style={styles.banner}>
-      <Text style={styles.text}>No internet connection</Text>
+      <View style={styles.dot} />
+      <Text style={styles.text}>No connection</Text>
     </View>
   );
 };
@@ -32,15 +33,25 @@ export default OfflineBanner;
 
 const styles = StyleSheet.create({
   banner: {
-    backgroundColor: '#1a1a1a',
-    paddingVertical: 8,
+    backgroundColor: '#F5F5F5',
+    paddingVertical: 5,
     paddingHorizontal: 16,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E8E8E8',
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#BBBBBB',
   },
   text: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '500',
+    color: '#999999',
+    fontSize: 12,
+    fontWeight: '400',
   },
 });

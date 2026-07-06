@@ -19,6 +19,7 @@ import { useAuth } from './src/hooks/useAuth';
 import { usePhotoUploadQueue } from './src/hooks/usePhotoData';
 import { useSocketEvents } from './src/hooks/useSocketEvents';
 import messaging from '@react-native-firebase/messaging';
+import * as Sentry from '@sentry/react-native';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import OfflineBanner from './src/components/OfflineBanner';
 
@@ -142,4 +143,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default App;
+export default Sentry.wrap(App);

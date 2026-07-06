@@ -30,7 +30,6 @@ export interface Gallery {
     lastUploadedByName?: string | null;
 
     // Permission and settings fields (optional)
-    joinRequiresApproval?: boolean;
     addPermission?: string;
     deletePermission?: string;
     editPermission?: string;

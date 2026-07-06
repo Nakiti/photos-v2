@@ -37,14 +37,6 @@ const formatDeletePermission = (value?: string | null): string => {
   return value;
 };
 
-const formatJoinRequiresApproval = (value?: boolean | string | null): string => {
-  if (value === undefined || value === null) return 'Anyone';
-  if (typeof value === 'boolean') return value ? 'Require Approval' : 'Anyone';
-  const n = value.toLowerCase();
-  if (n === 'admin_approval' || n === 'require approval') return 'Require Approval';
-  return 'Anyone';
-};
-
 const SectionLabel = ({ title }: { title: string }) => (
   <Text style={styles.sectionLabel}>{title}</Text>
 );

@@ -9,8 +9,6 @@ type Props = {
   activeTagName: string;
   onToggleDropdown: () => void;
   onLayout?: (e: LayoutChangeEvent) => void;
-  onPressDownload?: () => void;
-  onPressUpload?: () => void;
   onPressLike?: () => void;
   liked?: boolean;
 };
@@ -21,8 +19,6 @@ const SingleImageBottomBar = ({
   activeTagName,
   onToggleDropdown,
   onLayout,
-  onPressDownload,
-  onPressUpload,
   onPressLike,
   liked = false,
 }: Props) => {
@@ -33,15 +29,8 @@ const SingleImageBottomBar = ({
       onLayout={onLayout}
     >
       <View style={styles.barRow}>
-        <View style={styles.sideGroup}>
-          <TouchableOpacity
-            onPress={onPressDownload}
-            style={styles.circleBtn}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="download-outline" size={20} color="#111" />
-          </TouchableOpacity>
-        </View>
+        {/* Empty left slot keeps the centre toggle balanced against the like button */}
+        <View style={styles.sideGroup} />
 
         <View style={styles.bottomBarCenter}>
           <TouchableOpacity

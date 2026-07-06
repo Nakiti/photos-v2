@@ -83,6 +83,36 @@ export async function checkGalleryPermission(
     if (!hasPermission(userRole, requiredPermission)) {
       throw new Error('Forbidden: You do not have permission to perform this action');
     }
-  
+
     return true;
+}
+
+/**
+ * Returns true if the user can access a gallery's real-time stream — i.e. they
+ * own the gallery or hold a membership in it. Does not throw; intended for
+ * authorization gating (e.g. Socket.IO room joins) where a boolean is wanted.
+ */
+export async function isGalleryMember(
+    userId: string,
+    galleryId: string,
+  ): Promise<boolean> {
+    const gallery = await prisma.gallery.findUnique({
+      where: { id: galleryId },
+      select: { ownerId: true },
+    });
+
+    if (!gallery) {
+      return false;
+    }
+
+    if (gallery.ownerId === userId) {
+      return true;
+    }
+
+    const membership = await prisma.membership.findFirst({
+      where: { userId, galleryId },
+      select: { id: true },
+    });
+
+    return membership !== null;
 }

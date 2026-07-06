@@ -6,7 +6,6 @@ export interface GroupApiResponse {
   description?: string | null;
   iconUrl?: string | null;
   ownerId: string;
-  joinRequiresApproval?: boolean;
   addPermission?: 'ANYONE' | 'ADMIN';
   deletePermission?: 'ADMINS_AUTHORS' | 'ADMIN';
   memberCount: number;
@@ -26,7 +25,6 @@ export interface UpdateGroupRequest {
   name?: string;
   description?: string;
   iconUrl?: string;
-  joinRequiresApproval?: boolean;
   addPermission?: 'ANYONE' | 'ADMIN';
   deletePermission?: 'ADMINS_AUTHORS' | 'ADMIN';
 }

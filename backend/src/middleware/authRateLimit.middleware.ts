@@ -1,13 +1,17 @@
 import type { Request, Response, NextFunction } from 'express';
 import { redis } from '../../libs/redis.js';
+import { createLogger } from '../../libs/logger.js';
+
+const log = createLogger('authRateLimit');
 
 const MAX_ATTEMPTS = 10;
 const WINDOW_SECONDS = 15 * 60; // 15 minutes
 
+// Use Express's `req.ip`, which derives the client IP from X-Forwarded-For only
+// as far as the trusted proxy hops (see `app.set('trust proxy', ...)`). This is
+// not spoofable past our own proxy chain, unlike reading the raw header.
 function getClientIp(req: Request): string {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string') return (forwarded.split(',')[0] ?? forwarded).trim();
-  return req.socket?.remoteAddress ?? 'unknown';
+  return req.ip ?? req.socket?.remoteAddress ?? 'unknown';
 }
 
 export const authRateLimit = async (req: Request, res: Response, next: NextFunction) => {
@@ -29,8 +33,14 @@ export const authRateLimit = async (req: Request, res: Response, next: NextFunct
       });
     }
     next();
-  } catch {
-    // Redis failure — fail open so auth still works if Redis is down
-    next();
+  } catch (error) {
+    // Redis failure — fail CLOSED for auth. Unlike the general API limiter
+    // (which favours availability), losing brute-force protection on
+    // login/reset is a security risk, so we reject rather than silently allow
+    // unlimited attempts. Logged at error level so the outage alerts.
+    log.error({ err: error }, 'auth rate limiter error — failing closed (503)');
+    return res.status(503).json({
+      message: 'Service temporarily unavailable. Please try again shortly.',
+    });
   }
 };

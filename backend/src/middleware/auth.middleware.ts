@@ -7,6 +7,44 @@ import config from '../../config/config.js';
 
 const prisma = new PrismaClient();
 
+type CachedUser = { id: string; email: string };
+
+// Short-TTL in-process cache for the per-request user lookup. Every authenticated
+// request otherwise hits the DB just to resolve { id, email } from the token's
+// userId; under load that is a lot of identical point reads. We cache the
+// positive result for a few seconds. Trade-off: a user deleted mid-window stays
+// authenticated until the entry expires (TTL kept small to bound that). The cache
+// is per-process and not shared across instances — that's fine for this purpose.
+const USER_CACHE_TTL_MS =
+  (Number(process.env.JWT_USER_CACHE_TTL_SECONDS) || 30) * 1000;
+
+const userCache = new Map<string, { user: CachedUser; expiresAt: number }>();
+
+async function resolveUser(userId: string): Promise<CachedUser | null> {
+  const now = Date.now();
+  const cached = userCache.get(userId);
+  if (cached && cached.expiresAt > now) {
+    return cached.user;
+  }
+  if (cached) {
+    // Expired — drop it so the map doesn't accumulate stale entries.
+    userCache.delete(userId);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    // Select only necessary fields
+    select: { id: true, email: true },
+  });
+
+  // Cache positives only; negative results (deleted/unknown user) are not cached
+  // so a recreated/restored account isn't shadowed by a "not found" entry.
+  if (user) {
+    userCache.set(userId, { user, expiresAt: now + USER_CACHE_TTL_MS });
+  }
+  return user;
+}
+
 const jwtOptions = {
   // Tell passport to extract the JWT from the 'Authorization: Bearer <token>' header
   jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
@@ -18,11 +56,7 @@ const jwtOptions = {
 const strategy = new JwtStrategy(jwtOptions, async (payload, done) => {
   try {
     // 'payload' contains the decoded JWT content (e.g., { userId: '...' })
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-      // Select only necessary fields
-      select: { id: true, email: true },
-    });
+    const user = await resolveUser(payload.userId);
 
     if (user) {
       // If user found, pass the user object to the next middleware/route handler
@@ -35,6 +69,15 @@ const strategy = new JwtStrategy(jwtOptions, async (payload, done) => {
     return done(error, false);
   }
 });
+
+/**
+ * Removes a user from the auth cache. Call after mutations that should
+ * immediately invalidate a session (e.g. account deletion) so the change isn't
+ * masked by the short cache window.
+ */
+export function invalidateUserCache(userId: string): void {
+  userCache.delete(userId);
+}
 
 // Configure passport to use this strategy
 passport.use(strategy);
